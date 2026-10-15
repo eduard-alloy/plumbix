@@ -11,3 +11,4 @@
 | 2026-10-16 | WU-013 | ✅ | API token (option A): token file 0600, bearer auth on all routes but health, container probe gets 401 on every route. Next: WU-004. |
 | 2026-10-16 | WU-004 | ✅ | Repos and changes: SQLite store, rules with full problem lists, service, API, OpenAPI contract test, CLI (repo/submit/change). 74 tests. Next: WU-005. |
 | 2026-10-16 | WU-005 | ✅ | Verdict + input contracts with contract tests, Combine rules, reference validator (host tests + Docker image run read-only). 105 tests. Next: WU-006 AI validator. |
+| 2026-10-16 | WU-006 | ✅ | AI validator: SDK call with structured output + fallbacks, untrusted block, normalization, secrets loader, image; live: injection not obeyed. 128 tests. Next: WU-007. |

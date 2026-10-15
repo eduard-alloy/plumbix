@@ -32,6 +32,7 @@ const (
 	StatusFile  = "status.json"
 	LogFile     = "log.txt"
 	VerdictFile = "verdict.json"
+	DiffFile    = "diff.patch" // optional unified diff from base to head
 )
 
 // Input is the content of /plumbix/in/change.json.
@@ -115,6 +116,17 @@ func PrepareInputs(dir string, in Input, evidence []StepEvidence) error {
 		if err := os.WriteFile(filepath.Join(stepDir, LogFile), e.Log, 0o644); err != nil {
 			return fmt.Errorf("write log for %s: %w", e.Step, err)
 		}
+	}
+	return nil
+}
+
+// WriteDiff stores the unified diff between the base and head commits.
+func WriteDiff(dir string, diff []byte) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", dir, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, DiffFile), diff, 0o644); err != nil {
+		return fmt.Errorf("write diff: %w", err)
 	}
 	return nil
 }

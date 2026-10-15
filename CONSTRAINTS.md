@@ -32,6 +32,8 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Server and runner stay separable so runners can move to other machines later. (Q04)
 
 ## Formats
+- AI validator output is checked with `ParseVerdict` after conservative normalization: `met` needs evidence, a criterion without a reason is `unknown`, `approve` with an `unmet` becomes `fix`. Repository content never leaves the random untrusted block, and content over 600,000 characters fails instead of being truncated. (WU-006)
+- `make live` calls the paid Claude API (about $0.04 per review). It is opt-in and never part of `make check` or `make integration`. (WU-006)
 - `contracts/verdict.schema.json` and `contracts/validator-input.schema.json` are checked against Go by contract tests over example files. Rules needing the change's criteria (IDs exist, appear once) are Go-only and listed in the schema description. (WU-005)
 - Validator containers run as non-root: Plumbix must make `/plumbix/out` writable and the inputs and workspace readable by any user. (WU-005)
 - `.dockerignore` must keep `.env`, `.env.*`, `.git` and `bin` out of every build context. A test enforces it. (WU-005)

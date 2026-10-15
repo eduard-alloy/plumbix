@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/eduard-alloy/plumbix/blob/main/contracts/validator-input.schema.json",
   "title": "Plumbix validator input, version 1",
-  "description": "What Plumbix mounts read-only at /plumbix/in for a validator step: change.json (this schema) and evidence/<step>/status.json ($defs/stepStatus) plus evidence/<step>/log.txt for every earlier step. The checked-out commit is at /workspace, read-only. The validator writes /plumbix/out/verdict.json (verdict.schema.json).",
+  "description": "What Plumbix mounts read-only at /plumbix/in for a validator step: change.json (this schema) evidence/<step>/status.json ($defs/stepStatus) plus evidence/<step>/log.txt for every earlier step, and optionally diff.patch, the unified diff from commits.base to commits.head. The checked-out commit is at /workspace, read-only. The validator writes /plumbix/out/verdict.json (verdict.schema.json).",
   "type": "object",
   "additionalProperties": false,
   "required": ["plumbix", "change", "commits", "changed_files", "iteration", "previous_findings"],
