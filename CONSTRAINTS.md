@@ -1,0 +1,27 @@
+# Plumbix Constraints
+
+Newest first. Each entry cites its source in DISCOVERY.md.
+
+## Security
+- Plumbix binds only to local addresses and refuses to start otherwise until authentication exists. (Q12)
+- Step containers have no network path to the Plumbix API. Validators report verdicts through step output only. (Q12)
+- Each git host PAT (GitHub fine-grained, Azure DevOps) is scoped to code read/write, kept in a local secrets file outside the repo, and never logged. (Q13)
+- Plain shell execution without container isolation is not allowed. Agent-written code is untrusted. (Q04)
+
+## Integration
+- GitHub and Azure DevOps are the v1 hosts. Both sit behind one narrow host boundary designed from these two real implementations. (Q03, revised)
+- Pushes are detected by polling in v1, because a local-only Plumbix is unreachable for service hooks. (Q12)
+- Neither host can enforce merges in v1 because the PAT acts as the user. Plumbix flags bypass commits instead. (Q13)
+
+## Architecture
+- Plumbix never depends on Kai or TRACE. Clients depend on Plumbix's public contracts. (Q06)
+- Plumbix's own changes go through the public API, never internal shortcuts. (Q11)
+- The core contains no AI and holds no model API keys. Validators are pluggable pipeline steps. (Q07)
+- Plumbix does not host git repositories and does not run authoring or fixing agents. (Q02, Q07)
+- Server and runner stay separable so runners can move to other machines later. (Q04)
+
+## Formats
+- The pipeline format is Plumbix's own minimal, strict YAML with a published, versioned schema. No compatibility with other CI formats. (Q08)
+
+## Licensing
+- Apache 2.0. (Q14)
