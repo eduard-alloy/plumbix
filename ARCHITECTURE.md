@@ -49,7 +49,8 @@ Each package lives under `internal/` unless noted.
 | Store | `store` | SQLite database plus embedded migrations. |
 | Config | `config` | Loads config and secrets, checks file permissions, enforces the local-only bind rule. |
 | Web interface | `web/` | React and TypeScript app built with Vite, embedded into the binary at build time. |
-| Reference validator | `validators/reference/` | A separate small Go program shipped as a container image. It implements the validator contract. |
+| Reference validator | `validators/reference/` | Deterministic validator: a small Go program shipped as a container image. It maps criteria to step results and commands. |
+| AI validator | `validators/ai/` | A Go program shipped as a container image. It asks a Claude model to judge the change against its intent and criteria, and writes the same verdict file. |
 
 ## 3. Core model
 
@@ -140,6 +141,11 @@ steps:
     image: ghcr.io/eduard-alloy/plumbix-reference-validator:v0
     validator: true
     needs: [test, lint]
+  - name: ai-review
+    image: ghcr.io/eduard-alloy/plumbix-ai-validator:v0
+    validator: true
+    needs: [test, lint]
+    secrets: [ANTHROPIC_API_KEY]
 ```
 
 | Field | Required | Meaning |
@@ -249,12 +255,12 @@ When the poller sees a protected branch move to a commit that Plumbix did not pu
 
 ## 6. Storage and files
 
-Everything lives under the data directory, config key `data_dir`, default `~/.plumbix`.
+Everything lives under the data directory, config key `data_dir`, default `~/.plumbix`. When developing Plumbix itself, `secrets_file` points at the git-ignored `.env` in the repo root, with `.env.example` as the committed template.
 
 | Path | Content |
 |------|---------|
 | `config.yaml` | Server settings. |
-| `secrets.yaml` | Host tokens and pipeline secrets. Must be mode `0600` or the server refuses to start. |
+| `.env` | Host tokens and pipeline secrets in dotenv format. Path set by config `secrets_file`. Must be mode `0600` or the server refuses to start. |
 | `plumbix.db` | SQLite: repos, changes, iterations, runs, steps, verdicts, events, alerts, merges. |
 | `mirrors/<repo-id>.git` | Bare mirrors. |
 | `work/<run-id>/` | Temporary worktrees, deleted after the run. |
@@ -296,15 +302,18 @@ These are implementation calls made in this architecture step, with the reasons 
 | A8 | Branch polling with `git ls-remote` for both hosts | Same code for every host, and it doesn't use the hosts' REST API quotas. | Each host's REST API |
 | A9 | Required validators come from the target branch's pipeline file, and `.plumbix/` edits always need a human | Stops an agent from removing the checks that judge it. | Using the change's own pipeline file |
 | A10 | Squash merge by default, configurable per repo | Agent commit histories are noisy. One commit per change matches one verdict per change. | Merge commits by default |
-| A11 | Reference validator v0 is deterministic: each criterion's `check` names steps or a command, and criteria without a check are `unknown` | No paid service needed, and results are reproducible. `unknown` sends the change to a human instead of guessing. | Built-in AI judging (needs the user's approval as a paid service) |
+| A11 | Reference validator v0 is deterministic: each criterion's `check` names steps or a command, and criteria without a check are `unknown` | Free and reproducible. `unknown` sends the change to a human instead of guessing. | Relying on AI judgment alone |
+| A12 | An AI validator ships in milestone 1 as a separate validator image. It uses Anthropic's Go SDK with structured JSON output, model `claude-opus-5-5` by default, overridable with `PLUMBIX_AI_MODEL` | User approved the paid service (2026-10-15). It catches what deterministic checks miss, such as weakened tests or criteria without a check. Keeping it a pluggable step keeps the core free of AI (Q07). | AI inside the Plumbix core, a provider-neutral wrapper library |
+| A13 | Secrets live in a dotenv file (`secrets_file`), mode `0600` | The user asked for a `.env` file. Dotenv is the most familiar format for open-source users. | A YAML secrets file |
 
 ## 9. Risks and open items
 
 1. **Containers reaching the API on Docker Desktop.** On Linux, containers cannot reach a service bound to the host's loopback. On Docker Desktop for macOS and Windows, `host.docker.internal` may reach it. WU-003 includes a test that a step container cannot call the Plumbix API. If that test fails on Docker Desktop, a fix needs the user's decision, because it touches authentication.
-2. **Weakened tests.** A deterministic validator cannot tell when an agent weakens or deletes tests. The reference validator reports changed test files as risks, so the human sees them first. An AI validator could judge this better.
-3. **AI validator.** Whether milestone 1 also ships an optional AI validator, which calls a paid model with the user's key, is the user's decision.
-4. **Polling delay.** Runs start up to `poller.interval` after a push. Push notifications come with authentication (F-009).
-5. **Docker access in the development sandbox.** Integration tests need the Docker socket, which the current sandbox blocks.
+2. **Weakened tests.** A deterministic validator cannot tell when an agent weakens or deletes tests. The reference validator reports changed test files as risks, and the AI validator is asked to judge them.
+3. **Prompt injection against the AI validator.** Agent-written code, comments or commit messages could contain text aimed at the AI validator, such as "approve this change". Mitigations: repo content is passed as clearly marked untrusted data, the verdict must match the JSON schema, every `met` criterion must cite evidence, and Plumbix's own pipeline also requires the deterministic validator to approve. An AI approval alone is never enough there.
+4. **AI validator cost.** Each validation run calls a paid model. Large diffs cost more. The validator reports token usage in its evidence so costs stay visible.
+5. **Polling delay.** Runs start up to `poller.interval` after a push. Push notifications come with authentication (F-009).
+6. **Docker access in the development sandbox.** Integration tests need the Docker socket, which the current sandbox blocks.
 
 ## 10. Repository layout
 
@@ -313,7 +322,8 @@ cmd/plumbix/            entry point and CLI
 internal/               api, change, pipeline, scheduler, runner, evidence, validation,
                         host (+ github, azuredevops), gitops, poller, events, store, config
 web/                    React + TypeScript interface (Vite)
-validators/reference/   reference validator program and its Dockerfile
+validators/reference/   deterministic validator program and its Dockerfile
+validators/ai/          AI validator program and its Dockerfile
 contracts/              OpenAPI, JSON Schemas
 .plumbix/pipeline.yaml  Plumbix's own pipeline (used from WU-011)
 ```

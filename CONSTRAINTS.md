@@ -3,6 +3,8 @@
 Newest first. Each entry cites its source in DISCOVERY.md.
 
 ## Security
+- Secrets live in a dotenv file with mode `0600`. The repo's `.env` is git-ignored, and only `.env.example` is committed. (A13)
+- The AI validator treats all repo content as untrusted data. In Plumbix's own pipeline an AI approval alone is never enough; the deterministic validator must also approve. (A12, risk 3)
 - Plumbix binds only to local addresses and refuses to start otherwise until authentication exists. (Q12)
 - Step containers have no network path to the Plumbix API. Validators report verdicts through step output only. (Q12)
 - Each git host PAT (GitHub fine-grained, Azure DevOps) is scoped to code read/write, kept in a local secrets file outside the repo, and never logged. (Q13)

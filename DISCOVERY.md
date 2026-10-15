@@ -307,3 +307,13 @@ Initial discovery is complete. Results are consolidated in `PROJECT.md` and `CON
 
 **Impact**
 - Milestone 1 gains one work unit (eleven in total).
+
+## Q15: AI validator in milestone 1 (2026-10-15)
+
+**Answer**: "yes, with AI validator from start. create a .env file where i can put the key"
+
+**Decision**: Milestone 1 ships an AI validator next to the deterministic one. The user approved the paid model usage. Keys go in a git-ignored `.env` file, with `.env.example` committed as the template.
+
+**Implementation calls**
+- Anthropic's Go SDK, structured JSON output, default model `claude-opus-5-5`, overridable with `PLUMBIX_AI_MODEL`.
+- Host tokens use `PLUMBIX_`-prefixed names so they don't collide with other tools' variables.

@@ -61,7 +61,8 @@ The fix loop runs across the contract. A "fix" verdict goes back to the client, 
 | F-003 | Container runner with parallel steps | M1 |
 | F-004 | Modern minimal web interface: intent, verdict, evidence first, diff on demand | M1 |
 | F-005 | Git host adapters for GitHub and Azure DevOps: fetch, poll for pushes, push merges | M1 |
-| F-006 | Verdict contract and reference validator | M1 |
+| F-006 | Verdict contract and deterministic reference validator | M1 |
+| F-015 | AI validator using Claude, key from `.env` | M1 |
 | F-007 | Bypass detection on protected branches | M1 |
 | F-008 | Authentication: admin account and per-client API tokens | Later |
 | F-009 | Push notifications from git hosts, such as Azure DevOps service hooks, instead of polling | Later |
@@ -82,12 +83,13 @@ Ordered so the thin validation loop works first, then the git host paths. GitHub
 | WU-003 | Container runner: run steps in isolated containers, capture logs, run independent steps in parallel | F-003 | ⚪ |
 | WU-004 | Change contract and storage, submitted through the public HTTP API and a small CLI | F-001 | ⚪ |
 | WU-005 | Verdict contract and reference validator step | F-006 | ⚪ |
-| WU-006 | Validation loop end to end: change, run, verdict, events | F-001, F-006 | ⚪ |
-| WU-007 | GitHub adapter and the host boundary: PAT config, fetch branches, poll for pushes | F-005 | ⚪ |
-| WU-008 | Azure DevOps adapter behind the same boundary | F-005 | ⚪ |
-| WU-009 | Merge on approval and bypass detection, for both hosts | F-001, F-007 | ⚪ |
-| WU-010 | Web interface: change list, change view, evidence, logs, diff on demand, merge action | F-004 | ⚪ |
-| WU-011 | Self-hosting: Plumbix validates its own changes on GitHub, milestone acceptance | All M1 | ⚪ |
+| WU-006 | AI validator: Claude judges the change against intent and criteria, same verdict contract | F-015 | ⚪ |
+| WU-007 | Validation loop end to end: change, run, verdicts, events | F-001, F-006, F-015 | ⚪ |
+| WU-008 | GitHub adapter and the host boundary: PAT config, fetch branches, poll for pushes | F-005 | ⚪ |
+| WU-009 | Azure DevOps adapter behind the same boundary | F-005 | ⚪ |
+| WU-010 | Merge on approval and bypass detection, for both hosts | F-001, F-007 | ⚪ |
+| WU-011 | Web interface: change list, change view, evidence, logs, diff on demand, merge action | F-004 | ⚪ |
+| WU-012 | Self-hosting: Plumbix validates its own changes on GitHub, milestone acceptance | All M1 | ⚪ |
 
 ## Milestone 2 candidates
 
@@ -97,5 +99,4 @@ Ordered so the thin validation loop works first, then the git host paths. GitHub
 
 ## Open items
 
-- Whether milestone 1 also ships an optional AI validator that calls a paid model with the user's key. Needs the user's approval. The default reference validator is deterministic (ARCHITECTURE A11).
 - Whether step containers can reach the API on Docker Desktop. Verified in WU-003 (ARCHITECTURE risk 1).
