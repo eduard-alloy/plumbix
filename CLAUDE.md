@@ -19,5 +19,6 @@ This project uses a slimmed TRACE methodology. These rules override the full TRA
 - **One file per work unit**: `work_units/WU-NNN.md` holds the spec, the step list, and a short completion section at the bottom. No separate PROMPT, COMPLETION or VALIDATION files.
 - **Validation and remediation are not separate roles.** Fixes to a work unit go in its file under a "Fixes" heading. The three-attempt escalation rule still applies.
 - **No role-selection prompt at session start.** Read `CONTEXT_LOG.md` and continue from the last line.
+- **Kai journey.** The plan lives in Kai under workstream `F8QK66` (Plumbix v1). At session start, run `kai plan plumbix` (or `get_intent`) and declare the session's work with `kai plan plumbix work <ref>`. When a work unit finishes, mark its task done and its acceptance criteria met (`kai plan plumbix status <ref> done`, `kai plan plumbix edit <ref> --met N`). New work units and milestones are added to the journey as they are planned. A decision that replaces an earlier one is recorded as a new decision that names the one it supersedes.
 - **No timed checkpoints.** Update docs when a work unit or discovery question finishes.
 - Work unit numbering is flat: WU-001, WU-002, and so on.
