@@ -3,8 +3,10 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func envFrom(m map[string]string) func(string) string {
@@ -109,5 +111,45 @@ func TestEmptyFileKeepsDefaults(t *testing.T) {
 	}
 	if cfg.Server.Listen != DefaultListen {
 		t.Errorf("listen = %q, want default", cfg.Server.Listen)
+	}
+}
+
+func TestRunnerDefaults(t *testing.T) {
+	cfg, err := Load(Overrides{DataDir: t.TempDir()}, envFrom(nil), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := cfg.Runner
+	if r.MaxParallel != runtime.NumCPU() || r.DefaultTimeout != 30*time.Minute || r.StepCPUs != 2 || r.StepMemoryMB != 4096 {
+		t.Errorf("runner defaults = %+v", r)
+	}
+}
+
+func TestRunnerFromFile(t *testing.T) {
+	dataDir := t.TempDir()
+	writeFile(t, filepath.Join(dataDir, "config.yaml"), "runner:\n  max_parallel: 3\n  default_timeout: 5m\n  step_cpus: 0.5\n  step_memory_mb: 512\n")
+	cfg, err := Load(Overrides{DataDir: dataDir}, envFrom(nil), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Runner{MaxParallel: 3, DefaultTimeout: 5 * time.Minute, StepCPUs: 0.5, StepMemoryMB: 512}
+	if cfg.Runner != want {
+		t.Errorf("runner = %+v, want %+v", cfg.Runner, want)
+	}
+}
+
+func TestRunnerValidation(t *testing.T) {
+	bad := []string{
+		"runner:\n  max_parallel: 0\n",
+		"runner:\n  default_timeout: 0s\n",
+		"runner:\n  step_cpus: -1\n",
+		"runner:\n  step_memory_mb: 3\n",
+	}
+	for _, content := range bad {
+		dataDir := t.TempDir()
+		writeFile(t, filepath.Join(dataDir, "config.yaml"), content)
+		if _, err := Load(Overrides{DataDir: dataDir}, envFrom(nil), t.TempDir()); err == nil {
+			t.Errorf("config %q: expected validation error", content)
+		}
 	}
 }

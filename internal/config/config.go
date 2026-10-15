@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"go.yaml.in/yaml/v3"
@@ -28,10 +29,27 @@ const (
 	EnvListen  = "PLUMBIX_LISTEN"
 )
 
+// Runner defaults.
+const (
+	DefaultStepTimeout  = 30 * time.Minute
+	DefaultStepCPUs     = 2.0
+	DefaultStepMemoryMB = 4096
+	minStepMemoryMB     = 6 // Docker refuses memory limits below 6 MiB.
+)
+
 // Config holds the resolved server settings.
 type Config struct {
 	DataDir string `yaml:"data_dir"`
 	Server  Server `yaml:"server"`
+	Runner  Runner `yaml:"runner"`
+}
+
+// Runner holds pipeline execution settings.
+type Runner struct {
+	MaxParallel    int           `yaml:"max_parallel"`
+	DefaultTimeout time.Duration `yaml:"default_timeout"`
+	StepCPUs       float64       `yaml:"step_cpus"`
+	StepMemoryMB   int           `yaml:"step_memory_mb"`
 }
 
 // Server holds HTTP server settings.
@@ -52,6 +70,12 @@ func Load(flags Overrides, getenv func(string) string, homeDir string) (Config, 
 	cfg := Config{
 		DataDir: filepath.Join(homeDir, ".plumbix"),
 		Server:  Server{Listen: DefaultListen},
+		Runner: Runner{
+			MaxParallel:    runtime.NumCPU(),
+			DefaultTimeout: DefaultStepTimeout,
+			StepCPUs:       DefaultStepCPUs,
+			StepMemoryMB:   DefaultStepMemoryMB,
+		},
 	}
 
 	dataDir := first(flags.DataDir, getenv(EnvDataDir), cfg.DataDir)
@@ -69,7 +93,24 @@ func Load(flags Overrides, getenv func(string) string, homeDir string) (Config, 
 
 	cfg.DataDir = first(flags.DataDir, getenv(EnvDataDir), cfg.DataDir)
 	cfg.Server.Listen = first(flags.Listen, getenv(EnvListen), cfg.Server.Listen)
+	if err := cfg.Runner.validate(); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+func (r Runner) validate() error {
+	switch {
+	case r.MaxParallel < 1:
+		return fmt.Errorf("runner.max_parallel must be at least 1, got %d", r.MaxParallel)
+	case r.DefaultTimeout <= 0:
+		return fmt.Errorf("runner.default_timeout must be above zero, got %s", r.DefaultTimeout)
+	case r.StepCPUs <= 0:
+		return fmt.Errorf("runner.step_cpus must be above zero, got %g", r.StepCPUs)
+	case r.StepMemoryMB < minStepMemoryMB:
+		return fmt.Errorf("runner.step_memory_mb must be at least %d, got %d", minStepMemoryMB, r.StepMemoryMB)
+	}
+	return nil
 }
 
 // applyFile decodes the YAML file at path into cfg. A missing file is an

@@ -3,6 +3,7 @@
 Newest first. Each entry cites its source in DISCOVERY.md.
 
 ## Security
+- **OPEN FINDING**: on Docker Desktop, step containers reach the host's loopback through `host.docker.internal`, `gateway.docker.internal` and `192.168.65.254`, so they can call the unauthenticated Plumbix API. Linux bridge networking does not allow this. Awaiting the owner's decision on authentication. (WU-003)
 - Secrets live in a dotenv file with mode `0600`. The repo's `.env` is git-ignored, and only `.env.example` is committed. (A13)
 - The AI validator treats all repo content as untrusted data. In Plumbix's own pipeline an AI approval alone is never enough; the deterministic validator must also approve. (A12, risk 3)
 - Plumbix binds only to local addresses and refuses to start otherwise until authentication exists. (Q12)
@@ -37,6 +38,8 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - The Claude Code sandbox blocks local port binding, Go module downloads (TLS through its proxy fails) and the Docker socket. Tests that bind ports, `go get`/`go mod tidy`, and Docker integration tests run outside the sandbox, or with `sandbox.network.allowLocalBinding: true`. (WU-001)
 - Once Go's build cache has been written outside the sandbox, the sandbox can't read it. Run all Go commands outside the sandbox. (WU-002)
 - `make check` (build, test, vet, gofmt) is the gate for every work unit. (WU-001)
+- `make integration` runs Docker-backed tests (build tag `integration`). macOS ships GNU make 3.81, which ignores `.SHELLFLAGS`. Recipes that pipe must use `set -o pipefail` inline. (WU-003)
+- Integration tests that check for leftover containers must filter by their own `plumbix.job` label, because packages run in parallel. (WU-003)
 
 ## Licensing
 - Apache 2.0. (Q14)

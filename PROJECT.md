@@ -80,7 +80,7 @@ Ordered so the thin validation loop works first, then the git host paths. GitHub
 |----|-------|----------|--------|
 | WU-001 | Project skeleton: Go module, `plumbix serve` on localhost only, test, lint and build setup | - | ✅ |
 | WU-002 | Pipeline format v0: schema, parser, validation errors | F-002 | ✅ |
-| WU-003 | Container runner: run steps in isolated containers, capture logs, run independent steps in parallel | F-003 | ⚪ |
+| WU-003 | Container runner: run steps in isolated containers, capture logs, run independent steps in parallel | F-003 | ✅ |
 | WU-004 | Change contract and storage, submitted through the public HTTP API and a small CLI | F-001 | ⚪ |
 | WU-005 | Verdict contract and reference validator step | F-006 | ⚪ |
 | WU-006 | AI validator: Claude judges the change against intent and criteria, same verdict contract | F-015 | ⚪ |
@@ -99,4 +99,4 @@ Ordered so the thin validation loop works first, then the git host paths. GitHub
 
 ## Open items
 
-- Whether step containers can reach the API on Docker Desktop. Verified in WU-003 (ARCHITECTURE risk 1).
+- **Security decision needed**: on Docker Desktop, step containers can reach the Plumbix API (confirmed in WU-003, ARCHITECTURE risk 1). Fixing it needs some form of authentication.

@@ -308,7 +308,7 @@ These are implementation calls made in this architecture step, with the reasons 
 
 ## 9. Risks and open items
 
-1. **Containers reaching the API on Docker Desktop.** On Linux, containers cannot reach a service bound to the host's loopback. On Docker Desktop for macOS and Windows, `host.docker.internal` may reach it. WU-003 includes a test that a step container cannot call the Plumbix API. If that test fails on Docker Desktop, a fix needs the user's decision, because it touches authentication.
+1. **Containers reaching the API on Docker Desktop. CONFIRMED in WU-003.** On Linux, containers cannot reach a service bound to the host's loopback. On Docker Desktop they can, through `host.docker.internal`, `gateway.docker.internal` and the VM gateway `192.168.65.254`. A fix needs authentication, which is the owner's decision. Until then, `TestStepCannotReachHostLoopback` reports the exposure as a skip.
 2. **Weakened tests.** A deterministic validator cannot tell when an agent weakens or deletes tests. The reference validator reports changed test files as risks, and the AI validator is asked to judge them.
 3. **Prompt injection against the AI validator.** Agent-written code, comments or commit messages could contain text aimed at the AI validator, such as "approve this change". Mitigations: repo content is passed as clearly marked untrusted data, the verdict must match the JSON schema, every `met` criterion must cite evidence, and Plumbix's own pipeline also requires the deterministic validator to approve. An AI approval alone is never enough there.
 4. **AI validator cost.** Each validation run calls a paid model. Large diffs cost more. The validator reports token usage in its evidence so costs stay visible.
