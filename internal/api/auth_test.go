@@ -17,7 +17,7 @@ func request(t *testing.T, method, path, authHeader string) *httptest.ResponseRe
 		req.Header.Set("Authorization", authHeader)
 	}
 	rec := httptest.NewRecorder()
-	NewHandler("dev", testToken).ServeHTTP(rec, req)
+	NewHandler(Deps{Version: "dev", Token: testToken}).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -74,7 +74,7 @@ func TestEmptyServerTokenRejectsEverything(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/pipelines/check", strings.NewReader("x"))
 	req.Header.Set("Authorization", "Bearer ")
-	NewHandler("dev", "").ServeHTTP(rec, req)
+	NewHandler(Deps{Version: "dev", Token: ""}).ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401 when the server has no token", rec.Code)
 	}

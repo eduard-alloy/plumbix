@@ -105,14 +105,14 @@ Versioning: every document carries a version (`version: 1` in pipelines, `"plumb
 
 ### 4.1 HTTP API v1
 
-The base address comes from config `server.listen`, default `127.0.0.1:6400`. Every route except `GET /api/v1/health` needs `Authorization: Bearer <token>`, where the token is the content of `<data_dir>/api-token` (A14). Failures return 401 with `WWW-Authenticate: Bearer`. Errors use one JSON shape: `{"error": {"code": "...", "message": "...", "details": {...}}}`.
+The base address comes from config `server.listen`, default `127.0.0.1:6400`. Every route except `GET /api/v1/health` needs `Authorization: Bearer <token>`, where the token is the content of `<data_dir>/api-token` (A14). Failures return 401 with `WWW-Authenticate: Bearer`. Errors use one JSON shape: `{"error": {"code": "...", "message": "...", "details": {...}}}`. Field problems are `invalid_request` with `details.problems: [{field, message}]` listing every problem. IDs are a prefix plus 12 random base32 characters: `r_` for repos, `c_` for changes.
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/api/v1/repos` | Register a repo (host, remote URL, protected branches, merge strategy). |
-| GET | `/api/v1/repos` | List repos. |
+| GET | `/api/v1/repos` | List repos as `{"repos": [...]}`. |
 | POST | `/api/v1/changes` | Submit a change: repo, source and target branch, title, intent, acceptance criteria, constraints, submitted-by. |
-| GET | `/api/v1/changes` | List changes, filter by repo and state. |
+| GET | `/api/v1/changes` | List changes as `{"changes": [...]}`, filtered by `repo_id` and `state`. |
 | GET | `/api/v1/changes/{id}` | One change with its iterations, latest outcome and findings. |
 | GET | `/api/v1/changes/{id}/diff` | Diff between the target branch and the current iteration. |
 | POST | `/api/v1/changes/{id}/merge` | Merge an approved change. Fails if the target branch moved since validation. |

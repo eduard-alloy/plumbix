@@ -18,7 +18,7 @@ func TestRunServesAndShutsDownOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	go func() { done <- Run(ctx, ln, NewHandler("dev", testToken), logger, time.Second) }()
+	go func() { done <- Run(ctx, ln, NewHandler(Deps{Version: "dev", Token: testToken}), logger, time.Second) }()
 
 	resp, err := http.Get("http://" + ln.Addr().String() + "/api/v1/health")
 	if err != nil {

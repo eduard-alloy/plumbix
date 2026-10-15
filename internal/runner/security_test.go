@@ -28,7 +28,7 @@ func TestStepCannotUseHostAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := &http.Server{Handler: api.NewHandler("dev", token)}
+	srv := &http.Server{Handler: api.NewHandler(api.Deps{Version: "dev", Token: token})}
 	go func() { _ = srv.Serve(ln) }()
 	defer srv.Close()
 	port := ln.Addr().(*net.TCPAddr).Port

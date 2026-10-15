@@ -52,6 +52,9 @@ var (
 
 const reservedPrefix = "PLUMBIX_"
 
+// ValidStepName reports whether name is a valid step name.
+func ValidStepName(name string) bool { return stepNameRe.MatchString(name) }
+
 // parser collects every problem instead of stopping at the first.
 type parser struct {
 	errs []Error

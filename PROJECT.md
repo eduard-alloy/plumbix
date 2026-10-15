@@ -82,7 +82,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-002 | Pipeline format v0: schema, parser, validation errors | F-002 | ✅ |
 | WU-003 | Container runner: run steps in isolated containers, capture logs, run independent steps in parallel | F-003 | ✅ |
 | WU-013 | API token: generated on first start, required on every route except health (added after the WU-003 security finding) | F-008 | ✅ |
-| WU-004 | Change contract and storage, submitted through the public HTTP API and a small CLI | F-001 | ⚪ |
+| WU-004 | Change contract and storage, submitted through the public HTTP API and a small CLI | F-001 | ✅ |
 | WU-005 | Verdict contract and reference validator step | F-006 | ⚪ |
 | WU-006 | AI validator: Claude judges the change against intent and criteria, same verdict contract | F-015 | ⚪ |
 | WU-007 | Validation loop end to end: change, run, verdicts, events | F-001, F-006, F-015 | ⚪ |

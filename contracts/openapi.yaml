@@ -56,13 +56,170 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /repos:
+    post:
+      operationId: registerRepo
+      summary: Register a git repository.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RepoInput"
+      responses:
+        "201":
+          description: The repo was registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Repo"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    get:
+      operationId: listRepos
+      summary: List registered repos, oldest first.
+      responses:
+        "200":
+          description: Every registered repo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /changes:
+    post:
+      operationId: submitChange
+      summary: Submit a change with its intent and acceptance criteria.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeInput"
+      responses:
+        "201":
+          description: The change was stored in state open.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Change"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+    get:
+      operationId: listChanges
+      summary: List changes, oldest first.
+      parameters:
+        - name: repo_id
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/ChangeState"
+      responses:
+        "200":
+          description: Matching changes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /changes/{id}:
+    get:
+      operationId: getChange
+      summary: Read one change.
+      parameters:
+        - $ref: "#/components/parameters/ChangeID"
+      responses:
+        "200":
+          description: The change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Change"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /changes/{id}/close:
+    post:
+      operationId: closeChange
+      summary: Close a change without merging.
+      description: Allowed unless the change is already merged or closed.
+      parameters:
+        - $ref: "#/components/parameters/ChangeID"
+      responses:
+        "200":
+          description: The closed change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Change"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The change is already merged or closed (invalid_state), or changed state meanwhile (conflict).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   securitySchemes:
     bearerToken:
       type: http
       scheme: bearer
       description: The 64-character hex token in <data_dir>/api-token.
+  parameters:
+    ChangeID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
   responses:
+    InvalidRequest:
+      description: The body is not valid JSON, has unknown fields, or breaks field rules. details.problems lists every problem.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: The repo or change does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: The repo is already registered, or another change is open on the same source branch.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooLarge:
+      description: The body is larger than 1 MiB.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     Unauthorized:
       description: The bearer token is missing or wrong.
       headers:
@@ -75,6 +232,207 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    ChangeState:
+      type: string
+      enum: [open, running, approved, fix_requested, rejected, needs_human, escalated, merged, closed]
+    Branch:
+      description: A branch name following git's ref rules.
+      type: string
+      minLength: 1
+      maxLength: 255
+    RepoInput:
+      type: object
+      additionalProperties: false
+      required: [host, url]
+      properties:
+        host:
+          type: string
+          enum: [github, azuredevops]
+        url:
+          description: >
+            HTTPS clone URL. GitHub: https://github.com/<owner>/<repo>.
+            Azure DevOps: https://dev.azure.com/<org>/<project>/_git/<repo>
+            or https://<org>.visualstudio.com/<project>/_git/<repo>.
+          type: string
+        protected_branches:
+          description: Defaults to ["main"].
+          type: array
+          items:
+            $ref: "#/components/schemas/Branch"
+        merge_strategy:
+          type: string
+          enum: [squash, merge, rebase]
+          default: squash
+    Repo:
+      type: object
+      additionalProperties: false
+      required: [id, host, url, protected_branches, merge_strategy, created_at]
+      properties:
+        id:
+          type: string
+          pattern: "^r_[a-z2-7]{12}$"
+        host:
+          type: string
+          enum: [github, azuredevops]
+        url:
+          type: string
+        protected_branches:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Branch"
+        merge_strategy:
+          type: string
+          enum: [squash, merge, rebase]
+        created_at:
+          type: string
+          format: date-time
+    RepoList:
+      type: object
+      additionalProperties: false
+      required: [repos]
+      properties:
+        repos:
+          type: array
+          items:
+            $ref: "#/components/schemas/Repo"
+    Check:
+      description: How the deterministic validator proves a criterion. Exactly one of steps or command.
+      type: object
+      additionalProperties: false
+      properties:
+        steps:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+        command:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      oneOf:
+        - required: [steps]
+        - required: [command]
+    Criterion:
+      type: object
+      additionalProperties: false
+      required: [id, text]
+      properties:
+        id:
+          type: string
+          pattern: "^AC-[1-9][0-9]*$"
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        check:
+          $ref: "#/components/schemas/Check"
+    CriterionInput:
+      description: Like Criterion, but id is optional. Missing ids get the smallest unused AC-<n>.
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        id:
+          type: string
+          pattern: "^AC-[1-9][0-9]*$"
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        check:
+          $ref: "#/components/schemas/Check"
+    ChangeInput:
+      type: object
+      additionalProperties: false
+      required: [repo_id, source_branch, target_branch, title, intent, acceptance_criteria]
+      properties:
+        repo_id:
+          type: string
+        source_branch:
+          $ref: "#/components/schemas/Branch"
+        target_branch:
+          $ref: "#/components/schemas/Branch"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        intent:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        acceptance_criteria:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/CriterionInput"
+        constraints:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            minLength: 1
+            maxLength: 2000
+        submitted_by:
+          type: string
+          maxLength: 100
+    Change:
+      type: object
+      additionalProperties: false
+      required: [id, repo_id, source_branch, target_branch, title, intent, acceptance_criteria, constraints, state, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          pattern: "^c_[a-z2-7]{12}$"
+        repo_id:
+          type: string
+        source_branch:
+          $ref: "#/components/schemas/Branch"
+        target_branch:
+          $ref: "#/components/schemas/Branch"
+        title:
+          type: string
+        intent:
+          type: string
+        acceptance_criteria:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Criterion"
+        constraints:
+          type: array
+          items:
+            type: string
+        submitted_by:
+          type: string
+        state:
+          $ref: "#/components/schemas/ChangeState"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ChangeList:
+      type: object
+      additionalProperties: false
+      required: [changes]
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Change"
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [field, message]
+      properties:
+        field:
+          type: string
+        message:
+          type: string
     PipelineCheck:
       type: object
       additionalProperties: false
@@ -132,3 +490,9 @@ components:
               type: string
             details:
               type: object
+              properties:
+                problems:
+                  description: Present on invalid_request errors. Lists every problem found.
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Problem"

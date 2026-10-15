@@ -94,6 +94,9 @@ func TestServeStartsAndStops(t *testing.T) {
 		t.Errorf("check with token: status %d, want 200", code)
 	}
 
+	// Close the shared transport's idle and spare connections. A spare
+	// connection that never sent a request would hold Shutdown for 5s.
+	http.DefaultClient.CloseIdleConnections()
 	cancel()
 	select {
 	case code := <-done:

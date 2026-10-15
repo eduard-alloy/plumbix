@@ -8,7 +8,7 @@ import (
 
 func TestVersionCommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"version"}, &stdout, &stderr)
+	code := run([]string{"version"}, nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -19,7 +19,7 @@ func TestVersionCommand(t *testing.T) {
 
 func TestUnknownCommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"nope"}, &stdout, &stderr); code != 2 {
+	if code := run([]string{"nope"}, nil, &stdout, &stderr); code != 2 {
 		t.Fatalf("exit code = %d, want 2", code)
 	}
 	if !strings.Contains(stderr.String(), "unknown command") {
@@ -29,7 +29,7 @@ func TestUnknownCommand(t *testing.T) {
 
 func TestNoCommandPrintsUsage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if code := run(nil, &stdout, &stderr); code != 2 {
+	if code := run(nil, nil, &stdout, &stderr); code != 2 {
 		t.Fatalf("exit code = %d, want 2", code)
 	}
 	if !strings.Contains(stderr.String(), "usage") {

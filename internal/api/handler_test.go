@@ -9,7 +9,7 @@ import (
 
 func TestHealth(t *testing.T) {
 	rec := httptest.NewRecorder()
-	NewHandler("1.2.3", testToken).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/health", nil))
+	NewHandler(Deps{Version: "1.2.3", Token: testToken}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/health", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -30,7 +30,7 @@ func TestUnknownRouteReturnsErrorShape(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/nope", nil)
 	req.Header.Set("Authorization", "Bearer "+testToken)
-	NewHandler("dev", testToken).ServeHTTP(rec, req)
+	NewHandler(Deps{Version: "dev", Token: testToken}).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)

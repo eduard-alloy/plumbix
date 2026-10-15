@@ -3,14 +3,33 @@ package api
 
 import (
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
+
+	"github.com/eduard-alloy/plumbix/internal/change"
 )
 
-// NewHandler returns the HTTP handler for the public API. Every route except
-// the health check requires token as a bearer token.
-func NewHandler(version, token string) http.Handler {
+// Deps are the handler's dependencies.
+type Deps struct {
+	Version string
+	Token   string          // bearer token every route except health requires
+	Changes *change.Service // nil leaves the repo and change routes out
+	Logger  *slog.Logger    // nil discards logs
+}
+
+// NewHandler returns the HTTP handler for the public API.
+func NewHandler(d Deps) http.Handler {
+	version := d.Version
+	logger := d.Logger
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 	protected := http.NewServeMux()
 	protected.HandleFunc("POST /api/v1/pipelines/check", checkPipeline)
+	if d.Changes != nil {
+		registerChangeRoutes(protected, &changeHandlers{svc: d.Changes, log: logger})
+	}
 	protected.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such endpoint")
 	})
@@ -19,7 +38,7 @@ func NewHandler(version, token string) http.Handler {
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": version})
 	})
-	mux.Handle("/", requireToken(token, protected))
+	mux.Handle("/", requireToken(d.Token, protected))
 	return mux
 }
 
@@ -36,6 +55,12 @@ type errorDetail struct {
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, errorBody{Error: errorDetail{Code: code, Message: message}})
+}
+
+func writeProblems(w http.ResponseWriter, message string, problems []change.Problem) {
+	writeJSON(w, http.StatusBadRequest, errorBody{Error: errorDetail{
+		Code: "invalid_request", Message: message, Details: map[string]any{"problems": problems},
+	}})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

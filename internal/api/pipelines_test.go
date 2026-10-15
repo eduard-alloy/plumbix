@@ -15,7 +15,7 @@ func postCheck(t *testing.T, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/pipelines/check", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/yaml")
 	req.Header.Set("Authorization", "Bearer "+testToken)
-	NewHandler("dev", testToken).ServeHTTP(rec, req)
+	NewHandler(Deps{Version: "dev", Token: testToken}).ServeHTTP(rec, req)
 	return rec
 }
 

@@ -32,6 +32,9 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Server and runner stay separable so runners can move to other machines later. (Q04)
 
 ## Formats
+- API list endpoints return an object wrapping the array, never a bare array. Field problems use `details.problems: [{field, message}]` and list every problem at once. (WU-004)
+- `contracts/openapi.yaml` is checked by `TestResponsesMatchOpenAPI`. Every new endpoint adds its responses to that test. (WU-004)
+- The `change` package owns the model and the `Store` interface. Storage code implements it and never holds business rules. (WU-004)
 - The pipeline parser and `contracts/pipeline.schema.json` must agree. Every format change adds example files under `internal/pipeline/testdata/` so the contract test covers it. Rules that span fields live in the parser and are listed in the schema's description. (WU-002)
 - Invalid input to a check-style endpoint is a 200 result with `valid: false`, not an HTTP error. (WU-002)
 - The pipeline format is Plumbix's own minimal, strict YAML with a published, versioned schema. No compatibility with other CI formats. (Q08)
@@ -42,6 +45,7 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - `make check` (build, test, vet, gofmt) is the gate for every work unit. (WU-001)
 - `make integration` runs Docker-backed tests (build tag `integration`). macOS ships GNU make 3.81, which ignores `.SHELLFLAGS`. Recipes that pipe must use `set -o pipefail` inline. (WU-003)
 - Integration tests that check for leftover containers must filter by their own `plumbix.job` label, because packages run in parallel. (WU-003)
+- Tests that start an in-process server must call `http.DefaultClient.CloseIdleConnections()` before stopping it. Otherwise a spare connection from Go's shared transport can hold `Shutdown` for 5 seconds. (WU-004)
 
 ## Licensing
 - Apache 2.0. (Q14)
