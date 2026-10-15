@@ -20,12 +20,14 @@ type Job struct {
 	Image     string
 	Script    string // run with sh -c; empty uses the image's entrypoint
 	Env       map[string]string
-	Workspace string // host directory mounted read-write at /workspace
-	Mounts    []Mount
-	Timeout   time.Duration
-	CPUs      float64
-	MemoryMB  int
-	Log       io.Writer // receives stdout and stderr
+	Workspace string // host directory mounted at /workspace
+	// WorkspaceReadOnly mounts the workspace read-only, as validators get it.
+	WorkspaceReadOnly bool
+	Mounts            []Mount
+	Timeout           time.Duration
+	CPUs              float64
+	MemoryMB          int
+	Log               io.Writer // receives stdout and stderr
 }
 
 // Mount is an extra host directory made available to the container.

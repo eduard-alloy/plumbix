@@ -32,6 +32,9 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Server and runner stay separable so runners can move to other machines later. (Q04)
 
 ## Formats
+- `contracts/verdict.schema.json` and `contracts/validator-input.schema.json` are checked against Go by contract tests over example files. Rules needing the change's criteria (IDs exist, appear once) are Go-only and listed in the schema description. (WU-005)
+- Validator containers run as non-root: Plumbix must make `/plumbix/out` writable and the inputs and workspace readable by any user. (WU-005)
+- `.dockerignore` must keep `.env`, `.env.*`, `.git` and `bin` out of every build context. A test enforces it. (WU-005)
 - API list endpoints return an object wrapping the array, never a bare array. Field problems use `details.problems: [{field, message}]` and list every problem at once. (WU-004)
 - `contracts/openapi.yaml` is checked by `TestResponsesMatchOpenAPI`. Every new endpoint adds its responses to that test. (WU-004)
 - The `change` package owns the model and the `Store` interface. Storage code implements it and never holds business rules. (WU-004)

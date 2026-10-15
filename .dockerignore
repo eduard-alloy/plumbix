@@ -1,0 +1,7 @@
+# Never send secrets, build output or git history to a Docker build.
+.env
+.env.*
+.git
+bin
+*.db
+web/node_modules

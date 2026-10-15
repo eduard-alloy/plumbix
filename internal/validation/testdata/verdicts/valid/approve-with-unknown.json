@@ -1,0 +1,12 @@
+{
+  "plumbix": "verdict/v1",
+  "outcome": "approve",
+  "summary": "nothing failed",
+  "criteria": [
+    {
+      "id": "AC-3",
+      "status": "unknown",
+      "reason": "no check"
+    }
+  ]
+}

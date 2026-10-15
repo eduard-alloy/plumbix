@@ -177,3 +177,26 @@ func TestUnpullableImageIsError(t *testing.T) {
 func (d *Docker) removeImage(ctx context.Context, ref string) {
 	_, _ = d.cli.ImageRemove(ctx, ref, client.ImageRemoveOptions{})
 }
+
+func TestReadOnlyWorkspace(t *testing.T) {
+	d := newDocker(t)
+	log := &lockedBuffer{}
+	j := job(t, "cat seed.txt; touch new.txt", log)
+	if err := os.WriteFile(filepath.Join(j.Workspace, "seed.txt"), []byte("seeded\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	j.WorkspaceReadOnly = true
+	res, err := d.Run(context.Background(), j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ExitCode == 0 {
+		t.Errorf("writing to a read-only workspace succeeded; log: %s", log.String())
+	}
+	if !strings.Contains(log.String(), "seeded") {
+		t.Errorf("could not read the workspace: %s", log.String())
+	}
+	if _, err := os.Stat(filepath.Join(j.Workspace, "new.txt")); err == nil {
+		t.Error("file appeared in the read-only workspace")
+	}
+}

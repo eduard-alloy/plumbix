@@ -1,0 +1,11 @@
+{
+  "plumbix": "verdict/v1",
+  "outcome": "reject",
+  "summary": "does the opposite of the intent",
+  "findings": [
+    {
+      "severity": "blocker",
+      "message": "Deletes the retry logic"
+    }
+  ]
+}

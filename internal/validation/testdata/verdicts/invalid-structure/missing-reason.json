@@ -1,0 +1,40 @@
+{
+  "plumbix": "verdict/v1",
+  "outcome": "fix",
+  "summary": "AC-2 is not covered",
+  "criteria": [
+    {
+      "id": "AC-1",
+      "status": "met",
+      "evidence": [
+        "test/log.txt"
+      ]
+    },
+    {
+      "id": "AC-2",
+      "status": "unmet",
+      "reason": "no timeout test"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "major",
+      "criterion": "AC-2",
+      "message": "Add a timeout test",
+      "file": "run.go",
+      "line": 88
+    }
+  ],
+  "risks": [
+    {
+      "area": "tests",
+      "message": "2 test files changed",
+      "human_required": false
+    }
+  ],
+  "usage": {
+    "model": "claude-opus-5-5",
+    "input_tokens": 1200,
+    "output_tokens": 300
+  }
+}

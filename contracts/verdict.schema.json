@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eduard-alloy/plumbix/blob/main/contracts/verdict.schema.json",
+  "title": "Plumbix verdict, version 1",
+  "description": "What a validator step writes to /plumbix/out/verdict.json. Plumbix also checks rules that need the change: every criterion id must belong to the change and appear at most once, and a finding's criterion must belong to the change. A missing or invalid verdict is a validator error, never approval.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["plumbix", "outcome", "summary"],
+  "properties": {
+    "plumbix": { "const": "verdict/v1" },
+    "outcome": {
+      "description": "approve: nothing to fix (unknown criteria still need a human). fix: the author should change something. reject: the change should not proceed.",
+      "enum": ["approve", "fix", "reject"]
+    },
+    "summary": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "reason"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^AC-[1-9][0-9]*$" },
+          "status": { "enum": ["met", "unmet", "unknown"] },
+          "reason": { "type": "string", "pattern": "\\S" },
+          "evidence": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "message"],
+        "properties": {
+          "severity": { "enum": ["blocker", "major", "minor"] },
+          "message": { "type": "string", "pattern": "\\S" },
+          "criterion": { "type": "string", "pattern": "^AC-[1-9][0-9]*$" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["area", "message", "human_required"],
+        "properties": {
+          "area": { "type": "string", "pattern": "\\S" },
+          "message": { "type": "string", "pattern": "\\S" },
+          "human_required": { "type": "boolean" }
+        }
+      }
+    },
+    "usage": {
+      "description": "Model usage, for validators that call one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "input_tokens", "output_tokens"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "outcome": { "const": "approve" } } },
+      "then": {
+        "properties": {
+          "criteria": { "items": { "properties": { "status": { "not": { "const": "unmet" } } } } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "outcome": { "const": "fix" } } },
+      "then": {
+        "anyOf": [
+          { "required": ["findings"], "properties": { "findings": { "minItems": 1 } } },
+          { "required": ["criteria"], "properties": { "criteria": { "contains": { "properties": { "status": { "const": "unmet" } } } } } }
+        ]
+      }
+    }
+  ]
+}

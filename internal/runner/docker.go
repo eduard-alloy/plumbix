@@ -122,7 +122,7 @@ func containerConfig(job Job) *container.Config {
 
 func hostConfig(job Job) *container.HostConfig {
 	init := true
-	mounts := []mount.Mount{{Type: mount.TypeBind, Source: job.Workspace, Target: WorkspacePath}}
+	mounts := []mount.Mount{{Type: mount.TypeBind, Source: job.Workspace, Target: WorkspacePath, ReadOnly: job.WorkspaceReadOnly}}
 	for _, m := range job.Mounts {
 		mounts = append(mounts, mount.Mount{Type: mount.TypeBind, Source: m.Source, Target: m.Target, ReadOnly: m.ReadOnly})
 	}

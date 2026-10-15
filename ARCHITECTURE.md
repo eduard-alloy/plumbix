@@ -86,7 +86,7 @@ any open state ──(close)──▶ closed
 1. Any validator reports `reject`: the outcome is `rejected`.
 2. Otherwise any reports `fix`: the outcome is `fix_requested`, with all findings merged.
 3. Any criterion is `unknown`, any validator crashed or wrote an invalid verdict, or a required validator is missing: `needs_human`.
-4. All validators `approve` and all criteria `met`: `approved`.
+4. All validators `approve` and all criteria `met`: `approved`. Per criterion, `unmet` from any validator wins, then `met` from any validator, otherwise `unknown`. A change with no validators is never approved (WU-005).
 5. A change that touches `.plumbix/` or reports risks flagged `human_required` goes to `needs_human` even if rule 4 holds.
 
 ## 4. Contracts

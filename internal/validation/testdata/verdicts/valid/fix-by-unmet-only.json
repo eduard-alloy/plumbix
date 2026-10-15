@@ -1,0 +1,12 @@
+{
+  "plumbix": "verdict/v1",
+  "outcome": "fix",
+  "summary": "s",
+  "criteria": [
+    {
+      "id": "AC-1",
+      "status": "unmet",
+      "reason": "failed"
+    }
+  ]
+}
