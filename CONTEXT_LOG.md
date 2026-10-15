@@ -12,3 +12,4 @@
 | 2026-10-16 | WU-004 | ✅ | Repos and changes: SQLite store, rules with full problem lists, service, API, OpenAPI contract test, CLI (repo/submit/change). 74 tests. Next: WU-005. |
 | 2026-10-16 | WU-005 | ✅ | Verdict + input contracts with contract tests, Combine rules, reference validator (host tests + Docker image run read-only). 105 tests. Next: WU-006 AI validator. |
 | 2026-10-16 | WU-006 | ✅ | AI validator: SDK call with structured output + fallbacks, untrusted block, normalization, secrets loader, image; live: injection not obeyed. 128 tests. Next: WU-007. |
+| 2026-10-16 | WU-007 | ✅ | Validation loop: gitops, runs storage, engine (fetch, pipeline, validator inputs, combine, escalation, cancel, recover), run API/CLI, Docker loop test. Fixed revalidation race. 153 tests. Events split to WU-014. Next: WU-008. |

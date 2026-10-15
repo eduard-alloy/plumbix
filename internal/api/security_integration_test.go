@@ -1,18 +1,38 @@
 //go:build integration
 
-package runner
+package api
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
-	"github.com/eduard-alloy/plumbix/internal/api"
 	"github.com/eduard-alloy/plumbix/internal/auth"
+	"github.com/eduard-alloy/plumbix/internal/runner"
 )
+
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
 
 // TestStepCannotUseHostAPI checks ARCHITECTURE risk 1 end to end. On Docker
 // Desktop a step container can reach the host's loopback (WU-003), so the
@@ -28,7 +48,7 @@ func TestStepCannotUseHostAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := &http.Server{Handler: api.NewHandler(api.Deps{Version: "dev", Token: token})}
+	srv := &http.Server{Handler: NewHandler(Deps{Version: "dev", Token: token})}
 	go func() { _ = srv.Serve(ln) }()
 	defer srv.Close()
 	port := ln.Addr().(*net.TCPAddr).Port
@@ -42,9 +62,16 @@ for h in host.docker.internal gateway.docker.internal "$gw" 172.17.0.1 192.168.6
 done
 `, port)
 
-	d := newDocker(t)
-	log := &lockedBuffer{}
-	if _, err := d.Run(context.Background(), job(t, script, log)); err != nil {
+	d, err := runner.NewDocker()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	log := &syncBuf{}
+	if _, err := d.Run(context.Background(), runner.Job{
+		Name: "api-security-probe", Image: "alpine:3.20", Script: script, Workspace: t.TempDir(),
+		Timeout: time.Minute, CPUs: 1, MemoryMB: 64, Log: log,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	out := log.String()

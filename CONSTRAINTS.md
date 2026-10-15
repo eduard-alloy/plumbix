@@ -5,7 +5,7 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 ## Security
 - On Docker Desktop, step containers reach the host's loopback through `host.docker.internal`, `gateway.docker.internal` and `192.168.65.254`. Loopback binding alone never protects the API. (WU-003)
 - Every API route except health needs the bearer token from `<data_dir>/api-token`. The server refuses a token file readable by others. New endpoints go on the protected mux by default. Never mount the data directory into a step container. (WU-013, A14)
-- `TestStepCannotUseHostAPI` must keep passing: a container probing the real API must never get data back. (WU-013)
+- `TestStepCannotUseHostAPI` (in `internal/api`) must keep passing: a container probing the real API must never get data back. (WU-013)
 - Secrets live in a dotenv file with mode `0600`. The repo's `.env` is git-ignored, and only `.env.example` is committed. (A13)
 - The AI validator treats all repo content as untrusted data. In Plumbix's own pipeline an AI approval alone is never enough; the deterministic validator must also approve. (A12, risk 3)
 - Plumbix binds only to local addresses and refuses to start otherwise until authentication exists. (Q12)
@@ -19,6 +19,10 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Neither host can enforce merges in v1 because the PAT acts as the user. Plumbix flags bypass commits instead. (Q13)
 
 ## Architecture
+- Validator steps run after their needs finish, whatever the outcome. Normal steps still need their needs to succeed. (WU-007)
+- An errored normal step makes the outcome `needs_human`, never `fix_requested`. (WU-007)
+- Only a change's active run may move its state, and cancellation is checked before errors: a cancelled run's errors are not infrastructure failures. (WU-007)
+- Tests never reach the network: git URLs are redirected to local repositories with `GIT_CONFIG_COUNT`/`url.<path>.insteadOf`. (WU-007)
 - One process in v1. The scheduler calls the runner only through its interface, so runners can move out later. (ARCHITECTURE A1)
 - Required validators come from the target branch's pipeline file. Any change touching `.plumbix/` needs a human. (A9)
 - A validator crash or invalid verdict is never approval. Criteria without a check are `unknown` and send the change to a human. (A11)

@@ -78,6 +78,7 @@ open ──▶ running ──▶ approved ──(human merge)──▶ merged
 any open state ──(close)──▶ closed
 ```
 
+- Validators start once their needs have finished, whatever the outcome, because failed steps are the evidence they judge. A normal step that errored (could not run) forces `needs_human`: infrastructure failures are never the author's to fix (WU-007).
 - `fix_requested` is the fix loop. The client's agent reads the findings, pushes new commits, and a new iteration starts. After three fix rounds without approval, the change moves to `escalated`.
 - `approved` never merges by itself in v1. A human merges from the web interface or the CLI.
 

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/eduard-alloy/plumbix/internal/gitops/gittest"
 )
 
 // startServer runs plumbix serve in-process and returns its address and data dir.
@@ -63,14 +65,39 @@ func (c cli) mustRun(stdin string, args ...string) map[string]any {
 	return v
 }
 
+// redirectGitHub makes git fetch the repo URL from a local test repository,
+// so the server's validation runs never touch the network.
+func redirectGitHub(t *testing.T, url string) *gittest.Repo {
+	t.Helper()
+	repo := gittest.New(t)
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "url."+repo.Remote+".insteadOf")
+	t.Setenv("GIT_CONFIG_VALUE_0", url)
+	return repo
+}
+
+// waitState polls a change until it leaves the running state.
+func (c cli) waitState(id string) string {
+	c.t.Helper()
+	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if st, _ := c.mustRun("", "change", "show", id)["state"].(string); st != "running" && st != "open" {
+			return st
+		}
+	}
+	c.t.Fatalf("change %s never left running", id)
+	return ""
+}
+
 func TestCLIFlow(t *testing.T) {
+	repo := redirectGitHub(t, "https://github.com/eduard-alloy/plumbix")
+	repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature without a pipeline file")
 	addr, dataDir := startServer(t)
 	c := cli{t: t, server: addr, dataDir: dataDir}
 
-	repo := c.mustRun("", "repo", "add", "--host", "github", "--url", "https://github.com/eduard-alloy/plumbix", "--protected", "main", "--protected", "release")
-	repoID, _ := repo["id"].(string)
-	if !strings.HasPrefix(repoID, "r_") || len(repo["protected_branches"].([]any)) != 2 {
-		t.Fatalf("repo = %v", repo)
+	registered := c.mustRun("", "repo", "add", "--host", "github", "--url", "https://github.com/eduard-alloy/plumbix", "--protected", "main", "--protected", "release")
+	repoID, _ := registered["id"].(string)
+	if !strings.HasPrefix(repoID, "r_") || len(registered["protected_branches"].([]any)) != 2 {
+		t.Fatalf("repo = %v", registered)
 	}
 	if repos := c.mustRun("", "repo", "list")["repos"].([]any); len(repos) != 1 {
 		t.Errorf("repo list = %v", repos)
@@ -83,9 +110,29 @@ func TestCLIFlow(t *testing.T) {
 	}
 	ch := c.mustRun("", "submit", "-f", file)
 	id := ch["id"].(string)
-	if ch["state"] != "open" {
-		t.Errorf("submitted = %v", ch)
+	if ch["state"] != "running" {
+		t.Errorf("submitted = %v; submitting should start validation", ch)
 	}
+	if st := c.waitState(id); st != "needs_human" {
+		t.Errorf("state = %s; a branch without a pipeline file needs a human", st)
+	}
+	runs := c.mustRun("", "change", "runs", id)["runs"].([]any)
+	if len(runs) != 1 {
+		t.Fatalf("runs = %v", runs)
+	}
+	runID := runs[0].(map[string]any)["id"].(string)
+	shown := c.mustRun("", "run", "show", runID)
+	if shown["status"] != "errored" || !strings.Contains(shown["error"].(string), "pipeline.yaml") {
+		t.Errorf("run = %v", shown)
+	}
+	if code, _, errOut := c.run("", "run", "log", runID, "test"); code != 1 || !strings.Contains(errOut, "not_found") {
+		t.Errorf("log of a step that never ran: exit %d, %q", code, errOut)
+	}
+	revalidated := c.mustRun("", "change", "validate", id)
+	if revalidated["iteration"] != float64(2) {
+		t.Errorf("revalidate = %v", revalidated)
+	}
+	c.waitState(id)
 	if code, _, errOut := c.run("", "submit", "-f", file); code != 1 || !strings.Contains(errOut, "conflict") {
 		t.Errorf("duplicate submit: exit %d, stderr %q", code, errOut)
 	}
@@ -93,7 +140,7 @@ func TestCLIFlow(t *testing.T) {
 	if got := c.mustRun("", "change", "show", id); got["id"] != id {
 		t.Errorf("show = %v", got)
 	}
-	if list := c.mustRun("", "change", "list", "--state", "open", "--repo", repoID)["changes"].([]any); len(list) != 1 {
+	if list := c.mustRun("", "change", "list", "--state", "needs_human", "--repo", repoID)["changes"].([]any); len(list) != 1 {
 		t.Errorf("list = %v", list)
 	}
 	if closed := c.mustRun("", "change", "close", id); closed["state"] != "closed" {

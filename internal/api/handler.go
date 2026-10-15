@@ -8,6 +8,8 @@ import (
 	"net/http"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/engine"
+	"github.com/eduard-alloy/plumbix/internal/run"
 )
 
 // Deps are the handler's dependencies.
@@ -15,6 +17,8 @@ type Deps struct {
 	Version string
 	Token   string          // bearer token every route except health requires
 	Changes *change.Service // nil leaves the repo and change routes out
+	Engine  *engine.Engine  // nil leaves the run routes out and skips auto-validation
+	Runs    run.Store       // required with Engine
 	Logger  *slog.Logger    // nil discards logs
 }
 
@@ -28,7 +32,11 @@ func NewHandler(d Deps) http.Handler {
 	protected := http.NewServeMux()
 	protected.HandleFunc("POST /api/v1/pipelines/check", checkPipeline)
 	if d.Changes != nil {
-		registerChangeRoutes(protected, &changeHandlers{svc: d.Changes, log: logger})
+		ch := &changeHandlers{svc: d.Changes, engine: d.Engine, log: logger}
+		registerChangeRoutes(protected, ch)
+		if d.Engine != nil {
+			registerRunRoutes(protected, &runHandlers{changeHandlers: ch, engine: d.Engine, runs: d.Runs})
+		}
 	}
 	protected.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such endpoint")

@@ -182,6 +182,97 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /changes/{id}/validate:
+    post:
+      operationId: validateChange
+      summary: Start a new validation iteration for a change.
+      description: >
+        Fetches the source branch, runs the pipeline and the validators, and
+        moves the change to its outcome. A run still going for the change is
+        cancelled. Submitting a change starts iteration 1 automatically.
+      parameters:
+        - $ref: "#/components/parameters/ChangeID"
+      responses:
+        "202":
+          description: The run started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The change is merged or closed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /changes/{id}/runs:
+    get:
+      operationId: listChangeRuns
+      summary: List a change's runs by iteration.
+      parameters:
+        - $ref: "#/components/parameters/ChangeID"
+      responses:
+        "200":
+          description: The change's runs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /runs/{id}:
+    get:
+      operationId: getRun
+      summary: Read a run with its steps and combined result.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /runs/{id}/steps/{step}/log:
+    get:
+      operationId: getStepLog
+      summary: Read a step's log as plain text.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: step
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The log.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   securitySchemes:
     bearerToken:
@@ -424,6 +515,157 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Change"
+    RunStep:
+      type: object
+      additionalProperties: false
+      required: [name, validator, status, exit_code, duration_ms]
+      properties:
+        name:
+          type: string
+        validator:
+          type: boolean
+        status:
+          type: string
+          enum: [succeeded, failed, timed_out, errored, skipped, cancelled]
+        exit_code:
+          type: integer
+        duration_ms:
+          type: integer
+          minimum: 0
+        error:
+          type: string
+    Assessment:
+      type: object
+      additionalProperties: false
+      required: [validator, status, reason]
+      properties:
+        validator:
+          type: string
+        status:
+          type: string
+          enum: [met, unmet, unknown]
+        reason:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+    ValidationResult:
+      description: The combined outcome of an iteration's validators.
+      type: object
+      additionalProperties: false
+      required: [state, criteria, findings, risks, reasons]
+      properties:
+        state:
+          $ref: "#/components/schemas/ChangeState"
+        criteria:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, text, status, assessments]
+            properties:
+              id:
+                type: string
+              text:
+                type: string
+              status:
+                type: string
+                enum: [met, unmet, unknown]
+              assessments:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Assessment"
+        findings:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [validator, severity, message]
+            properties:
+              validator:
+                type: string
+              severity:
+                type: string
+                enum: [blocker, major, minor]
+              message:
+                type: string
+              criterion:
+                type: string
+              file:
+                type: string
+              line:
+                type: integer
+                minimum: 1
+        risks:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [validator, area, message, human_required]
+            properties:
+              validator:
+                type: string
+              area:
+                type: string
+              message:
+                type: string
+              human_required:
+                type: boolean
+        reasons:
+          description: Why the change was rejected or needs a human.
+          type: array
+          items:
+            type: string
+    Run:
+      type: object
+      additionalProperties: false
+      required: [id, repo_id, head, base, status, steps, started_at]
+      properties:
+        id:
+          type: string
+          pattern: "^run_[a-z2-7]{12}$"
+        repo_id:
+          type: string
+        change_id:
+          type: string
+        iteration:
+          type: integer
+          minimum: 1
+        head:
+          description: Commit being validated. Empty until fetched.
+          type: string
+        base:
+          description: Merge base with the target branch. Empty until fetched.
+          type: string
+        status:
+          type: string
+          enum: [running, finished, errored, cancelled]
+        outcome:
+          $ref: "#/components/schemas/ChangeState"
+        result:
+          $ref: "#/components/schemas/ValidationResult"
+        error:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunStep"
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+    RunList:
+      type: object
+      additionalProperties: false
+      required: [runs]
+      properties:
+        runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/Run"
     Problem:
       type: object
       additionalProperties: false

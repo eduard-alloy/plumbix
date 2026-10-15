@@ -38,6 +38,15 @@ type Options struct {
 	MemoryMB       int
 	Secrets        map[string]string           // secret values by name
 	Log            func(step string) io.Writer // nil discards logs
+	// Setup, when set, runs just before a step starts. It sees the steps
+	// finished so far and can add mounts, for example validator inputs.
+	Setup func(step pipeline.Step, finished []StepResult) (StepSetup, error)
+}
+
+// StepSetup is extra configuration for one step.
+type StepSetup struct {
+	Mounts            []runner.Mount
+	WorkspaceReadOnly bool
 }
 
 // StepResult is one step's outcome.
@@ -89,10 +98,10 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 				if running >= o.MaxParallel {
 					break
 				}
-				if results[i].Status != "" || !needsSucceeded(st, results, index) {
+				if results[i].Status != "" || !needsSatisfied(st, results, index) {
 					continue
 				}
-				job, err := buildJob(st, o)
+				job, err := buildJob(st, o, finishedSoFar(results))
 				if err != nil {
 					results[i].Status, results[i].Err = Errored, err
 					continue
@@ -129,12 +138,13 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 }
 
 // markSkipped marks pending steps whose needs can no longer succeed,
-// repeating until nothing changes so skips cascade.
+// repeating until nothing changes so skips cascade. Validators are never
+// skipped: they judge the evidence, including failures.
 func markSkipped(steps []pipeline.Step, results []StepResult, index map[string]int) {
 	for changed := true; changed; {
 		changed = false
 		for i, st := range steps {
-			if results[i].Status != "" {
+			if results[i].Status != "" || st.Validator {
 				continue
 			}
 			for _, n := range st.Needs {
@@ -149,17 +159,35 @@ func markSkipped(steps []pipeline.Step, results []StepResult, index map[string]i
 	}
 }
 
-func needsSucceeded(st pipeline.Step, results []StepResult, index map[string]int) bool {
+// needsSatisfied reports whether a step may start: normal steps need every
+// need to have succeeded, validators need every need to have finished.
+func needsSatisfied(st pipeline.Step, results []StepResult, index map[string]int) bool {
 	for _, n := range st.Needs {
-		if results[index[n]].Status != Succeeded {
+		s := results[index[n]].Status
+		if st.Validator {
+			if s == "" || s == inProgress {
+				return false
+			}
+		} else if s != Succeeded {
 			return false
 		}
 	}
 	return true
 }
 
+// finishedSoFar returns the results of steps that have ended.
+func finishedSoFar(results []StepResult) []StepResult {
+	var out []StepResult
+	for _, r := range results {
+		if r.Status != "" && r.Status != inProgress {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // buildJob turns a step into a runner job, resolving its secrets.
-func buildJob(st pipeline.Step, o Options) (runner.Job, error) {
+func buildJob(st pipeline.Step, o Options, finished []StepResult) (runner.Job, error) {
 	env := maps.Clone(st.Env)
 	if env == nil {
 		env = map[string]string{}
@@ -181,16 +209,25 @@ func buildJob(st pipeline.Step, o Options) (runner.Job, error) {
 			log = w
 		}
 	}
+	var setup StepSetup
+	if o.Setup != nil {
+		var err error
+		if setup, err = o.Setup(st, finished); err != nil {
+			return runner.Job{}, fmt.Errorf("prepare step %s: %w", st.Name, err)
+		}
+	}
 	return runner.Job{
-		Name:      st.Name,
-		Image:     st.Image,
-		Script:    st.Run,
-		Env:       env,
-		Workspace: o.Workspace,
-		Timeout:   timeout,
-		CPUs:      o.CPUs,
-		MemoryMB:  o.MemoryMB,
-		Log:       log,
+		Mounts:            setup.Mounts,
+		WorkspaceReadOnly: setup.WorkspaceReadOnly,
+		Name:              st.Name,
+		Image:             st.Image,
+		Script:            st.Run,
+		Env:               env,
+		Workspace:         o.Workspace,
+		Timeout:           timeout,
+		CPUs:              o.CPUs,
+		MemoryMB:          o.MemoryMB,
+		Log:               log,
 	}, nil
 }
 

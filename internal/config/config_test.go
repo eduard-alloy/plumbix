@@ -153,3 +153,23 @@ func TestRunnerValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestSecretsFileAndFixRounds(t *testing.T) {
+	dataDir := t.TempDir()
+	cfg, err := Load(Overrides{DataDir: dataDir}, envFrom(nil), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SecretsFile != filepath.Join(dataDir, ".env") || cfg.FixRounds.Max != DefaultFixRounds {
+		t.Errorf("defaults: secrets %q fix rounds %d", cfg.SecretsFile, cfg.FixRounds.Max)
+	}
+	writeFile(t, filepath.Join(dataDir, "config.yaml"), "secrets_file: /repo/.env\nfix_rounds:\n  max: 5\n")
+	cfg, err = Load(Overrides{DataDir: dataDir}, envFrom(nil), t.TempDir())
+	if err != nil || cfg.SecretsFile != "/repo/.env" || cfg.FixRounds.Max != 5 {
+		t.Errorf("from file: %+v, %v", cfg, err)
+	}
+	writeFile(t, filepath.Join(dataDir, "config.yaml"), "fix_rounds:\n  max: 0\n")
+	if _, err := Load(Overrides{DataDir: dataDir}, envFrom(nil), t.TempDir()); err == nil {
+		t.Error("fix_rounds.max 0 accepted")
+	}
+}

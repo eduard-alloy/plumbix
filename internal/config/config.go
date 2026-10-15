@@ -37,11 +37,21 @@ const (
 	minStepMemoryMB     = 6 // Docker refuses memory limits below 6 MiB.
 )
 
+// DefaultFixRounds is how many fix rounds a change gets before escalation.
+const DefaultFixRounds = 3
+
 // Config holds the resolved server settings.
 type Config struct {
-	DataDir string `yaml:"data_dir"`
-	Server  Server `yaml:"server"`
-	Runner  Runner `yaml:"runner"`
+	DataDir     string    `yaml:"data_dir"`
+	SecretsFile string    `yaml:"secrets_file"` // default <data_dir>/.env
+	Server      Server    `yaml:"server"`
+	Runner      Runner    `yaml:"runner"`
+	FixRounds   FixRounds `yaml:"fix_rounds"`
+}
+
+// FixRounds limits the fix loop.
+type FixRounds struct {
+	Max int `yaml:"max"`
 }
 
 // Runner holds pipeline execution settings.
@@ -68,8 +78,9 @@ type Overrides struct {
 // homeDir is used to build the default data directory.
 func Load(flags Overrides, getenv func(string) string, homeDir string) (Config, error) {
 	cfg := Config{
-		DataDir: filepath.Join(homeDir, ".plumbix"),
-		Server:  Server{Listen: DefaultListen},
+		DataDir:   filepath.Join(homeDir, ".plumbix"),
+		Server:    Server{Listen: DefaultListen},
+		FixRounds: FixRounds{Max: DefaultFixRounds},
 		Runner: Runner{
 			MaxParallel:    runtime.NumCPU(),
 			DefaultTimeout: DefaultStepTimeout,
@@ -93,8 +104,14 @@ func Load(flags Overrides, getenv func(string) string, homeDir string) (Config, 
 
 	cfg.DataDir = first(flags.DataDir, getenv(EnvDataDir), cfg.DataDir)
 	cfg.Server.Listen = first(flags.Listen, getenv(EnvListen), cfg.Server.Listen)
+	if cfg.SecretsFile == "" {
+		cfg.SecretsFile = filepath.Join(cfg.DataDir, ".env")
+	}
 	if err := cfg.Runner.validate(); err != nil {
 		return Config{}, err
+	}
+	if cfg.FixRounds.Max < 1 {
+		return Config{}, fmt.Errorf("fix_rounds.max must be at least 1, got %d", cfg.FixRounds.Max)
 	}
 	return cfg, nil
 }

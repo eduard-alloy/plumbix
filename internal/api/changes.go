@@ -10,14 +10,16 @@ import (
 	"strings"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/engine"
 )
 
 // MaxJSONBytes is the largest JSON request body the API accepts.
 const MaxJSONBytes = 1 << 20
 
 type changeHandlers struct {
-	svc *change.Service
-	log *slog.Logger
+	svc    *change.Service
+	engine *engine.Engine // nil when validation isn't wired
+	log    *slog.Logger
 }
 
 func registerChangeRoutes(mux *http.ServeMux, h *changeHandlers) {
@@ -60,6 +62,13 @@ func (h *changeHandlers) submit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.fail(w, err)
 		return
+	}
+	if h.engine != nil {
+		if _, err := h.engine.Validate(r.Context(), c.ID); err != nil {
+			h.log.Error("start validation", "change", c.ID, "err", err)
+		} else if fresh, err := h.svc.Get(r.Context(), c.ID); err == nil {
+			c = fresh
+		}
 	}
 	writeJSON(w, http.StatusCreated, c)
 }

@@ -85,11 +85,12 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-004 | Change contract and storage, submitted through the public HTTP API and a small CLI | F-001 | ✅ |
 | WU-005 | Verdict contract and reference validator step | F-006 | ✅ |
 | WU-006 | AI validator: Claude judges the change against intent and criteria, same verdict contract | F-015 | ✅ |
-| WU-007 | Validation loop end to end: change, run, verdicts, events | F-001, F-006, F-015 | ⚪ |
+| WU-007 | Validation loop end to end: change, run, verdicts (events split to WU-014) | F-001, F-006, F-015 | ✅ |
 | WU-008 | GitHub adapter and the host boundary: PAT config, fetch branches, poll for pushes | F-005 | ⚪ |
 | WU-009 | Azure DevOps adapter behind the same boundary | F-005 | ⚪ |
 | WU-010 | Merge on approval and bypass detection, for both hosts | F-001, F-007 | ⚪ |
 | WU-011 | Web interface: change list, change view, evidence, logs, diff on demand, merge action, one-time login link with Host and Origin checks | F-004, F-008 | ⚪ |
+| WU-014 | Event stream: SSE with resumable ids, events contract (split from WU-007) | F-001 | ⚪ |
 | WU-012 | Self-hosting: Plumbix validates its own changes on GitHub, milestone acceptance | All M1 | ⚪ |
 
 ## Milestone 2 candidates

@@ -242,3 +242,69 @@ func TestMissingSecretErrorsStep(t *testing.T) {
 		t.Error("step ran without its secret")
 	}
 }
+
+func TestSetupHook(t *testing.T) {
+	p := mustParse(t, "  - {name: a, image: x, run: x}\n  - {name: b, image: x, run: x}\n  - {name: v, image: val, validator: true, needs: [a, b]}\n")
+	fake := newFake(ok)
+	o := opts(1)
+	var seen []string
+	o.Setup = func(st pipeline.Step, finished []StepResult) (StepSetup, error) {
+		if st.Name != "v" {
+			return StepSetup{}, nil
+		}
+		for _, f := range finished {
+			seen = append(seen, f.Name+"="+string(f.Status))
+		}
+		return StepSetup{Mounts: []runner.Mount{{Source: "/in", Target: "/plumbix/in", ReadOnly: true}}, WorkspaceReadOnly: true}, nil
+	}
+	res := Execute(context.Background(), p, fake, o)
+	if !res.Succeeded() {
+		t.Fatalf("run failed: %+v", res.Steps)
+	}
+	if strings.Join(seen, ",") != "a=succeeded,b=succeeded" {
+		t.Errorf("setup saw %v, want both needs finished", seen)
+	}
+	v := fake.jobs["v"]
+	if !v.WorkspaceReadOnly || len(v.Mounts) != 1 || v.Mounts[0].Target != "/plumbix/in" {
+		t.Errorf("validator job = %+v", v)
+	}
+	if fake.jobs["a"].WorkspaceReadOnly {
+		t.Error("normal step got a read-only workspace")
+	}
+}
+
+func TestSetupErrorErrorsStep(t *testing.T) {
+	p := mustParse(t, "  - {name: a, image: x, run: x}\n")
+	o := opts(1)
+	o.Setup = func(pipeline.Step, []StepResult) (StepSetup, error) {
+		return StepSetup{}, errors.New("cannot prepare inputs")
+	}
+	fake := newFake(ok)
+	res := Execute(context.Background(), p, fake, o)
+	if s := res.Steps[0]; s.Status != Errored || !strings.Contains(s.Err.Error(), "cannot prepare") {
+		t.Fatalf("step = %+v", s)
+	}
+	if _, ran := fake.jobs["a"]; ran {
+		t.Error("step ran after its setup failed")
+	}
+}
+
+func TestValidatorRunsAfterFailedNeed(t *testing.T) {
+	p := mustParse(t, `  - {name: test, image: x, run: x}
+  - {name: build, image: x, run: x, needs: [test]}
+  - {name: v, image: val, validator: true, needs: [test, build]}
+`)
+	fake := newFake(func(_ context.Context, job runner.Job) (runner.Result, error) {
+		if job.Name == "test" {
+			return runner.Result{ExitCode: 1}, nil
+		}
+		return runner.Result{}, nil
+	})
+	got := statusOf(t, Execute(context.Background(), p, fake, opts(2)))
+	if got["test"] != Failed || got["build"] != Skipped || got["v"] != Succeeded {
+		t.Fatalf("statuses = %v; validators must run once their needs have finished, whatever the outcome", got)
+	}
+	if fake.start["v"].Before(fake.end["test"]) {
+		t.Error("validator started before its need finished")
+	}
+}

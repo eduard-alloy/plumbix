@@ -20,38 +20,38 @@ type ValidatorResult struct {
 
 // Result is the combined outcome of an iteration's validators.
 type Result struct {
-	State    change.State
-	Criteria []CombinedCriterion
-	Findings []SourcedFinding
-	Risks    []SourcedRisk
-	Reasons  []string // why the change was rejected or needs a human
+	State    change.State        `json:"state"`
+	Criteria []CombinedCriterion `json:"criteria"`
+	Findings []SourcedFinding    `json:"findings"`
+	Risks    []SourcedRisk       `json:"risks"`
+	Reasons  []string            `json:"reasons"` // why the change was rejected or needs a human
 }
 
 // CombinedCriterion is one criterion's status across validators.
 type CombinedCriterion struct {
-	ID          string
-	Text        string
-	Status      Status
-	Assessments []Assessment
+	ID          string       `json:"id"`
+	Text        string       `json:"text"`
+	Status      Status       `json:"status"`
+	Assessments []Assessment `json:"assessments"`
 }
 
 // Assessment is one validator's view of a criterion.
 type Assessment struct {
-	Validator string
-	Status    Status
-	Reason    string
-	Evidence  []string
+	Validator string   `json:"validator"`
+	Status    Status   `json:"status"`
+	Reason    string   `json:"reason"`
+	Evidence  []string `json:"evidence,omitempty"`
 }
 
 // SourcedFinding is a finding with the validator that reported it.
 type SourcedFinding struct {
-	Validator string
+	Validator string `json:"validator"`
 	Finding
 }
 
 // SourcedRisk is a risk with the validator that reported it.
 type SourcedRisk struct {
-	Validator string
+	Validator string `json:"validator"`
 	Risk
 }
 
@@ -59,7 +59,7 @@ type SourcedRisk struct {
 // required lists the validators the target branch's pipeline demands, and
 // changedFiles are the files the change touches.
 func Combine(criteria []change.Criterion, results []ValidatorResult, required, changedFiles []string) Result {
-	var r Result
+	r := Result{Criteria: []CombinedCriterion{}, Findings: []SourcedFinding{}, Risks: []SourcedRisk{}, Reasons: []string{}}
 	byID := map[string]*CombinedCriterion{}
 	for _, c := range criteria {
 		r.Criteria = append(r.Criteria, CombinedCriterion{ID: c.ID, Text: c.Text, Status: Unknown})

@@ -19,8 +19,9 @@ commands:
   serve                 start the Plumbix server (local addresses only)
   repo add|list         register or list git repositories
   submit -f <file|->    submit a change (JSON)
-  change list|show|close
-                        read or close changes
+  change list|show|close|validate|runs
+                        read, close or revalidate changes
+  run show|log          read a run, or a step's log
   version               print the version
 
 Client commands use the token in <data-dir>/api-token and accept
@@ -48,6 +49,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runSubmit(args[1:], stdin, stdout, stderr)
 	case "change":
 		return runChange(args[1:], stdout, stderr)
+	case "run":
+		return runRun(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintf(stdout, "plumbix %s\n", version)
 		return 0

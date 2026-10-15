@@ -95,8 +95,9 @@ func (c *clientCmd) call(method, path string, body []byte) int {
 	}
 	var out bytes.Buffer
 	if json.Indent(&out, resp.Body, "", "  ") != nil {
-		out.Reset()
-		out.Write(resp.Body)
+		// Not JSON (a log, for example): print it unchanged.
+		_, _ = c.stdout.Write(resp.Body)
+		return 0
 	}
 	fmt.Fprintln(c.stdout, out.String())
 	return 0
@@ -189,6 +190,26 @@ func runChange(args []string, stdout, stderr io.Writer) int {
 		return c.call(http.MethodGet, "/api/v1/changes/"+url.PathEscape(pos[1]), nil)
 	case len(pos) == 2 && pos[0] == "close":
 		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/close", nil)
+	case len(pos) == 2 && pos[0] == "validate":
+		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/validate", nil)
+	case len(pos) == 2 && pos[0] == "runs":
+		return c.call(http.MethodGet, "/api/v1/changes/"+url.PathEscape(pos[1])+"/runs", nil)
 	}
-	return usageError(stderr, "usage: plumbix change list [--repo <id>] [--state <s>] | change show <id> | change close <id>")
+	return usageError(stderr, "usage: plumbix change list [--repo <id>] [--state <s>] | change show|close|validate|runs <id>")
+}
+
+// runRun handles "plumbix run show|log".
+func runRun(args []string, stdout, stderr io.Writer) int {
+	c := newClientCmd("run", stdout, stderr)
+	pos, ok := c.parse(args)
+	if !ok {
+		return 2
+	}
+	switch {
+	case len(pos) == 2 && pos[0] == "show":
+		return c.call(http.MethodGet, "/api/v1/runs/"+url.PathEscape(pos[1]), nil)
+	case len(pos) == 3 && pos[0] == "log":
+		return c.call(http.MethodGet, "/api/v1/runs/"+url.PathEscape(pos[1])+"/steps/"+url.PathEscape(pos[2])+"/log", nil)
+	}
+	return usageError(stderr, "usage: plumbix run show <run-id> | plumbix run log <run-id> <step>")
 }

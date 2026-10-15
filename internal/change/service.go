@@ -30,8 +30,8 @@ func NewService(store Store) *Service {
 	return &Service{store: store, now: time.Now}
 }
 
-// newID returns prefix followed by 12 random lowercase base32 characters.
-func newID(prefix string) string {
+// NewID returns prefix followed by 12 random lowercase base32 characters.
+func NewID(prefix string) string {
 	buf := make([]byte, 8)
 	_, _ = rand.Read(buf) // crypto/rand.Read never fails on supported platforms
 	return prefix + strings.ToLower(idEncoding.EncodeToString(buf))[:idChars]
@@ -44,7 +44,7 @@ func (s *Service) RegisterRepo(ctx context.Context, in RepoInput) (Repo, error) 
 		return Repo{}, err
 	}
 	r := Repo{
-		ID: newID("r_"), Host: in.Host, URL: in.URL,
+		ID: NewID("r_"), Host: in.Host, URL: in.URL,
 		ProtectedBranches: in.ProtectedBranches, MergeStrategy: in.MergeStrategy,
 		CreatedAt: s.now().UTC(),
 	}
@@ -76,7 +76,7 @@ func (s *Service) Submit(ctx context.Context, in ChangeInput) (Change, error) {
 	}
 	now := s.now().UTC()
 	c := Change{
-		ID: newID("c_"), RepoID: in.RepoID, SourceBranch: in.SourceBranch, TargetBranch: in.TargetBranch,
+		ID: NewID("c_"), RepoID: in.RepoID, SourceBranch: in.SourceBranch, TargetBranch: in.TargetBranch,
 		Title: in.Title, Intent: in.Intent, AcceptanceCriteria: in.AcceptanceCriteria,
 		Constraints: in.Constraints, SubmittedBy: in.SubmittedBy,
 		State: Open, CreatedAt: now, UpdatedAt: now,

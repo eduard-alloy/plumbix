@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -14,6 +15,9 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/auth"
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/config"
+	"github.com/eduard-alloy/plumbix/internal/engine"
+	"github.com/eduard-alloy/plumbix/internal/runner"
+	"github.com/eduard-alloy/plumbix/internal/secrets"
 	"github.com/eduard-alloy/plumbix/internal/store"
 )
 
@@ -60,14 +64,48 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return 1
 	}
 	defer db.Close()
+
+	secretValues, err := loadSecrets(cfg.SecretsFile)
+	if err != nil {
+		logger.Error("load secrets failed", "err", err)
+		return 1
+	}
+	docker, err := runner.NewDocker()
+	if err != nil {
+		logger.Error("docker client failed", "err", err)
+		return 1
+	}
+	defer docker.Close()
+	eng := engine.New(db, docker, engine.Config{
+		DataDir: cfg.DataDir, MaxParallel: cfg.Runner.MaxParallel, DefaultTimeout: cfg.Runner.DefaultTimeout,
+		CPUs: cfg.Runner.StepCPUs, MemoryMB: cfg.Runner.StepMemoryMB, MaxFixRounds: cfg.FixRounds.Max, Secrets: secretValues,
+	}, logger)
+	if err := eng.Recover(ctx); err != nil {
+		logger.Error("recover interrupted runs failed", "err", err)
+		return 1
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), config.DefaultShutdownTimeout)
+		defer cancel()
+		eng.Shutdown(stopCtx)
+	}()
 	ln, err := net.Listen("tcp", cfg.Server.Listen)
 	if err != nil {
 		logger.Error("listen failed", "addr", cfg.Server.Listen, "err", err)
 		return 1
 	}
-	if err := api.Run(ctx, ln, api.NewHandler(api.Deps{Version: version, Token: token, Changes: change.NewService(db), Logger: logger}), logger, config.DefaultShutdownTimeout); err != nil {
+	if err := api.Run(ctx, ln, api.NewHandler(api.Deps{Version: version, Token: token, Changes: change.NewService(db), Engine: eng, Runs: db, Logger: logger}), logger, config.DefaultShutdownTimeout); err != nil {
 		logger.Error("server stopped with error", "err", err)
 		return 1
 	}
 	return 0
+}
+
+// loadSecrets reads the secrets file. A missing file means no secrets.
+func loadSecrets(path string) (map[string]string, error) {
+	values, err := secrets.Load(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]string{}, nil
+	}
+	return values, err
 }
