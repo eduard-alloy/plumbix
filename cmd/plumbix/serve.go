@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/eduard-alloy/plumbix/internal/api"
+	"github.com/eduard-alloy/plumbix/internal/auth"
 	"github.com/eduard-alloy/plumbix/internal/config"
 )
 
@@ -40,13 +41,19 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return 1
 	}
 
+	token, err := auth.EnsureToken(cfg.DataDir)
+	if err != nil {
+		fmt.Fprintf(stderr, "plumbix: %v\n", err)
+		return 1
+	}
+
 	logger := slog.New(slog.NewJSONHandler(stderr, nil))
 	ln, err := net.Listen("tcp", cfg.Server.Listen)
 	if err != nil {
 		logger.Error("listen failed", "addr", cfg.Server.Listen, "err", err)
 		return 1
 	}
-	if err := api.Run(ctx, ln, api.NewHandler(version), logger, config.DefaultShutdownTimeout); err != nil {
+	if err := api.Run(ctx, ln, api.NewHandler(version, token), logger, config.DefaultShutdownTimeout); err != nil {
 		logger.Error("server stopped with error", "err", err)
 		return 1
 	}

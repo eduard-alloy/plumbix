@@ -64,7 +64,7 @@ The fix loop runs across the contract. A "fix" verdict goes back to the client, 
 | F-006 | Verdict contract and deterministic reference validator | M1 |
 | F-015 | AI validator using Claude, key from `.env` | M1 |
 | F-007 | Bypass detection on protected branches | M1 |
-| F-008 | Authentication: admin account and per-client API tokens | Later |
+| F-008 | Authentication. M1: a local API token (WU-013). Later: browser login (WU-011), accounts and per-client tokens | M1 / Later |
 | F-009 | Push notifications from git hosts, such as Azure DevOps service hooks, instead of polling | Later |
 | F-010 | Separate Plumbix identity (Entra ID) and host-side branch enforcement | Later |
 | F-011 | Kai as a client | Later |
@@ -74,13 +74,14 @@ The fix loop runs across the contract. A "fix" verdict goes back to the client, 
 
 ## Roadmap: Milestone 1
 
-Ordered so the thin validation loop works first, then the git host paths. GitHub comes first because Plumbix's own repo lives there. Estimates are preliminary.
+Work unit IDs are stable identifiers, and the table lists execution order. Ordered so the thin validation loop works first, then the git host paths. GitHub comes first because Plumbix's own repo lives there. Estimates are preliminary.
 
 | WU | Title | Features | Status |
 |----|-------|----------|--------|
 | WU-001 | Project skeleton: Go module, `plumbix serve` on localhost only, test, lint and build setup | - | ✅ |
 | WU-002 | Pipeline format v0: schema, parser, validation errors | F-002 | ✅ |
 | WU-003 | Container runner: run steps in isolated containers, capture logs, run independent steps in parallel | F-003 | ✅ |
+| WU-013 | API token: generated on first start, required on every route except health (added after the WU-003 security finding) | F-008 | ✅ |
 | WU-004 | Change contract and storage, submitted through the public HTTP API and a small CLI | F-001 | ⚪ |
 | WU-005 | Verdict contract and reference validator step | F-006 | ⚪ |
 | WU-006 | AI validator: Claude judges the change against intent and criteria, same verdict contract | F-015 | ⚪ |
@@ -88,7 +89,7 @@ Ordered so the thin validation loop works first, then the git host paths. GitHub
 | WU-008 | GitHub adapter and the host boundary: PAT config, fetch branches, poll for pushes | F-005 | ⚪ |
 | WU-009 | Azure DevOps adapter behind the same boundary | F-005 | ⚪ |
 | WU-010 | Merge on approval and bypass detection, for both hosts | F-001, F-007 | ⚪ |
-| WU-011 | Web interface: change list, change view, evidence, logs, diff on demand, merge action | F-004 | ⚪ |
+| WU-011 | Web interface: change list, change view, evidence, logs, diff on demand, merge action, one-time login link with Host and Origin checks | F-004, F-008 | ⚪ |
 | WU-012 | Self-hosting: Plumbix validates its own changes on GitHub, milestone acceptance | All M1 | ⚪ |
 
 ## Milestone 2 candidates
@@ -99,4 +100,3 @@ Ordered so the thin validation loop works first, then the git host paths. GitHub
 
 ## Open items
 
-- **Security decision needed**: on Docker Desktop, step containers can reach the Plumbix API (confirmed in WU-003, ARCHITECTURE risk 1). Fixing it needs some form of authentication.

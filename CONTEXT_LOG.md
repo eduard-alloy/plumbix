@@ -8,3 +8,4 @@
 | 2026-10-16 | WU-002 | ✅ | Pipeline format v1: node-walking parser with path+line errors, JSON Schema, contract test (26 files), check endpoint. Next: WU-003 container runner. |
 | 2026-10-16 | WU-003 | ✅⚠️ | Docker runner + scheduler, parallel steps, timeouts, cleanup. Security finding: Docker Desktop containers reach host loopback API. Next: owner decision on auth, then WU-004. |
 | 2026-10-16 | Kai journey | ✅ | Created Kai plan: workstream F8QK66, milestones, WU-001..012 tasks, security decision task Z0GM6N. Recorded 3 superseding decisions. CLAUDE.md now requires keeping Kai in sync. |
+| 2026-10-16 | WU-013 | ✅ | API token (option A): token file 0600, bearer auth on all routes but health, container probe gets 401 on every route. Next: WU-004. |

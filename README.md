@@ -16,7 +16,15 @@ make check          # build, test and lint
 curl http://127.0.0.1:6400/api/v1/health
 ```
 
-Plumbix has no authentication yet, so it refuses to listen on anything but a loopback address.
+Plumbix listens only on loopback addresses. On first start it writes a random API token to `~/.plumbix/api-token`, readable only by you. Every API call except the health check needs it:
+
+```sh
+curl -H "Authorization: Bearer $(cat ~/.plumbix/api-token)" \
+     --data-binary @.plumbix/pipeline.yaml \
+     http://127.0.0.1:6400/api/v1/pipelines/check
+```
+
+To rotate the token, delete the file and restart the server. Plumbix refuses to start if the file is readable by other users.
 
 ## License
 

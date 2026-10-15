@@ -6,16 +6,20 @@ import (
 	"net/http"
 )
 
-// NewHandler returns the HTTP handler for the public API.
-func NewHandler(version string) http.Handler {
+// NewHandler returns the HTTP handler for the public API. Every route except
+// the health check requires token as a bearer token.
+func NewHandler(version, token string) http.Handler {
+	protected := http.NewServeMux()
+	protected.HandleFunc("POST /api/v1/pipelines/check", checkPipeline)
+	protected.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		writeError(w, http.StatusNotFound, "not_found", "no such endpoint")
+	})
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": version})
 	})
-	mux.HandleFunc("POST /api/v1/pipelines/check", checkPipeline)
-	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		writeError(w, http.StatusNotFound, "not_found", "no such endpoint")
-	})
+	mux.Handle("/", requireToken(token, protected))
 	return mux
 }
 

@@ -3,18 +3,22 @@ info:
   title: Plumbix API
   version: "1"
   description: >
-    Public HTTP API of a Plumbix server. Version 1 has no authentication and
-    the server listens on loopback addresses only.
+    Public HTTP API of a Plumbix server. The server listens on loopback
+    addresses only. Every operation except getHealth needs the bearer token
+    from <data_dir>/api-token, which the server creates on first start.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
 servers:
   - url: http://127.0.0.1:6400/api/v1
+security:
+  - bearerToken: []
 paths:
   /health:
     get:
       operationId: getHealth
       summary: Report that the server is running.
+      security: []
       responses:
         "200":
           description: The server is running.
@@ -44,6 +48,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineCheck"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "413":
           description: The body is larger than 1 MiB.
           content:
@@ -51,6 +57,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 components:
+  securitySchemes:
+    bearerToken:
+      type: http
+      scheme: bearer
+      description: The 64-character hex token in <data_dir>/api-token.
+  responses:
+    Unauthorized:
+      description: The bearer token is missing or wrong.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            const: Bearer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     PipelineCheck:
       type: object

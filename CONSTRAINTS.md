@@ -3,7 +3,9 @@
 Newest first. Each entry cites its source in DISCOVERY.md.
 
 ## Security
-- **OPEN FINDING**: on Docker Desktop, step containers reach the host's loopback through `host.docker.internal`, `gateway.docker.internal` and `192.168.65.254`, so they can call the unauthenticated Plumbix API. Linux bridge networking does not allow this. Awaiting the owner's decision on authentication. (WU-003)
+- On Docker Desktop, step containers reach the host's loopback through `host.docker.internal`, `gateway.docker.internal` and `192.168.65.254`. Loopback binding alone never protects the API. (WU-003)
+- Every API route except health needs the bearer token from `<data_dir>/api-token`. The server refuses a token file readable by others. New endpoints go on the protected mux by default. Never mount the data directory into a step container. (WU-013, A14)
+- `TestStepCannotUseHostAPI` must keep passing: a container probing the real API must never get data back. (WU-013)
 - Secrets live in a dotenv file with mode `0600`. The repo's `.env` is git-ignored, and only `.env.example` is committed. (A13)
 - The AI validator treats all repo content as untrusted data. In Plumbix's own pipeline an AI approval alone is never enough; the deterministic validator must also approve. (A12, risk 3)
 - Plumbix binds only to local addresses and refuses to start otherwise until authentication exists. (Q12)

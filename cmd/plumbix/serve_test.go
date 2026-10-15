@@ -7,10 +7,14 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/eduard-alloy/plumbix/internal/auth"
 )
 
 // syncBuffer is a goroutine-safe writer for capturing server logs.
@@ -58,8 +62,9 @@ func TestServeStartsAndStops(t *testing.T) {
 	defer cancel()
 	logs := &syncBuffer{}
 	done := make(chan int, 1)
+	dataDir := filepath.Join(t.TempDir(), "data")
 	go func() {
-		done <- runServe(ctx, []string{"--listen", "127.0.0.1:0", "--data-dir", t.TempDir()}, io.Discard, logs)
+		done <- runServe(ctx, []string{"--listen", "127.0.0.1:0", "--data-dir", dataDir}, io.Discard, logs)
 	}()
 
 	addr := waitForListenAddr(t, logs)
@@ -76,6 +81,19 @@ func TestServeStartsAndStops(t *testing.T) {
 		t.Errorf("version = %q, want %q", body["version"], version)
 	}
 
+	token, err := auth.ReadToken(dataDir)
+	if err != nil {
+		t.Fatalf("token file not created: %v", err)
+	}
+	check := "http://" + addr + "/api/v1/pipelines/check"
+	pipelineYAML := "version: 1\nsteps:\n  - {name: a, image: x, run: x}\n"
+	if code := post(t, check, "", pipelineYAML); code != http.StatusUnauthorized {
+		t.Errorf("check without token: status %d, want 401", code)
+	}
+	if code := post(t, check, token, pipelineYAML); code != http.StatusOK {
+		t.Errorf("check with token: status %d, want 200", code)
+	}
+
 	cancel()
 	select {
 	case code := <-done:
@@ -85,6 +103,40 @@ func TestServeStartsAndStops(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("serve did not stop after cancel")
 	}
+}
+
+func TestServeRefusesLooseTokenFile(t *testing.T) {
+	clearPlumbixEnv(t)
+	dataDir := t.TempDir()
+	if _, err := auth.EnsureToken(dataDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(dataDir, auth.TokenFile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	code := runServe(context.Background(), []string{"--listen", "127.0.0.1:0", "--data-dir", dataDir}, io.Discard, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "chmod 600") {
+		t.Fatalf("exit %d, stderr %q; want refusal explaining chmod 600", code, stderr.String())
+	}
+}
+
+// post sends body to url with an optional bearer token and returns the status.
+func post(t *testing.T, url, token, body string) int {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode
 }
 
 // waitForListenAddr reads the JSON logs until the "server listening" entry appears.

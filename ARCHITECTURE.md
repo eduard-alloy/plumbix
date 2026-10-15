@@ -105,7 +105,7 @@ Versioning: every document carries a version (`version: 1` in pipelines, `"plumb
 
 ### 4.1 HTTP API v1
 
-The base address comes from config `server.listen`, default `127.0.0.1:6400`. There is no authentication in v1 (Q12). Errors use one JSON shape: `{"error": {"code": "...", "message": "...", "details": {...}}}`.
+The base address comes from config `server.listen`, default `127.0.0.1:6400`. Every route except `GET /api/v1/health` needs `Authorization: Bearer <token>`, where the token is the content of `<data_dir>/api-token` (A14). Failures return 401 with `WWW-Authenticate: Bearer`. Errors use one JSON shape: `{"error": {"code": "...", "message": "...", "details": {...}}}`.
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -260,6 +260,7 @@ Everything lives under the data directory, config key `data_dir`, default `~/.pl
 | Path | Content |
 |------|---------|
 | `config.yaml` | Server settings. |
+| `api-token` | The API bearer token, 64 hex characters. Created on first start, mode `0600`. Delete it and restart to rotate. |
 | `.env` | Host tokens and pipeline secrets in dotenv format. Path set by config `secrets_file`. Must be mode `0600` or the server refuses to start. |
 | `plumbix.db` | SQLite: repos, changes, iterations, runs, steps, verdicts, events, alerts, merges. |
 | `mirrors/<repo-id>.git` | Bare mirrors. |
@@ -279,7 +280,7 @@ Key config entries, with defaults:
 
 ## 7. Cross-cutting concerns
 
-- **Security**: The server binds only to loopback and refuses any other address (Q12). Tokens are never logged, and a log filter masks known secret values. Each step only gets the secrets it names. Validator output goes only through files. The pipeline policy comes from the target branch (4.2).
+- **Security**: The server binds only to loopback and refuses any other address (Q12). The API also needs the local token from a file only the owner can read (A14), because Docker Desktop containers can reach the host's loopback. Tokens are never logged, and a log filter masks known secret values. Each step only gets the secrets it names. Validator output goes only through files. The pipeline policy comes from the target branch (4.2).
 - **Container isolation**: Every step runs in a fresh container with the workspace mounted, a CPU and memory limit, and no Docker socket. Steps get outbound network access so they can download dependencies.
 - **Logging**: Structured logs through Go's `log/slog`, written to standard error.
 - **Errors**: Host or Docker failures mark the affected run `errored`, which is never a verdict. The poller backs off on host errors and raises an alert after repeated failures.
@@ -305,10 +306,11 @@ These are implementation calls made in this architecture step, with the reasons 
 | A11 | Reference validator v0 is deterministic: each criterion's `check` names steps or a command, and criteria without a check are `unknown` | Free and reproducible. `unknown` sends the change to a human instead of guessing. | Relying on AI judgment alone |
 | A12 | An AI validator ships in milestone 1 as a separate validator image. It uses Anthropic's Go SDK with structured JSON output, model `claude-opus-5-5` by default, overridable with `PLUMBIX_AI_MODEL` | User approved the paid service (2026-10-15). It catches what deterministic checks miss, such as weakened tests or criteria without a check. Keeping it a pluggable step keeps the core free of AI (Q07). | AI inside the Plumbix core, a provider-neutral wrapper library |
 | A13 | Secrets live in a dotenv file (`secrets_file`), mode `0600` | The user asked for a `.env` file. Dotenv is the most familiar format for open-source users. | A YAML secrets file |
+| A14 | The API needs a local bearer token, generated on first start in `<data_dir>/api-token` (mode `0600`). The browser gets a one-time login link with the web interface (WU-011) | Owner's choice (option A) after WU-003 showed Docker Desktop containers reach host loopback. Containers never see the data directory, so they can't authenticate. | No network for steps by default (partial fix, breaks dependency downloads), accepting the exposure |
 
 ## 9. Risks and open items
 
-1. **Containers reaching the API on Docker Desktop. CONFIRMED in WU-003.** On Linux, containers cannot reach a service bound to the host's loopback. On Docker Desktop they can, through `host.docker.internal`, `gateway.docker.internal` and the VM gateway `192.168.65.254`. A fix needs authentication, which is the owner's decision. Until then, `TestStepCannotReachHostLoopback` reports the exposure as a skip.
+1. **Containers reaching the API on Docker Desktop. Confirmed in WU-003, mitigated in WU-013.** On Docker Desktop, containers reach the host's loopback through `host.docker.internal`, `gateway.docker.internal` and `192.168.65.254`. The API token (A14) stops them from using it. `TestStepCannotUseHostAPI` probes the real API from a container on every run of `make integration`.
 2. **Weakened tests.** A deterministic validator cannot tell when an agent weakens or deletes tests. The reference validator reports changed test files as risks, and the AI validator is asked to judge them.
 3. **Prompt injection against the AI validator.** Agent-written code, comments or commit messages could contain text aimed at the AI validator, such as "approve this change". Mitigations: repo content is passed as clearly marked untrusted data, the verdict must match the JSON schema, every `met` criterion must cite evidence, and Plumbix's own pipeline also requires the deterministic validator to approve. An AI approval alone is never enough there.
 4. **AI validator cost.** Each validation run calls a paid model. Large diffs cost more. The validator reports token usage in its evidence so costs stay visible.

@@ -9,36 +9,36 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/eduard-alloy/plumbix/internal/api"
+	"github.com/eduard-alloy/plumbix/internal/auth"
 )
 
-// TestStepCannotReachHostLoopback checks ARCHITECTURE risk 1: Plumbix has no
-// authentication and relies on listening only on 127.0.0.1. A step container
-// must not be able to reach a server bound there, through any route Docker
-// offers to the host.
-//
-// On Docker Desktop (macOS, Windows) it can: host.docker.internal and the VM
-// gateway forward to the host's loopback. Fixing that needs authentication,
-// which is an open decision for the project owner (CONSTRAINTS.md, open
-// security finding). Until it is made, the test reports the exposure as a
-// skip instead of failing, so the rest of the integration suite stays usable.
-func TestStepCannotReachHostLoopback(t *testing.T) {
+// TestStepCannotUseHostAPI checks ARCHITECTURE risk 1 end to end. On Docker
+// Desktop a step container can reach the host's loopback (WU-003), so the
+// API's protection is the token (WU-013). The container probes a real API
+// server through every route Docker offers and must never get data back:
+// only 401 or no connection.
+func TestStepCannotUseHostAPI(t *testing.T) {
+	token, err := auth.EnsureToken(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, "PLUMBIX-API-REACHED")
-	})}
+	srv := &http.Server{Handler: api.NewHandler("dev", token)}
 	go func() { _ = srv.Serve(ln) }()
 	defer srv.Close()
 	port := ln.Addr().(*net.TCPAddr).Port
 
 	script := fmt.Sprintf(`
 gw=$(ip route | awk '/default/ {print $3}')
-for h in host.docker.internal gateway.docker.internal "$gw" 172.17.0.1 192.168.65.254 192.168.65.2; do
+for h in host.docker.internal gateway.docker.internal "$gw" 172.17.0.1 192.168.65.254; do
   [ -n "$h" ] || continue
-  out=$(wget -q -T 2 -O- "http://$h:%d/" 2>/dev/null)
-  echo "route $h: ${out:-unreachable}"
+  out=$(wget -q -T 2 -O- --post-data='version: 1' "http://$h:%d/api/v1/pipelines/check" 2>&1)
+  echo "route $h: ${out:-no response}"
 done
 `, port)
 
@@ -47,8 +47,12 @@ done
 	if _, err := d.Run(context.Background(), job(t, script, log)); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("probe results:\n%s", log.String())
-	if strings.Contains(log.String(), "PLUMBIX-API-REACHED") {
-		t.Skipf("OPEN SECURITY FINDING: a step container reached a server bound to the host's 127.0.0.1 (ARCHITECTURE risk 1, decision pending):\n%s", log.String())
+	out := log.String()
+	t.Logf("probe results:\n%s", out)
+	if strings.Contains(out, `"valid"`) {
+		t.Fatalf("a step container got a real API response:\n%s", out)
+	}
+	if strings.Contains(out, "401") {
+		t.Log("the API port is reachable from containers here (Docker Desktop); the token rejected every call")
 	}
 }

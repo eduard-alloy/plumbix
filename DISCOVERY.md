@@ -317,3 +317,13 @@ Initial discovery is complete. Results are consolidated in `PROJECT.md` and `CON
 **Implementation calls**
 - Anthropic's Go SDK, structured JSON output, default model `claude-opus-5-5`, overridable with `PLUMBIX_AI_MODEL`.
 - Host tokens use `PLUMBIX_`-prefixed names so they don't collide with other tools' variables.
+
+## Q16: Protecting the API from step containers (2026-10-16)
+
+**Trigger**: WU-003 showed that on Docker Desktop, step containers can reach the host's loopback and so the unauthenticated API.
+
+**Options**: A) automatic local token · B) no network for steps by default · C) accept for now
+
+**Answer**: "go with A for the answer...generated token"
+
+**Decision**: Plumbix generates a random token on first start in `<data_dir>/api-token` (mode `0600`). Every API route except health needs it. The CLI reads it automatically, and the browser gets a one-time login link with the web interface. Built in WU-013.
