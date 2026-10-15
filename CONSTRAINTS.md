@@ -31,5 +31,9 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 ## Formats
 - The pipeline format is Plumbix's own minimal, strict YAML with a published, versioned schema. No compatibility with other CI formats. (Q08)
 
+## Development environment
+- The Claude Code sandbox blocks local port binding, Go module downloads (TLS through its proxy fails) and the Docker socket. Tests that bind ports, `go get`/`go mod tidy`, and Docker integration tests run outside the sandbox, or with `sandbox.network.allowLocalBinding: true`. (WU-001)
+- `make check` (build, test, vet, gofmt) is the gate for every work unit. (WU-001)
+
 ## Licensing
 - Apache 2.0. (Q14)

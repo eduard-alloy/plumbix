@@ -78,7 +78,7 @@ Ordered so the thin validation loop works first, then the git host paths. GitHub
 
 | WU | Title | Features | Status |
 |----|-------|----------|--------|
-| WU-001 | Project skeleton: Go module, `plumbix serve` on localhost only, test, lint and build setup | - | ⚪ |
+| WU-001 | Project skeleton: Go module, `plumbix serve` on localhost only, test, lint and build setup | - | ✅ |
 | WU-002 | Pipeline format v0: schema, parser, validation errors | F-002 | ⚪ |
 | WU-003 | Container runner: run steps in isolated containers, capture logs, run independent steps in parallel | F-003 | ⚪ |
 | WU-004 | Change contract and storage, submitted through the public HTTP API and a small CLI | F-001 | ⚪ |

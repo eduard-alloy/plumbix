@@ -1,0 +1,53 @@
+openapi: 3.1.0
+info:
+  title: Plumbix API
+  version: "1"
+  description: >
+    Public HTTP API of a Plumbix server. Version 1 has no authentication and
+    the server listens on loopback addresses only.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://127.0.0.1:6400/api/v1
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Report that the server is running.
+      responses:
+        "200":
+          description: The server is running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          const: ok
+        version:
+          type: string
+    Error:
+      description: Error shape shared by every endpoint.
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
