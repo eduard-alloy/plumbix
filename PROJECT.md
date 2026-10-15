@@ -95,8 +95,7 @@ Ordered so the thin validation loop works first, then the git host paths. GitHub
 - Kai as the first external client.
 - Authentication, then service hooks.
 
-## Open items for architecture
+## Open items
 
-- How the reference validator judges acceptance criteria. A deterministic version maps criteria to checks. An AI version would call a paid model with the user's key, which needs the user's approval first.
-- Storage engine and web framework choice.
-- Exact shape of each contract, including versioning.
+- Whether milestone 1 also ships an optional AI validator that calls a paid model with the user's key. Needs the user's approval. The default reference validator is deterministic (ARCHITECTURE A11).
+- Whether step containers can reach the API on Docker Desktop. Verified in WU-003 (ARCHITECTURE risk 1).

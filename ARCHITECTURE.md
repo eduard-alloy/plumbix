@@ -1,0 +1,319 @@
+# Plumbix Architecture
+
+**Version**: 0.1 (milestone 1 baseline) · **Date**: 2026-10-15
+**Inputs**: PROJECT.md, DISCOVERY.md (Q00-Q14), CONSTRAINTS.md
+
+## 1. Overview
+
+Plumbix is one Go binary. `plumbix serve` runs the API, the web interface, the scheduler, the container runner and the git host poller in one process, listening only on a local address. The same binary is also the command-line client, and it talks to the server only through the public HTTP API.
+
+Code lives on the git host. Plumbix keeps a bare mirror of each registered repo, creates a temporary worktree per run, executes pipeline steps in containers, collects evidence, and runs validator steps that each write a verdict file. Plumbix combines those verdicts into the change's outcome. When a change is approved and a human clicks merge, Plumbix merges in its mirror and pushes the result to the host.
+
+Clients see Plumbix only through its contracts: the HTTP API, the pipeline file format, the validator input and output files, and the event stream. The web interface is a client of the same API.
+
+```
+                       ┌──────────────────────────── plumbix serve (127.0.0.1) ─────────────────────────────┐
+  CLI / Kai / scripts  │                                                                                     │
+  ───── HTTP API ────▶ │  API ──▶ Changes ──▶ Scheduler ──▶ Runner ──▶ Docker Engine ──▶ step containers   │
+  Browser ── UI ─────▶ │   │         │            ▲            │                                             │
+                       │   │         ▼            │            ▼                                             │
+                       │   │      Validation ◀────┴───── Evidence store (files)                              │
+                       │   ▼         │                                                                       │
+                       │  Events ◀───┤                                                                       │
+                       │             ▼                                                                       │
+                       │          Store (SQLite)        Poller ──▶ Host adapters ──▶ Git ops (mirrors)     │
+                       └──────────────────────────────────────────────────────────┬──────────────────────────┘
+                                                                                  │ git over HTTPS + PAT
+                                                                                  ▼
+                                                                  GitHub        Azure DevOps
+```
+
+## 2. Components
+
+Each package lives under `internal/` unless noted.
+
+| Component | Package | Responsibility |
+|-----------|---------|----------------|
+| CLI | `cmd/plumbix` | Entry point. `serve` starts the server. Other subcommands (`submit`, `repo add`, `pipeline check`) are thin HTTP clients of the public API. |
+| API | `api` | HTTP JSON handlers for `/api/v1`. Validates requests against the contracts. Serves the embedded web interface. |
+| Changes | `change` | Change lifecycle state machine, iterations, fix-round counting, escalation. |
+| Pipeline | `pipeline` | Parses and validates `.plumbix/pipeline.yaml` and builds the step graph (a DAG). |
+| Scheduler | `scheduler` | Turns a step graph into ready jobs, respects `needs`, caps parallelism, handles cancellation. |
+| Runner | `runner` | Runs one step in a container through the Docker Engine API. Mounts the workspace and evidence, streams logs, enforces timeouts. |
+| Evidence | `evidence` | Stores step logs, exit codes and declared artifacts on disk, with metadata in the store. |
+| Validation | `validation` | Prepares validator inputs, reads and checks each `verdict.json`, combines verdicts into the change outcome. |
+| Host adapters | `host`, `host/github`, `host/azuredevops` | The narrow host boundary: remote URL and credentials, branch heads, push. One implementation per host. |
+| Git ops | `gitops` | Wraps the system `git` command: mirrors, worktrees, diffs, merges, pushes with an expected old value. |
+| Poller | `poller` | Checks every registered repo's branch heads on an interval. Starts runs on new commits and flags bypass commits. |
+| Events | `events` | Append-only event log in the store, published to clients as a Server-Sent Events (SSE) stream. |
+| Store | `store` | SQLite database plus embedded migrations. |
+| Config | `config` | Loads config and secrets, checks file permissions, enforces the local-only bind rule. |
+| Web interface | `web/` | React and TypeScript app built with Vite, embedded into the binary at build time. |
+| Reference validator | `validators/reference/` | A separate small Go program shipped as a container image. It implements the validator contract. |
+
+## 3. Core model
+
+**Repo**: id, host (`github` or `azuredevops`), remote URL, protected branches (default: the host's default branch), merge strategy (default `squash`).
+
+**Change**: id, repo, source branch, target branch, title, intent (free text), acceptance criteria, optional constraints, submitted-by (free-text client name), state, current iteration.
+
+**Acceptance criterion**: id (such as `AC-1`), text, optional `check`. A check names one or more pipeline steps that must succeed, or a command the reference validator runs.
+
+**Iteration**: one head commit of the source branch while the change is open. Each iteration has exactly one run. A new push to the source branch creates a new iteration and cancels the previous run if it is still going.
+
+**Run**: one pipeline execution for one commit. A run can belong to an iteration, or stand alone when a push arrives on a branch without an open change.
+
+**Verdict**: one validator step's output. **Outcome**: the combined result for an iteration.
+
+### Change states
+
+```
+open ──▶ running ──▶ approved ──(human merge)──▶ merged
+             │  ▲
+             │  └──── new commits ◀──── fix_requested
+             ├──▶ rejected
+             ├──▶ needs_human        (unknown criteria, risky areas, validator error)
+             └──▶ escalated          (fourth fix round would be needed)
+any open state ──(close)──▶ closed
+```
+
+- `fix_requested` is the fix loop. The client's agent reads the findings, pushes new commits, and a new iteration starts. After three fix rounds without approval, the change moves to `escalated`.
+- `approved` never merges by itself in v1. A human merges from the web interface or the CLI.
+
+### Combining verdicts
+
+1. Any validator reports `reject`: the outcome is `rejected`.
+2. Otherwise any reports `fix`: the outcome is `fix_requested`, with all findings merged.
+3. Any criterion is `unknown`, any validator crashed or wrote an invalid verdict, or a required validator is missing: `needs_human`.
+4. All validators `approve` and all criteria `met`: `approved`.
+5. A change that touches `.plumbix/` or reports risks flagged `human_required` goes to `needs_human` even if rule 4 holds.
+
+## 4. Contracts
+
+The contracts are files in `contracts/`, versioned with the code and published with each release. Go types are written by hand. Contract tests check that the server's real output validates against these schemas, so code and contract cannot drift apart.
+
+| File | Contract |
+|------|----------|
+| `contracts/openapi.yaml` | HTTP API `v1` |
+| `contracts/pipeline.schema.json` | Pipeline file, format version 1 |
+| `contracts/validator-input.schema.json` | What a validator step receives |
+| `contracts/verdict.schema.json` | What a validator step must write |
+| `contracts/events.schema.json` | Event payloads on the stream |
+
+Versioning: every document carries a version (`version: 1` in pipelines, `"plumbix": "verdict/v1"` in verdicts). A breaking change creates a new version. The server accepts the previous version for at least one minor release.
+
+### 4.1 HTTP API v1
+
+The base address comes from config `server.listen`, default `127.0.0.1:6400`. There is no authentication in v1 (Q12). Errors use one JSON shape: `{"error": {"code": "...", "message": "...", "details": {...}}}`.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/v1/repos` | Register a repo (host, remote URL, protected branches, merge strategy). |
+| GET | `/api/v1/repos` | List repos. |
+| POST | `/api/v1/changes` | Submit a change: repo, source and target branch, title, intent, acceptance criteria, constraints, submitted-by. |
+| GET | `/api/v1/changes` | List changes, filter by repo and state. |
+| GET | `/api/v1/changes/{id}` | One change with its iterations, latest outcome and findings. |
+| GET | `/api/v1/changes/{id}/diff` | Diff between the target branch and the current iteration. |
+| POST | `/api/v1/changes/{id}/merge` | Merge an approved change. Fails if the target branch moved since validation. |
+| POST | `/api/v1/changes/{id}/close` | Close without merging. |
+| GET | `/api/v1/runs/{id}` | A run with its steps, status, timings and evidence index. |
+| GET | `/api/v1/runs/{id}/steps/{step}/log` | A step's log, streamed while running. |
+| GET | `/api/v1/runs/{id}/steps/{step}/artifacts/{path}` | Download an artifact. |
+| POST | `/api/v1/pipelines/check` | Validate a pipeline file without running it. |
+| GET | `/api/v1/alerts` | Bypass commits and token-expiry warnings. |
+| GET | `/api/v1/events` | SSE stream. Supports `Last-Event-ID` so clients can resume. |
+
+### 4.2 Pipeline file, version 1
+
+The file is `.plumbix/pipeline.yaml` in the repo.
+
+```yaml
+version: 1
+steps:
+  - name: test
+    image: golang:1.27
+    run: go test ./...
+  - name: lint
+    image: golangci/golangci-lint:v2.5.0
+    run: golangci-lint run
+  - name: validate
+    image: ghcr.io/eduard-alloy/plumbix-reference-validator:v0
+    validator: true
+    needs: [test, lint]
+```
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `version` | yes | Must be `1`. |
+| `steps[].name` | yes | Unique, lowercase letters, digits and dashes. |
+| `steps[].image` | yes | Container image. |
+| `steps[].run` | yes, except validators | Shell script, run with `sh -c`. |
+| `steps[].needs` | no | Steps that must succeed first. Steps without unmet needs run in parallel. |
+| `steps[].env` | no | Plain environment variables. |
+| `steps[].secrets` | no | Names of secrets from the Plumbix secrets file, exposed as environment variables to this step only. |
+| `steps[].artifacts` | no | Workspace paths to keep as evidence after the step. |
+| `steps[].timeout` | no | Duration such as `10m`. Default comes from config. |
+| `steps[].validator` | no | Marks the step as a validator. It gets validator inputs and must write a verdict. |
+
+Unknown fields are errors. There are no triggers, conditions, matrices or reusable templates in version 1. Every push runs the whole pipeline.
+
+**Policy source**: for a change, the list of required validators comes from the **target branch's** version of the pipeline file, not the change's version. An agent cannot remove or swap a validator in the same change it wants approved. A change that edits `.plumbix/` always ends in `needs_human`.
+
+### 4.3 Validator contract
+
+Plumbix mounts these paths into a validator step's container:
+
+| Path | Access | Content |
+|------|--------|---------|
+| `/workspace` | read-only | The checked-out commit. |
+| `/plumbix/in/change.json` | read-only | Intent, acceptance criteria, constraints, base and head commits, changed files, iteration number, previous findings. |
+| `/plumbix/in/evidence/` | read-only | One folder per earlier step: `status.json` (exit code, duration), `log.txt`, `artifacts/`. |
+| `/plumbix/out/` | write | The validator writes `verdict.json` here. |
+
+`verdict.json`:
+
+```json
+{
+  "plumbix": "verdict/v1",
+  "outcome": "fix",
+  "summary": "Tests pass but AC-2 is not covered.",
+  "criteria": [
+    {"id": "AC-1", "status": "met", "reason": "step 'test' passed", "evidence": ["test/log.txt"]},
+    {"id": "AC-2", "status": "unmet", "reason": "no test exercises the timeout path"}
+  ],
+  "findings": [
+    {"severity": "major", "criterion": "AC-2", "message": "Add a test for the timeout path.", "file": "internal/runner/run.go", "line": 88}
+  ],
+  "risks": [
+    {"area": "tests", "message": "3 test files were modified.", "human_required": false}
+  ]
+}
+```
+
+- `outcome` is `approve`, `fix` or `reject`. Criterion `status` is `met`, `unmet` or `unknown`. Finding `severity` is `blocker`, `major` or `minor`.
+- A validator that exits non-zero or writes an invalid file produces no verdict. That counts as a validator error, never as approval.
+- Only steps marked `validator: true` get `/plumbix/out/`. Verdict files from other steps are ignored.
+
+### 4.4 Events
+
+Event types: `change.submitted`, `iteration.started`, `run.started`, `step.finished`, `run.finished`, `verdict.issued`, `change.state_changed`, `change.merged`, `alert.raised`. Each event has an increasing id, a timestamp, a type and a payload defined in `contracts/events.schema.json`. Outgoing webhooks come later, once Plumbix has authentication.
+
+### 4.5 Host boundary (internal)
+
+The host boundary is not a public contract. It is kept narrow because git itself does most of the work.
+
+```go
+type Host interface {
+    Kind() string                                        // "github", "azuredevops"
+    RemoteURL(repo Repo) string                          // HTTPS clone URL
+    Credentials(repo Repo) (user, token string, err error)
+    TokenExpiry(ctx context.Context) (time.Time, error)  // for expiry warnings
+}
+```
+
+Branch heads come from `git ls-remote`, fetches and pushes from `git` with credentials passed through `GIT_ASKPASS`. This works the same on both hosts. Each adapter only knows its URL format, its credential style and how to read token expiry. Status reporting back to the host (GitHub commit statuses, Azure DevOps PR statuses) is a later feature.
+
+## 5. Main flows
+
+### 5.1 Submit and validate a change
+
+1. A client posts the change. The API validates it and the change service stores it in state `open`, emitting `change.submitted`.
+2. Git ops fetches the source branch into the repo's mirror and records the head commit as iteration 1.
+3. The pipeline package reads the pipeline file from that commit, and the validator policy from the target branch.
+4. The scheduler starts every step whose needs are met, up to `runner.max_parallel` at once.
+5. The runner creates a worktree, starts each step's container, streams its log, and saves evidence when it ends.
+6. Validator steps run with their inputs mounted. The validation package reads each `verdict.json`.
+7. Verdicts are combined and the change moves to its outcome state. `verdict.issued` and `change.state_changed` are emitted.
+
+### 5.2 Fix loop
+
+1. The client reads the findings from the API or the event stream.
+2. Its agent pushes new commits to the source branch.
+3. The poller sees the new head and starts iteration N+1. The previous findings are included in the validator input.
+4. If a fourth fix round would be needed, the change moves to `escalated`.
+
+### 5.3 Push without a change
+
+The poller sees a new head on any branch of a registered repo. If an open change uses that branch, this is the fix loop. Otherwise Plumbix starts a standalone run and shows the results without a verdict.
+
+### 5.4 Merge
+
+1. A human merges an `approved` change.
+2. Git ops checks that the target branch head equals the head validation used. If it moved, the merge is refused and a re-run is offered.
+3. Git ops builds the merge commit in the mirror with the repo's strategy, records it as a Plumbix merge, and pushes with the expected old head (`git push --force-with-lease=<branch>:<old>` without forcing anything else).
+4. The change moves to `merged`.
+
+### 5.5 Bypass detection
+
+When the poller sees a protected branch move to a commit that Plumbix did not push, it raises a `bypass_commit` alert. The alert names the commit, the author and the time.
+
+## 6. Storage and files
+
+Everything lives under the data directory, config key `data_dir`, default `~/.plumbix`.
+
+| Path | Content |
+|------|---------|
+| `config.yaml` | Server settings. |
+| `secrets.yaml` | Host tokens and pipeline secrets. Must be mode `0600` or the server refuses to start. |
+| `plumbix.db` | SQLite: repos, changes, iterations, runs, steps, verdicts, events, alerts, merges. |
+| `mirrors/<repo-id>.git` | Bare mirrors. |
+| `work/<run-id>/` | Temporary worktrees, deleted after the run. |
+| `evidence/<run-id>/<step>/` | Logs, status and artifacts. Kept until a configurable retention limit. |
+
+Key config entries, with defaults:
+
+| Key | Default |
+|-----|---------|
+| `server.listen` | `127.0.0.1:6400` |
+| `runner.max_parallel` | number of CPU cores |
+| `runner.default_timeout` | `30m` |
+| `poller.interval` | `30s` |
+| `fix_rounds.max` | `3` |
+| `evidence.retention_days` | `30` |
+
+## 7. Cross-cutting concerns
+
+- **Security**: The server binds only to loopback and refuses any other address (Q12). Tokens are never logged, and a log filter masks known secret values. Each step only gets the secrets it names. Validator output goes only through files. The pipeline policy comes from the target branch (4.2).
+- **Container isolation**: Every step runs in a fresh container with the workspace mounted, a CPU and memory limit, and no Docker socket. Steps get outbound network access so they can download dependencies.
+- **Logging**: Structured logs through Go's `log/slog`, written to standard error.
+- **Errors**: Host or Docker failures mark the affected run `errored`, which is never a verdict. The poller backs off on host errors and raises an alert after repeated failures.
+- **Crash recovery**: On startup, runs left `running` are marked `errored` and their worktrees removed.
+- **Testing**: Unit tests per package. Contract tests check API and verdict output against the schemas. Git ops tests use local bare repos, with no network. Host adapters are tested against fake HTTP servers. Docker tests carry the `integration` build tag. One end-to-end test drives a whole change through a local bare repo standing in for the host.
+
+## 8. Decisions
+
+These are implementation calls made in this architecture step, with the reasons and the rejected options.
+
+| # | Decision | Why | Rejected |
+|---|----------|-----|----------|
+| A1 | One process for v1, with the runner behind an interface the scheduler calls | Simplest install. The interface keeps remote runners possible later (Q04). | Separate runner process now |
+| A2 | SQLite through the pure-Go `modernc.org/sqlite` driver | No database server to install, no C compiler needed, simple cross-compilation. | PostgreSQL (extra service), embedded key-value stores (weak querying) |
+| A3 | Git operations through the system `git` command | Merges, rebases and worktrees are complete and battle-tested there. Adds one install requirement. | `go-git` (incomplete merge support) |
+| A4 | Docker Engine API through the official Go client; Docker-compatible engines work if they serve the same API | Most widely installed container engine. | Shelling out to `docker`, containerd directly |
+| A5 | Events as an SSE stream with resumable ids | Works with plain HTTP, easy for any client, no broker. | WebSockets, outgoing webhooks before authentication exists |
+| A6 | React with TypeScript and Vite, embedded with `go:embed` | Largest contributor pool for an open-source interface, single binary stays intact. | Svelte, server-rendered templates |
+| A7 | JSON Schemas and an OpenAPI file are the source of truth, with hand-written Go types checked by contract tests | Keeps contracts readable and language-neutral without a code generator in the build. | Generating Go code from OpenAPI |
+| A8 | Branch polling with `git ls-remote` for both hosts | Same code for every host, and it doesn't use the hosts' REST API quotas. | Each host's REST API |
+| A9 | Required validators come from the target branch's pipeline file, and `.plumbix/` edits always need a human | Stops an agent from removing the checks that judge it. | Using the change's own pipeline file |
+| A10 | Squash merge by default, configurable per repo | Agent commit histories are noisy. One commit per change matches one verdict per change. | Merge commits by default |
+| A11 | Reference validator v0 is deterministic: each criterion's `check` names steps or a command, and criteria without a check are `unknown` | No paid service needed, and results are reproducible. `unknown` sends the change to a human instead of guessing. | Built-in AI judging (needs the user's approval as a paid service) |
+
+## 9. Risks and open items
+
+1. **Containers reaching the API on Docker Desktop.** On Linux, containers cannot reach a service bound to the host's loopback. On Docker Desktop for macOS and Windows, `host.docker.internal` may reach it. WU-003 includes a test that a step container cannot call the Plumbix API. If that test fails on Docker Desktop, a fix needs the user's decision, because it touches authentication.
+2. **Weakened tests.** A deterministic validator cannot tell when an agent weakens or deletes tests. The reference validator reports changed test files as risks, so the human sees them first. An AI validator could judge this better.
+3. **AI validator.** Whether milestone 1 also ships an optional AI validator, which calls a paid model with the user's key, is the user's decision.
+4. **Polling delay.** Runs start up to `poller.interval` after a push. Push notifications come with authentication (F-009).
+5. **Docker access in the development sandbox.** Integration tests need the Docker socket, which the current sandbox blocks.
+
+## 10. Repository layout
+
+```
+cmd/plumbix/            entry point and CLI
+internal/               api, change, pipeline, scheduler, runner, evidence, validation,
+                        host (+ github, azuredevops), gitops, poller, events, store, config
+web/                    React + TypeScript interface (Vite)
+validators/reference/   reference validator program and its Dockerfile
+contracts/              OpenAPI, JSON Schemas
+.plumbix/pipeline.yaml  Plumbix's own pipeline (used from WU-011)
+```

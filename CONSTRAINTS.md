@@ -14,6 +14,12 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Neither host can enforce merges in v1 because the PAT acts as the user. Plumbix flags bypass commits instead. (Q13)
 
 ## Architecture
+- One process in v1. The scheduler calls the runner only through its interface, so runners can move out later. (ARCHITECTURE A1)
+- Required validators come from the target branch's pipeline file. Any change touching `.plumbix/` needs a human. (A9)
+- A validator crash or invalid verdict is never approval. Criteria without a check are `unknown` and send the change to a human. (A11)
+- Merges are refused if the target branch moved since validation. (5.4)
+- Contract files in `contracts/` are the source of truth. Contract tests must check real server output against them. (A7)
+- Runtime requirements: system `git` and a Docker-compatible engine. (A3, A4)
 - Plumbix never depends on Kai or TRACE. Clients depend on Plumbix's public contracts. (Q06)
 - Plumbix's own changes go through the public API, never internal shortcuts. (Q11)
 - The core contains no AI and holds no model API keys. Validators are pluggable pipeline steps. (Q07)
