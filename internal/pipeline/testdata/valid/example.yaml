@@ -1,0 +1,21 @@
+version: 1
+steps:
+  - name: test
+    image: golang:1.27
+    run: go test ./...
+    timeout: 10m
+    artifacts: [coverage.out]
+  - name: lint
+    image: golangci/golangci-lint:v2.5.0
+    run: golangci-lint run
+    env:
+      GOFLAGS: "-mod=readonly"
+  - name: validate
+    image: ghcr.io/eduard-alloy/plumbix-reference-validator:v0
+    validator: true
+    needs: [test, lint]
+  - name: ai-review
+    image: ghcr.io/eduard-alloy/plumbix-ai-validator:v0
+    validator: true
+    needs: [test, lint]
+    secrets: [ANTHROPIC_API_KEY]

@@ -1,0 +1,4 @@
+version: 1
+on: push
+steps:
+  - {name: a, image: x, run: x}

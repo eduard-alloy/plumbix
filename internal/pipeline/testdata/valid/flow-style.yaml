@@ -1,0 +1,4 @@
+version: 1
+steps:
+  - {name: build, image: node:24, run: "npm ci && npm run build", timeout: 1h30m}
+  - {name: check, image: x, validator: false, run: x, needs: [build], artifacts: [dist/report.html]}

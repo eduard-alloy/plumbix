@@ -29,10 +29,13 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Server and runner stay separable so runners can move to other machines later. (Q04)
 
 ## Formats
+- The pipeline parser and `contracts/pipeline.schema.json` must agree. Every format change adds example files under `internal/pipeline/testdata/` so the contract test covers it. Rules that span fields live in the parser and are listed in the schema's description. (WU-002)
+- Invalid input to a check-style endpoint is a 200 result with `valid: false`, not an HTTP error. (WU-002)
 - The pipeline format is Plumbix's own minimal, strict YAML with a published, versioned schema. No compatibility with other CI formats. (Q08)
 
 ## Development environment
 - The Claude Code sandbox blocks local port binding, Go module downloads (TLS through its proxy fails) and the Docker socket. Tests that bind ports, `go get`/`go mod tidy`, and Docker integration tests run outside the sandbox, or with `sandbox.network.allowLocalBinding: true`. (WU-001)
+- Once Go's build cache has been written outside the sandbox, the sandbox can't read it. Run all Go commands outside the sandbox. (WU-002)
 - `make check` (build, test, vet, gofmt) is the gate for every work unit. (WU-001)
 
 ## Licensing

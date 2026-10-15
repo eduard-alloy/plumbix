@@ -1,0 +1,5 @@
+version: 1
+steps:
+  - name: a
+    image: alpine:3.20
+    run: echo hi

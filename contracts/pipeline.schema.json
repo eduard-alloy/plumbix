@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eduard-alloy/plumbix/blob/main/contracts/pipeline.schema.json",
+  "title": "Plumbix pipeline, format version 1",
+  "description": "Schema for .plumbix/pipeline.yaml. Plumbix also enforces rules that span fields, which this schema cannot express: step names are unique; every name in needs refers to another existing step, appears once, and is not a validator step; needs contain no cycles; a secret name is not also an env key; timeout is above zero and at most 24h.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "steps"],
+  "properties": {
+    "version": {
+      "description": "Pipeline format version. Must be 1.",
+      "type": "integer",
+      "const": 1
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+  "$defs": {
+    "stepName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "varName": {
+      "description": "Environment variable or secret name. Names starting with PLUMBIX_ are reserved.",
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+      "not": { "pattern": "^PLUMBIX_" }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "image"],
+      "properties": {
+        "name": { "$ref": "#/$defs/stepName" },
+        "image": {
+          "description": "Container image the step runs in.",
+          "type": "string",
+          "pattern": "^\\S+$"
+        },
+        "run": {
+          "description": "Shell script run with sh -c. Required unless the step is a validator.",
+          "type": "string",
+          "minLength": 1
+        },
+        "needs": {
+          "description": "Steps that must succeed before this one starts.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/stepName" }
+        },
+        "env": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/varName" },
+          "additionalProperties": { "type": "string" }
+        },
+        "secrets": {
+          "description": "Names of secrets exposed to this step only, as environment variables.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/varName" }
+        },
+        "artifacts": {
+          "description": "Workspace-relative paths kept as evidence after the step.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "not": {
+              "anyOf": [
+                { "pattern": "^[/\\\\]" },
+                { "pattern": "(^|[/\\\\])\\.\\.([/\\\\]|$)" }
+              ]
+            }
+          }
+        },
+        "timeout": {
+          "description": "Duration such as 90s, 10m or 1h30m.",
+          "type": "string",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+        },
+        "validator": {
+          "description": "Marks a validator step, which receives validator inputs and must write a verdict.",
+          "type": "boolean"
+        }
+      },
+      "if": {
+        "required": ["validator"],
+        "properties": { "validator": { "const": true } }
+      },
+      "else": { "required": ["run"] }
+    }
+  }
+}

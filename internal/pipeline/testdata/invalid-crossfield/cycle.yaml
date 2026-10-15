@@ -1,0 +1,4 @@
+version: 1
+steps:
+  - {name: a, image: x, run: x, needs: [b]}
+  - {name: b, image: x, run: x, needs: [a]}

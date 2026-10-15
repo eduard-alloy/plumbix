@@ -1,0 +1,4 @@
+version: 1
+steps:
+  - {name: v, image: x, validator: true}
+  - {name: b, image: x, run: x, needs: [v]}

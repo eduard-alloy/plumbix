@@ -1,0 +1,3 @@
+version: 2
+steps:
+  - {name: a, image: x, run: x}

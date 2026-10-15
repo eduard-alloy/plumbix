@@ -22,8 +22,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+  /pipelines/check:
+    post:
+      operationId: checkPipeline
+      summary: Validate a pipeline file without running it.
+      description: >
+        The request body is the pipeline YAML. An invalid pipeline is a normal
+        result with valid set to false, not an HTTP error. The file format is
+        defined in pipeline.schema.json.
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              type: string
+              maxLength: 1048576
+      responses:
+        "200":
+          description: The check ran.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineCheck"
+        "413":
+          description: The body is larger than 1 MiB.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
+    PipelineCheck:
+      type: object
+      additionalProperties: false
+      required: [valid]
+      properties:
+        valid:
+          type: boolean
+        order:
+          description: Step names in dependency order. Present when valid.
+          type: array
+          items:
+            type: string
+        errors:
+          description: Every problem found. Present when not valid.
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineProblem"
+    PipelineProblem:
+      type: object
+      additionalProperties: false
+      required: [path, line, message]
+      properties:
+        path:
+          description: Location in the file, such as steps[1].needs[0]. Empty for whole-file problems.
+          type: string
+        line:
+          description: Line number, or 0 when unknown.
+          type: integer
+        message:
+          type: string
     Health:
       type: object
       additionalProperties: false
