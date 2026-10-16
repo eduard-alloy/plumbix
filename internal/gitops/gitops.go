@@ -9,7 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
+
+	"github.com/eduard-alloy/plumbix/internal/diff"
 )
 
 // ErrUnknownBranch means the branch doesn't exist in the mirror.
@@ -145,9 +148,57 @@ func (m *Mirror) MergeBase(ctx context.Context, a, b string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// Diff returns the unified diff from base to head.
+// Diff returns the unified diff from base to head, without rename
+// detection, so it matches ChangedFiles and DiffStat.
 func (m *Mirror) Diff(ctx context.Context, base, head string) ([]byte, error) {
-	return m.git(ctx, "diff", "--no-color", "--no-ext-diff", base, head)
+	return m.git(ctx, "diff", "--no-color", "--no-ext-diff", "--no-renames", base, head)
+}
+
+// DiffStat lists the files that differ between base and head, sorted by
+// path, with their status and line counts but no hunks.
+func (m *Mirror) DiffStat(ctx context.Context, base, head string) ([]diff.File, error) {
+	statusOut, err := m.git(ctx, "diff", "--name-status", "-z", "--no-renames", base, head)
+	if err != nil {
+		return nil, err
+	}
+	byPath := map[string]*diff.File{}
+	fields := strings.Split(strings.TrimSuffix(string(statusOut), "\x00"), "\x00")
+	for i := 0; i+1 < len(fields); i += 2 {
+		f := &diff.File{Path: fields[i+1], Status: diff.Modified}
+		switch fields[i] {
+		case "A":
+			f.Status = diff.Added
+		case "D":
+			f.Status = diff.Deleted
+		}
+		byPath[f.Path] = f
+	}
+	numOut, err := m.git(ctx, "diff", "--numstat", "-z", "--no-renames", base, head)
+	if err != nil {
+		return nil, err
+	}
+	for _, rec := range strings.Split(strings.TrimSuffix(string(numOut), "\x00"), "\x00") {
+		parts := strings.SplitN(rec, "\t", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		f, ok := byPath[parts[2]]
+		if !ok {
+			continue
+		}
+		if parts[0] == "-" {
+			f.Binary = true
+			continue
+		}
+		fmt.Sscan(parts[0], &f.Additions)
+		fmt.Sscan(parts[1], &f.Deletions)
+	}
+	files := make([]diff.File, 0, len(byPath))
+	for _, f := range byPath {
+		files = append(files, *f)
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	return files, nil
 }
 
 // ChangedFiles lists paths that differ between base and head, sorted.

@@ -3,6 +3,8 @@
 Newest first. Each entry cites its source in DISCOVERY.md.
 
 ## Security
+- Browser sign-in (A17): login links and session cookies are stored as SHA-256 hashes only; links live 10 minutes and work once, sessions 30 days. Every cookie request must carry the listen address as `Host`, and state-changing ones an `Origin` of `http://<listen>`; the bearer token is exempt from both. The sign-in exchange is a POST, never a GET, so prefetchers cannot consume a link. (WU-016)
+- The web app is served outside `/api/` with a same-origin Content-Security-Policy and no inline scripts; `/api/` keeps its protection. The container probe also checks `GET /api/v1/changes`. (WU-016)
 - On Docker Desktop, step containers reach the host's loopback through `host.docker.internal`, `gateway.docker.internal` and `192.168.65.254`. Loopback binding alone never protects the API. (WU-003)
 - Every API route except health needs the bearer token from `<data_dir>/api-token`. The server refuses a token file readable by others. New endpoints go on the protected mux by default. Never mount the data directory into a step container. (WU-013, A14)
 - `TestStepCannotUseHostAPI` (in `internal/api`) must keep passing: a container probing the real API must never get data back. (WU-013)
@@ -58,6 +60,7 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - The pipeline format is Plumbix's own minimal, strict YAML with a published, versioned schema. No compatibility with other CI formats. (Q08)
 
 ## Development environment
+- `make build` runs `make web` first, which needs Node and npm; `web/dist` is embedded by `web/embed.go`, so a Go-only build still works and serves a "not built" page at `/`. Vite builds with `emptyOutDir` off so `web/dist/.gitkeep` stays. The Vite dev server is not wired to the API: the cookie checks refuse its Host and Origin, so develop against the built app or add a proxy with `changeOrigin` later. (WU-016)
 - `make integration` builds the two validator images concurrently from the same context. `TestImageFailsCleanlyWithoutKey` failed once under that load and passes alone; rerun before suspecting a change. (WU-010)
 - The Claude Code sandbox blocks local port binding, Go module downloads (TLS through its proxy fails) and the Docker socket. Tests that bind ports, `go get`/`go mod tidy`, and Docker integration tests run outside the sandbox, or with `sandbox.network.allowLocalBinding: true`. (WU-001)
 - Once Go's build cache has been written outside the sandbox, the sandbox can't read it. Run all Go commands outside the sandbox. (WU-002)

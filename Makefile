@@ -3,10 +3,18 @@ SHELL := bash
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 
-.PHONY: build test lint check integration images live
+.PHONY: build web test lint check integration images live
 
-build:
+build: web
 	go build -ldflags "$(LDFLAGS)" -o bin/plumbix ./cmd/plumbix
+
+# The browser app. Its build output in web/dist is embedded into the binary.
+web/node_modules: web/package.json web/package-lock.json
+	cd web && npm ci
+	touch web/node_modules
+
+web: web/node_modules
+	cd web && npm run build
 
 test:
 	go test ./...

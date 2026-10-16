@@ -243,6 +243,54 @@ func runAlert(args []string, stdout, stderr io.Writer) int {
 	return usageError(stderr, "usage: plumbix alert list [--all] | plumbix alert resolve <alert-id>")
 }
 
+// runLogin handles "plumbix login": it prints a one-time link that signs
+// a browser in to this server.
+func runLogin(args []string, stdout, stderr io.Writer) int {
+	c := newClientCmd("login", stdout, stderr)
+	pos, ok := c.parse(args)
+	if !ok {
+		return 2
+	}
+	if len(pos) != 0 {
+		return usageError(stderr, "usage: plumbix login")
+	}
+	cl, ok := c.connect()
+	if !ok {
+		return 1
+	}
+	resp, err := cl.Do(context.Background(), http.MethodPost, "/api/v1/login-links", nil)
+	if err != nil {
+		fmt.Fprintf(stderr, "plumbix: %v\n", err)
+		return 1
+	}
+	if !resp.OK() {
+		c.printAPIError(resp.Error())
+		return 1
+	}
+	var link struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(resp.Body, &link); err != nil || link.URL == "" {
+		fmt.Fprintf(stderr, "plumbix: unexpected response: %s\n", resp.Body)
+		return 1
+	}
+	fmt.Fprintf(stdout, "Open this link in your browser to sign in. It works once and expires in 10 minutes.\n\n  %s\n\n", link.URL)
+	return 0
+}
+
+// runLogout handles "plumbix logout": every browser session is revoked.
+func runLogout(args []string, stdout, stderr io.Writer) int {
+	c := newClientCmd("logout", stdout, stderr)
+	pos, ok := c.parse(args)
+	if !ok {
+		return 2
+	}
+	if len(pos) != 0 {
+		return usageError(stderr, "usage: plumbix logout")
+	}
+	return c.call(http.MethodDelete, "/api/v1/sessions", nil)
+}
+
 // errEnoughEvents stops the stream once --max events were printed.
 var errEnoughEvents = errors.New("enough events")
 

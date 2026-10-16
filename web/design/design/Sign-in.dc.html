@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<title>Plumbix · sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:light dark;
+--bg:light-dark(oklch(0.992 0.002 265),oklch(0.165 0.006 265));
+--surface:light-dark(oklch(0.974 0.003 265),oklch(0.198 0.007 265));
+--surface-2:light-dark(oklch(0.948 0.004 265),oklch(0.238 0.008 265));
+--border:light-dark(oklch(0.91 0.005 265),oklch(0.275 0.008 265));
+--border-strong:light-dark(oklch(0.83 0.007 265),oklch(0.36 0.01 265));
+--text:light-dark(oklch(0.21 0.012 265),oklch(0.94 0.004 265));
+--text-2:light-dark(oklch(0.41 0.012 265),oklch(0.77 0.008 265));
+--text-3:light-dark(oklch(0.52 0.012 265),oklch(0.65 0.008 265));
+--accent:light-dark(oklch(0.5 0.18 275),oklch(0.75 0.13 275));
+--s-neutral:light-dark(oklch(0.46 0.012 265),oklch(0.74 0.008 265));--s-neutral-bg:light-dark(oklch(0.945 0.004 265),oklch(0.245 0.008 265));
+--s-green:light-dark(oklch(0.48 0.12 152),oklch(0.79 0.13 152));--s-green-bg:light-dark(oklch(0.95 0.035 152),oklch(0.265 0.045 152));
+--s-red:light-dark(oklch(0.5 0.17 25),oklch(0.75 0.14 25));--s-red-bg:light-dark(oklch(0.95 0.025 25),oklch(0.27 0.05 25));
+--ui:'IBM Plex Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace}
+[data-theme=light]{color-scheme:light}[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--ui);-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div data-theme="{{ theme }}" style="min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--ui);font-size:13px;line-height:1.5">
+  <div style="height:44px;display:flex;align-items:center;gap:8px;padding:0 20px;border-bottom:1px solid var(--border)"><span style="width:10px;height:10px;border-radius:2px;background:var(--text)"></span><span style="font-family:var(--mono);font-size:13px;font-weight:600">plumbix</span><span style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text-3)">127.0.0.1:6400</span></div>
+  <main style="max-width:440px;margin:0 auto;padding:18vh 20px 0;display:flex;flex-direction:column;gap:12px">
+    <div style="display:flex"><dc-import name="StatePill" status="{{ pill }}" label="{{ pillLabel }}" hint-size="110px,20px"></dc-import></div>
+    <h1 style="margin:0;font-size:20px;line-height:26px;font-weight:600;letter-spacing:-0.01em">{{ title }}</h1>
+    <p style="margin:0;font-size:14px;color:var(--text-2);text-wrap:pretty">{{ body }}</p>
+    <sc-if value="{{ ok }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;gap:12px;margin-top:6px">
+        <a href="Plumbix.dc.html" style="height:30px;padding:0 14px;display:inline-flex;align-items:center;border-radius:5px;background:var(--text);color:var(--bg);font-size:13px;font-weight:500;text-decoration:none">Open changes</a>
+        <span style="font-size:12px;color:var(--text-3)">You can close the terminal prompt.</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{ failed }}">
+      <code style="margin-top:6px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-family:var(--mono);font-size:12px"><span style="color:var(--text-3)">$ </span>plumbix login</code>
+    </sc-if>
+    <p style="margin:18px 0 0;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--text-3)">{{ foot }}</p>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;variant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;signed_in&quot;,&quot;used&quot;,&quot;expired&quot;],&quot;default&quot;:&quot;signed_in&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;system&quot;,&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;system&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const v = this.props.variant || 'signed_in';
+    const M = {
+      signed_in: { pill: 'approved', pillLabel: 'Signed in', title: 'This browser is signed in', body: 'Plumbix on 127.0.0.1:6400 will recognise this browser until you run plumbix logout or the session expires in 30 days.', foot: 'Sign-in links work once and expire after 10 minutes.' },
+      used: { pill: 'rejected', pillLabel: 'Link already used', title: 'This sign-in link was already used', body: 'Each link signs in one browser, once. Run plumbix login in your terminal to get a new link.', foot: 'If you did not open this link before, someone else may have. Run plumbix logout --all to end every session.' },
+      expired: { pill: 'closed', pillLabel: 'Link expired', title: 'This sign-in link expired', body: 'Links expire 10 minutes after they are printed. Run plumbix login in your terminal to get a new link.', foot: 'Nothing changed on this machine. No account or password is involved.' }
+    }[v];
+    return { ...M, ok: v === 'signed_in', failed: v !== 'signed_in', theme: this.props.theme || 'system' };
+  }
+}
+</script>
+</body>
+</html>

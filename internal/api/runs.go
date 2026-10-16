@@ -22,6 +22,7 @@ func registerRunRoutes(mux *http.ServeMux, h *runHandlers) {
 	mux.HandleFunc("POST /api/v1/changes/{id}/validate", h.validate)
 	mux.HandleFunc("POST /api/v1/changes/{id}/merge", h.merge)
 	mux.HandleFunc("GET /api/v1/changes/{id}/runs", h.listRuns)
+	mux.HandleFunc("GET /api/v1/changes/{id}/diff", h.diff)
 	mux.HandleFunc("GET /api/v1/repos/{id}/runs", h.listRepoRuns)
 	mux.HandleFunc("GET /api/v1/runs/{id}", h.getRun)
 	mux.HandleFunc("GET /api/v1/runs/{id}/steps/{step}/log", h.stepLog)
@@ -116,4 +117,15 @@ func (h *runHandlers) stepLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write(data)
+}
+
+// diff serves GET /api/v1/changes/{id}/diff: the latest validated head
+// against its base, with hunks unless stat=true.
+func (h *runHandlers) diff(w http.ResponseWriter, r *http.Request) {
+	d, err := h.engine.Diff(r.Context(), r.PathValue("id"), r.URL.Query().Get("stat") != "true")
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
 }

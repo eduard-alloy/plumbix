@@ -24,6 +24,8 @@ commands:
   run show|log          read a run, or a step's log
   alert list|resolve    bypass commits and token warnings
   events                follow the event stream as JSON lines
+  login                 print a one-time link that signs a browser in
+  logout                sign every browser out
   version               print the version
 
 Client commands use the token in <data-dir>/api-token and accept
@@ -55,6 +57,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runRun(args[1:], stdout, stderr)
 	case "alert":
 		return runAlert(args[1:], stdout, stderr)
+	case "login":
+		return runLogin(args[1:], stdout, stderr)
+	case "logout":
+		return runLogout(args[1:], stdout, stderr)
 	case "events":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()

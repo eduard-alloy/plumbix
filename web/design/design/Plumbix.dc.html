@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<title>Plumbix</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:light dark;
+--bg:light-dark(oklch(0.992 0.002 265),oklch(0.165 0.006 265));
+--surface:light-dark(oklch(0.974 0.003 265),oklch(0.198 0.007 265));
+--surface-2:light-dark(oklch(0.948 0.004 265),oklch(0.238 0.008 265));
+--hover:light-dark(oklch(0.962 0.004 265),oklch(0.215 0.008 265));
+--border:light-dark(oklch(0.91 0.005 265),oklch(0.275 0.008 265));
+--border-strong:light-dark(oklch(0.83 0.007 265),oklch(0.36 0.01 265));
+--text:light-dark(oklch(0.21 0.012 265),oklch(0.94 0.004 265));
+--text-2:light-dark(oklch(0.41 0.012 265),oklch(0.77 0.008 265));
+--text-3:light-dark(oklch(0.52 0.012 265),oklch(0.65 0.008 265));
+--accent:light-dark(oklch(0.5 0.18 275),oklch(0.75 0.13 275));
+--accent-bg:light-dark(oklch(0.95 0.03 275),oklch(0.28 0.06 275));
+--s-neutral:light-dark(oklch(0.46 0.012 265),oklch(0.74 0.008 265));--s-neutral-bg:light-dark(oklch(0.945 0.004 265),oklch(0.245 0.008 265));
+--s-blue:light-dark(oklch(0.49 0.12 230),oklch(0.78 0.11 230));--s-blue-bg:light-dark(oklch(0.95 0.03 230),oklch(0.27 0.045 230));
+--s-green:light-dark(oklch(0.48 0.12 152),oklch(0.79 0.13 152));--s-green-bg:light-dark(oklch(0.95 0.035 152),oklch(0.265 0.045 152));
+--s-amber:light-dark(oklch(0.5 0.11 70),oklch(0.81 0.12 75));--s-amber-bg:light-dark(oklch(0.955 0.04 80),oklch(0.27 0.045 70));
+--s-red:light-dark(oklch(0.5 0.17 25),oklch(0.75 0.14 25));--s-red-bg:light-dark(oklch(0.95 0.025 25),oklch(0.27 0.05 25));
+--s-violet:light-dark(oklch(0.5 0.17 320),oklch(0.77 0.13 320));--s-violet-bg:light-dark(oklch(0.95 0.03 320),oklch(0.27 0.05 320));
+--diff-add:light-dark(oklch(0.96 0.03 152),oklch(0.235 0.035 152));--diff-del:light-dark(oklch(0.96 0.025 25),oklch(0.235 0.035 25));
+--hit:light-dark(oklch(0.92 0.09 95),oklch(0.43 0.08 95));--hit-strong:light-dark(oklch(0.84 0.15 85),oklch(0.58 0.12 85));
+--ui:'IBM Plex Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace}
+[data-theme=light]{color-scheme:light}[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--ui);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+::selection{background:var(--accent-bg)}
+input::placeholder{color:var(--text-3)}
+</style>
+</helmet>
+<div data-theme="{{ theme }}" style="display:grid;grid-template-columns:208px minmax(0,1fr);height:100vh;background:var(--bg);color:var(--text);font-family:var(--ui);font-size:13px;line-height:1.45;overflow:hidden">
+<nav aria-label="Main" style="display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);background:var(--surface)">
+  <div style="height:44px;display:flex;align-items:center;gap:8px;padding:0 16px"><span style="width:10px;height:10px;border-radius:2px;background:var(--text)"></span><span style="font-family:var(--mono);font-size:13px;font-weight:600;letter-spacing:-0.01em">plumbix</span></div>
+  <div style="display:flex;flex-direction:column;gap:1px;padding:4px 8px">
+    <sc-for list="{{ nav }}" as="n" hint-placeholder-count="3">
+      <button onClick="{{ n.go }}" aria-current="{{ n.current }}" style="display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border:0;border-radius:5px;background:{{ n.bg }};color:{{ n.fg }};font-size:13px;font-weight:500;text-align:left;cursor:pointer" style-hover="background:var(--hover);color:var(--text)"><span style="flex:1">{{ n.label }}</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">{{ n.count }}</span></button>
+    </sc-for>
+  </div>
+  <div style="flex:1"></div>
+  <div style="display:flex;flex-direction:column;gap:3px;padding:12px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-3)">
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2)"><span style="width:6px;height:6px;border-radius:50%;background:var(--s-blue)"></span>Live<span style="font-family:var(--mono);font-size:11px;color:var(--text-3);margin-left:auto">127.0.0.1:6400</span></div>
+    <div title="{{ lastEvent }}" style="font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ lastEvent }}</div>
+  </div>
+</nav>
+<main ref="{{ mainRef }}" style="min-width:0;overflow:auto;position:relative">
+
+<sc-if value="{{ isChanges }}" hint-placeholder-val="{{ true }}">
+  <div style="position:sticky;top:0;z-index:2;background:var(--bg)">
+    <div style="height:44px;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid var(--border)">
+      <h1 style="margin:0;font-size:14px;font-weight:600">Changes</h1>
+      <span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ listCount }}</span>
+      <span style="flex:1"></span>
+      <span style="display:flex;gap:12px;font-size:12px;color:var(--text-3)"><span><span style="font-family:var(--mono)">↑↓</span> move</span><span><span style="font-family:var(--mono)">↵</span> open</span><span><span style="font-family:var(--mono)">/</span> filter</span></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 20px;border-bottom:1px solid var(--border)">
+      <div style="position:relative;display:flex;align-items:center;width:260px">
+        <input ref="{{ searchRef }}" value="{{ q }}" onChange="{{ onQ }}" placeholder="Filter by title, id or branch" aria-label="Filter changes" style="width:100%;height:28px;padding:0 28px 0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:13px">
+        <span aria-hidden="true" style="position:absolute;right:6px;min-width:16px;height:16px;display:grid;place-items:center;border:1px solid var(--border-strong);border-radius:3px;font-family:var(--mono);font-size:10px;color:var(--text-3)">/</span>
+      </div>
+      <div role="group" aria-label="Repository" style="display:flex;gap:2px;padding:2px;border:1px solid var(--border);border-radius:6px">
+        <sc-for list="{{ repoOpts }}" as="o" hint-placeholder-count="4">
+          <button onClick="{{ o.pick }}" aria-pressed="{{ o.on }}" style="height:22px;padding:0 8px;border:0;border-radius:4px;background:{{ o.bg }};color:{{ o.fg }};font-size:12px;font-weight:500;cursor:pointer" style-hover="color:var(--text)">{{ o.label }}</button>
+        </sc-for>
+      </div>
+      <select value="{{ st }}" onChange="{{ onSt }}" aria-label="State" style="height:28px;padding:0 8px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px">
+        <option value="all">All states</option>
+        <option value="open">Open</option>
+        <option value="running">Running</option>
+        <option value="approved">Approved</option>
+        <option value="fix_requested">Fix requested</option>
+        <option value="rejected">Rejected</option>
+        <option value="needs_human">Needs human</option>
+        <option value="escalated">Escalated</option>
+        <option value="merged">Merged</option>
+        <option value="closed">Closed</option>
+      </select>
+      <sc-if value="{{ hasFilters }}"><button onClick="{{ clearFilters }}" style="height:28px;padding:0 8px;border:0;border-radius:5px;background:transparent;color:var(--text-2);font-size:12px;cursor:pointer" style-hover="background:var(--hover)">Clear</button></sc-if>
+    </div>
+    <div aria-hidden="true" style="display:grid;grid-template-columns:116px minmax(120px,1.3fr) minmax(110px,1fr) 136px 28px 48px 44px;gap:12px;align-items:center;height:28px;padding:0 20px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-3)">
+      <span>State</span><span>Change</span><span style="white-space:nowrap">Repository · branch</span><span>Verdict</span><span style="text-align:right">Iter</span><span>By</span><span style="text-align:right">Moved</span>
+    </div>
+  </div>
+
+  <sc-if value="{{ isLoading }}">
+    <div aria-busy="true" aria-label="Loading changes">
+      <sc-for list="{{ skel }}" as="k" hint-placeholder-count="10">
+        <div style="display:grid;grid-template-columns:116px minmax(120px,1.3fr) minmax(110px,1fr) 136px 28px 48px 44px;gap:12px;align-items:center;height:36px;padding:0 20px;border-bottom:1px solid var(--border)">
+          <span style="width:84px;height:12px;border-radius:3px;background:var(--surface-2)"></span><span style="width:{{ k.w }};height:12px;border-radius:3px;background:var(--surface-2)"></span><span style="width:70%;height:10px;border-radius:3px;background:var(--surface-2)"></span><span style="width:90px;height:10px;border-radius:3px;background:var(--surface-2)"></span><span></span><span style="width:32px;height:10px;border-radius:3px;background:var(--surface-2)"></span><span></span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isEmpty }}">
+    <div style="max-width:520px;padding:64px 20px 0 40px;display:flex;flex-direction:column;gap:10px">
+      <h2 style="margin:0;font-size:14px;font-weight:600">No repositories yet</h2>
+      <p style="margin:0;color:var(--text-2);text-wrap:pretty">Plumbix validates changes for repositories you register from the terminal. Register one, then point your agents at it.</p>
+      <div style="display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-family:var(--mono);font-size:12px"><span><span style="color:var(--text-3)">$ </span>plumbix repo add https://github.com/you/repo</span><span><span style="color:var(--text-3)">$ </span>plumbix change submit --help</span></div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ noMatch }}">
+    <div style="padding:40px 20px 0 40px;display:flex;align-items:center;gap:12px;color:var(--text-2)">No changes match these filters.<button onClick="{{ clearFilters }}" style="height:26px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px;cursor:pointer" style-hover="background:var(--hover)">Clear filters</button></div>
+  </sc-if>
+
+  <sc-if value="{{ showList }}" hint-placeholder-val="{{ true }}">
+    <div role="list" aria-label="Changes" style="padding-bottom:40px">
+      <sc-for list="{{ rows }}" as="r" hint-placeholder-count="14">
+        <sc-if value="{{ r.hdr }}">
+          <div style="display:flex;align-items:baseline;gap:8px;padding:{{ r.pad }};background:{{ r.bg }};border-bottom:1px solid var(--border)"><h2 style="margin:0;font-size:13px;font-weight:600">{{ r.title }}</h2><span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ r.count }}</span><span style="font-size:12px;color:var(--text-3)">{{ r.sub }}</span></div>
+        </sc-if>
+        <sc-if value="{{ r.isRow }}">
+          <button data-row="1" role="listitem" onClick="{{ r.open }}" style="display:grid;grid-template-columns:116px minmax(120px,1.3fr) minmax(110px,1fr) 136px 28px 48px 44px;gap:12px;align-items:center;width:100%;height:36px;padding:0 20px;border:0;border-bottom:1px solid var(--border);background:{{ r.bg }};font-size:13px;text-align:left;cursor:pointer" style-hover="background:var(--hover)">
+            <span style="display:flex"><dc-import name="StatePill" status="{{ r.state }}" hint-size="92px,20px"></dc-import></span>
+            <span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:500">{{ r.title }}</span>
+            <span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-family:var(--mono);font-size:12px;color:var(--text-2)">{{ r.repo }}<span style="color:var(--text-3)"> · </span>{{ r.src }}<span style="color:var(--text-3)"> → </span>{{ r.tgt }}</span>
+            <span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-family:var(--mono);font-size:12px;color:var(--text-2)">{{ r.verdict }}<sc-if value="{{ r.hasBlk }}"><span style="color:var(--s-red)"> · {{ r.blk }}</span></sc-if></span>
+            <span style="text-align:right;font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ r.iter }}</span>
+            <span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px;color:var(--text-2)">{{ r.by }}</span>
+            <span style="text-align:right;font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ r.ago }}</span>
+          </button>
+        </sc-if>
+      </sc-for>
+    </div>
+  </sc-if>
+</sc-if>
+
+<sc-if value="{{ isChange }}" hint-placeholder-val="{{ false }}">
+  <div style="position:sticky;top:0;z-index:3;height:44px;display:flex;align-items:center;gap:6px;padding:0 28px;background:var(--bg);border-bottom:1px solid var(--border)">
+    <button onClick="{{ goList }}" style="height:26px;padding:0 8px;margin-left:-8px;border:0;border-radius:5px;background:transparent;color:var(--text-2);font-size:13px;cursor:pointer" style-hover="background:var(--hover);color:var(--text)">Changes</button>
+    <span style="color:var(--text-3)">/</span>
+    <span style="font-family:var(--mono);font-size:12px;color:var(--text-2)">{{ ch.id }}</span>
+    <span style="flex:1"></span>
+    <span style="font-size:12px;color:var(--text-3)">{{ ch.updated }}</span>
+    <span style="font-size:12px;color:var(--text-3);margin-left:12px"><span style="font-family:var(--mono)">esc</span> back</span>
+  </div>
+  <div style="padding:20px 28px 96px;max-width:1240px">
+    <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
+      <div style="flex:1;min-width:300px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:10px"><dc-import name="StatePill" status="{{ ch.state }}" hint-size="96px,20px"></dc-import><h1 style="margin:0;font-size:20px;line-height:26px;font-weight:600;letter-spacing:-0.01em;text-wrap:pretty">{{ ch.title }}</h1></div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px 16px;font-family:var(--mono);font-size:12px;color:var(--text-2)">
+          <span>{{ ch.repo }} <span style="font-family:var(--ui);color:var(--text-3)">{{ ch.host }}</span></span>
+          <span>{{ ch.src }} <span style="color:var(--text-3)">→</span> {{ ch.tgt }}</span>
+          <span><span style="font-family:var(--ui);color:var(--text-3)">head</span> {{ ch.head }}</span>
+          <span><span style="font-family:var(--ui);color:var(--text-3)">base</span> {{ ch.base }}</span>
+          <span><span style="font-family:var(--ui);color:var(--text-3)">iteration</span> {{ ch.iter }}</span>
+          <span><span style="font-family:var(--ui);color:var(--text-3)">by</span> {{ ch.by }}</span>
+          <span><span style="font-family:var(--ui);color:var(--text-3)">submitted</span> {{ ch.created }}</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding-top:1px">
+        <sc-for list="{{ ch.secondary }}" as="a" hint-placeholder-count="1">
+          <button onClick="{{ a.on }}" style="height:30px;padding:0 12px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:13px;font-weight:500;cursor:pointer" style-hover="background:var(--hover)">{{ a.label }}</button>
+        </sc-for>
+        <sc-for list="{{ ch.primary }}" as="a" hint-placeholder-count="1">
+          <button onClick="{{ a.on }}" disabled="{{ a.busy }}" style="height:30px;padding:0 14px;border:1px solid var(--text);border-radius:5px;background:var(--text);color:var(--bg);font-size:13px;font-weight:500;cursor:pointer" style-hover="opacity:0.86">{{ a.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+
+    <sc-if value="{{ ch.hasNotice }}">
+      <div role="status" style="display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:10px;align-items:start;margin-top:16px;padding:10px 12px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface)">
+        <span style="padding-top:2px;display:flex"><dc-import name="StatePill" status="info" mode="icon" hint-size="14px,14px"></dc-import></span>
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+          <span style="font-weight:600">{{ ch.notice.title }}</span>
+          <span style="color:var(--text-2);text-wrap:pretty">{{ ch.notice.body }}</span>
+          <sc-if value="{{ ch.notice.hasCmd }}"><code style="margin-top:4px;padding:6px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);font-family:var(--mono);font-size:12px;overflow:auto;white-space:nowrap">{{ ch.notice.cmd }}</code></sc-if>
+        </div>
+        <div style="display:flex;gap:6px">
+          <sc-for list="{{ ch.notice.actions }}" as="a" hint-placeholder-count="1">
+            <button onClick="{{ a.on }}" style="height:26px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap" style-hover="background:var(--hover)">{{ a.label }}</button>
+          </sc-for>
+          <button onClick="{{ ch.notice.dismiss }}" aria-label="Dismiss" style="width:26px;height:26px;border:0;border-radius:5px;background:transparent;color:var(--text-3);cursor:pointer" style-hover="background:var(--hover);color:var(--text)">×</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,340px);gap:28px;align-items:start;margin-top:20px">
+      <div style="display:flex;flex-direction:column;gap:22px;min-width:0">
+        <section>
+          <h2 style="margin:0 0 6px;font-size:12px;font-weight:600;color:var(--text-3)">Intent</h2>
+          <div style="display:flex;flex-direction:column;gap:8px;max-width:74ch;font-size:14px;line-height:1.55;text-wrap:pretty">
+            <sc-for list="{{ ch.intent }}" as="p" hint-placeholder-count="1"><p style="margin:0">{{ p }}</p></sc-for>
+          </div>
+          <sc-if value="{{ ch.hasCons }}">
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px"><span style="font-size:12px;color:var(--text-3)">Constraints</span><sc-for list="{{ ch.constraints }}" as="k" hint-placeholder-count="1"><span style="padding:1px 7px;border:1px solid var(--border);border-radius:4px;font-size:12px;color:var(--text-2)">{{ k }}</span></sc-for></div>
+          </sc-if>
+        </section>
+        <section>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px"><h2 style="margin:0;font-size:12px;font-weight:600;color:var(--text-3)">Acceptance criteria</h2><span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ ch.critCount }}</span></div>
+          <div style="border-top:1px solid var(--border)">
+            <sc-for list="{{ ch.criteria }}" as="cr" hint-placeholder-count="3">
+              <div id="{{ cr.domId }}" style="display:grid;grid-template-columns:14px 34px minmax(0,1fr);column-gap:10px;padding:10px 8px;margin:0 -8px;border-bottom:1px solid var(--border);background:{{ cr.hl }}">
+                <span style="padding-top:3px;display:flex"><dc-import name="StatePill" status="{{ cr.status }}" mode="icon" hint-size="14px,14px"></dc-import></span>
+                <span style="padding-top:2px;font-family:var(--mono);font-size:12px;color:var(--text-2)">{{ cr.id }}</span>
+                <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap"><span style="font-size:14px;font-weight:500;text-wrap:pretty">{{ cr.text }}</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">{{ cr.check }}</span></div>
+                  <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:12.5px;color:var(--text-2)">
+                    <dc-import name="StatePill" status="{{ cr.status }}" mode="text" hint-size="30px,14px"></dc-import>
+                    <span style="text-wrap:pretty">{{ cr.reason }}</span>
+                    <sc-if value="{{ cr.hasBy }}"><span style="font-family:var(--mono);font-size:11.5px;color:var(--text-3)">{{ cr.by }}</span></sc-if>
+                    <sc-for list="{{ cr.ev }}" as="e" hint-placeholder-count="0"><button onClick="{{ e.open }}" style="padding:0;border:0;background:transparent;color:var(--accent);font-family:var(--mono);font-size:11.5px;cursor:pointer" style-hover="text-decoration:underline">{{ e.path }}</button></sc-for>
+                    <sc-if value="{{ cr.hasMore }}"><button onClick="{{ cr.toggle }}" aria-expanded="{{ cr.expanded }}" style="padding:0;border:0;background:transparent;color:var(--text-3);font-size:12px;cursor:pointer" style-hover="color:var(--text)">{{ cr.moreLabel }}</button></sc-if>
+                  </div>
+                  <sc-for list="{{ cr.more }}" as="m" hint-placeholder-count="0">
+                    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:12.5px;color:var(--text-2)"><dc-import name="StatePill" status="{{ m.status }}" mode="plain" hint-size="60px,14px"></dc-import><span>{{ m.reason }}</span><span style="font-family:var(--mono);font-size:11.5px;color:var(--text-3)">{{ m.validator }}</span><sc-for list="{{ m.ev }}" as="e" hint-placeholder-count="0"><button onClick="{{ e.open }}" style="padding:0;border:0;background:transparent;color:var(--accent);font-family:var(--mono);font-size:11.5px;cursor:pointer" style-hover="text-decoration:underline">{{ e.path }}</button></sc-for></div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+
+      <aside aria-label="Verdict" style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:6px;background:var(--surface)">
+        <div style="display:flex;flex-direction:column;gap:8px;padding:12px 14px">
+          <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;font-weight:600;color:var(--text-3)">Verdict</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">{{ v.runId }}</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><dc-import name="StatePill" status="{{ v.state }}" hint-size="96px,20px"></dc-import><span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ v.iterLabel }}</span></div>
+          <p style="margin:0;font-size:14px;line-height:1.45;font-weight:500;text-wrap:pretty">{{ v.sentence }}</p>
+          <sc-if value="{{ v.hasCounts }}"><div style="font-family:var(--mono);font-size:12px;color:var(--text-2)">{{ v.counts }}</div></sc-if>
+        </div>
+        <sc-if value="{{ v.hasReasons }}">
+          <div style="padding:10px 14px 12px;border-top:1px solid var(--border)">
+            <div style="margin-bottom:6px;font-size:12px;font-weight:600;color:var(--text-3)">Reasons</div>
+            <ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:4px;font-size:13px;text-wrap:pretty"><sc-for list="{{ v.reasons }}" as="r" hint-placeholder-count="1"><li>{{ r }}</li></sc-for></ul>
+          </div>
+        </sc-if>
+        <sc-if value="{{ v.hasSteps }}">
+          <div style="padding:10px 14px 12px;border-top:1px solid var(--border)">
+            <div style="margin-bottom:6px;font-size:12px;font-weight:600;color:var(--text-3)">{{ v.stepsLabel }}</div>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <sc-for list="{{ v.steps }}" as="s" hint-placeholder-count="2">
+                <button onClick="{{ s.open }}" disabled="{{ s.noLog }}" style="display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:8px;align-items:center;padding:0;border:0;background:transparent;text-align:left;cursor:pointer" style-hover="color:var(--accent)"><dc-import name="StatePill" status="{{ s.status }}" mode="icon" hint-size="14px,14px"></dc-import><span style="font-family:var(--mono);font-size:12px">{{ s.name }}</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">{{ s.dur }}</span></button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ v.hasMergeNote }}"><div style="padding:10px 14px;border-top:1px solid var(--border);font-size:12px;color:var(--text-2)">{{ v.mergeNote }}</div></sc-if>
+        <sc-if value="{{ v.hasRecord }}">
+          <div style="padding:10px 14px 12px;border-top:1px solid var(--border)">
+            <div style="margin-bottom:6px;font-size:12px;font-weight:600;color:var(--text-3)">Merge</div>
+            <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 14px;font-size:12px">
+              <span style="color:var(--text-3)">commit</span><span style="font-family:var(--mono)">{{ v.rec.commit }}</span>
+              <span style="color:var(--text-3)">previous</span><span style="font-family:var(--mono)">{{ v.rec.previous }}</span>
+              <span style="color:var(--text-3)">strategy</span><span style="font-family:var(--mono)">{{ v.rec.strategy }}</span>
+              <span style="color:var(--text-3)">merged at</span><span style="font-family:var(--mono)">{{ v.rec.merged_at }}</span>
+            </div>
+          </div>
+        </sc-if>
+      </aside>
+    </div>
+
+    <section style="margin-top:32px">
+      <div style="display:flex;align-items:baseline;gap:8px;padding-bottom:6px;border-bottom:1px solid var(--border)"><h2 style="margin:0;font-size:13px;font-weight:600">Findings</h2><span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ ch.fCount }}</span></div>
+      <sc-if value="{{ ch.noFindings }}"><div style="padding:10px 0;color:var(--text-3)">{{ ch.noFindingsText }}</div></sc-if>
+      <sc-for list="{{ ch.groups }}" as="g" hint-placeholder-count="1">
+        <div style="padding:10px 0 2px;font-size:12px;color:var(--text-3)">{{ g.label }} <span style="font-family:var(--mono)">{{ g.count }}</span></div>
+        <sc-for list="{{ g.items }}" as="f" hint-placeholder-count="1">
+          <div style="display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px 0;border-bottom:1px solid var(--border)">
+            <span style="padding-top:3px;display:flex"><dc-import name="StatePill" status="{{ f.sev }}" mode="icon" hint-size="14px,14px"></dc-import></span>
+            <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+              <span style="text-wrap:pretty">{{ f.msg }}</span>
+              <span style="display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;font-size:12px;color:var(--text-3)"><dc-import name="StatePill" status="{{ f.sev }}" mode="text" hint-size="40px,14px"></dc-import><span style="font-family:var(--mono)">{{ f.v }}</span><sc-if value="{{ f.hasAc }}"><button onClick="{{ f.goAc }}" style="padding:0;border:0;background:transparent;color:var(--accent);font-family:var(--mono);font-size:12px;cursor:pointer" style-hover="text-decoration:underline">{{ f.ac }}</button></sc-if></span>
+            </div>
+            <sc-if value="{{ f.hasLoc }}"><button onClick="{{ f.openLoc }}" style="padding:0;border:0;background:transparent;color:var(--accent);font-family:var(--mono);font-size:12px;cursor:pointer;text-align:right" style-hover="text-decoration:underline">{{ f.loc }}</button></sc-if>
+          </div>
+        </sc-for>
+      </sc-for>
+    </section>
+
+    <section style="margin-top:28px">
+      <div style="display:flex;align-items:baseline;gap:8px;padding-bottom:6px;border-bottom:1px solid var(--border)"><h2 style="margin:0;font-size:13px;font-weight:600">Risks</h2><span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ ch.rCount }}</span></div>
+      <sc-if value="{{ ch.noRisks }}"><div style="padding:10px 0;color:var(--text-3)">{{ ch.noRisksText }}</div></sc-if>
+      <sc-for list="{{ ch.risks }}" as="r" hint-placeholder-count="1">
+        <div style="display:grid;grid-template-columns:14px 100px minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px 0;border-bottom:1px solid var(--border)">
+          <span style="padding-top:3px;display:flex"><dc-import name="StatePill" status="{{ r.icon }}" mode="icon" hint-size="14px,14px"></dc-import></span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--text-2);padding-top:1px">{{ r.area }}</span>
+          <span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="text-wrap:pretty">{{ r.msg }}</span><span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ r.v }}</span></span>
+          <sc-if value="{{ r.hr }}"><dc-import name="StatePill" status="human_required" hint-size="110px,20px"></dc-import></sc-if>
+          <sc-if value="{{ r.noHr }}"><span style="font-size:12px;color:var(--text-3);padding-top:1px">No human needed</span></sc-if>
+        </div>
+      </sc-for>
+    </section>
+
+    <section style="margin-top:28px">
+      <div style="display:flex;align-items:baseline;gap:8px;padding-bottom:6px;border-bottom:1px solid var(--border)"><h2 style="margin:0;font-size:13px;font-weight:600">Iterations</h2><span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ ch.iterCount }}</span></div>
+      <sc-if value="{{ ch.noRuns }}"><div style="padding:10px 0;color:var(--text-3)">Not validated yet. Validation starts when a runner is free.</div></sc-if>
+      <sc-for list="{{ ch.iters }}" as="it" hint-placeholder-count="2">
+        <button onClick="{{ it.select }}" aria-pressed="{{ it.selected }}" style="position:relative;display:grid;grid-template-columns:14px 82px 104px minmax(0,1fr) auto 64px 40px;gap:12px;align-items:center;width:100%;min-height:36px;padding:6px 8px;border:0;border-bottom:1px solid var(--border);background:{{ it.bg }};font-size:13px;text-align:left;cursor:pointer" style-hover="background:var(--hover)">
+          <span style="position:absolute;left:14.5px;top:{{ it.lt }};bottom:{{ it.lb }};width:1px;background:var(--border-strong)"></span>
+          <span style="position:relative;display:flex;background:{{ it.dotBg }};border-radius:50%"><dc-import name="StatePill" status="{{ it.status }}" mode="icon" hint-size="14px,14px"></dc-import></span>
+          <span style="font-weight:{{ it.fw }}">Iteration {{ it.n }}</span>
+          <dc-import name="StatePill" status="{{ it.status }}" mode="text" hint-size="80px,14px"></dc-import>
+          <span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--text-2)">{{ it.headline }}</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ it.head }}</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--text-2);text-align:right">{{ it.dur }}</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--text-3);text-align:right">{{ it.ago }}</span>
+        </button>
+      </sc-for>
+    </section>
+
+    <section style="margin-top:28px">
+      <div style="display:flex;align-items:baseline;gap:8px;padding-bottom:6px;border-bottom:1px solid var(--border)"><h2 style="margin:0;font-size:13px;font-weight:600">Evidence</h2><span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ ch.evLabel }}</span></div>
+      <sc-if value="{{ ch.runError }}"><div style="padding:8px 0;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12px;color:var(--s-violet)">error: {{ ch.runErrorText }}</div></sc-if>
+      <sc-for list="{{ ch.steps }}" as="s" hint-placeholder-count="5">
+        <button onClick="{{ s.open }}" disabled="{{ s.noLog }}" style="display:grid;grid-template-columns:14px minmax(90px,150px) 70px minmax(0,1fr) 64px 72px 32px;gap:12px;align-items:center;width:100%;height:34px;padding:0 8px;border:0;border-bottom:1px solid var(--border);background:transparent;font-size:13px;text-align:left;cursor:{{ s.cursor }}" style-hover="background:var(--hover)">
+          <dc-import name="StatePill" status="{{ s.status }}" mode="icon" hint-size="14px,14px"></dc-import>
+          <span style="font-family:var(--mono);font-size:13px">{{ s.name }}</span>
+          <span><sc-if value="{{ s.validator }}"><span style="padding:1px 5px;border:1px solid var(--border);border-radius:3px;font-size:11px;color:var(--text-3)">validator</span></sc-if></span>
+          <dc-import name="StatePill" status="{{ s.status }}" mode="text" hint-size="70px,14px"></dc-import>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ s.exit }}</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--text-2);text-align:right">{{ s.dur }}</span>
+          <span style="font-size:12px;color:var(--accent);text-align:right">{{ s.logLabel }}</span>
+        </button>
+      </sc-for>
+    </section>
+
+    <section ref="{{ diffRef }}" style="margin-top:28px">
+      <div style="display:flex;align-items:center;gap:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+        <h2 style="margin:0;font-size:13px;font-weight:600">Diff</h2>
+        <span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ ch.diff.summary }}</span>
+        <span style="flex:1"></span>
+        <button onClick="{{ ch.diff.toggle }}" aria-expanded="{{ ch.diff.open }}" style="height:26px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px;font-weight:500;cursor:pointer" style-hover="background:var(--hover)">{{ ch.diff.btn }}</button>
+      </div>
+      <sc-if value="{{ ch.diff.loading }}">
+        <div aria-busy="true" style="display:flex;flex-direction:column;gap:8px;padding:12px 0"><span style="width:40%;height:10px;border-radius:3px;background:var(--surface-2)"></span><span style="width:70%;height:10px;border-radius:3px;background:var(--surface-2)"></span><span style="width:55%;height:10px;border-radius:3px;background:var(--surface-2)"></span></div>
+      </sc-if>
+      <sc-if value="{{ ch.diff.open }}">
+        <sc-for list="{{ ch.diff.files }}" as="df" hint-placeholder-count="3">
+          <div style="border-bottom:1px solid var(--border)">
+            <div data-diff-file-hl="{{ df.fileHl }}" style="display:flex;align-items:center;gap:10px;height:32px;padding:0 8px;background:{{ df.bg }};font-family:var(--mono);font-size:12px"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ df.path }}</span><span style="color:var(--s-green)">+{{ df.add }}</span><span style="color:var(--s-red)">−{{ df.del }}</span></div>
+            <sc-if value="{{ df.hasHunk }}">
+              <div style="overflow:auto;border-top:1px solid var(--border);font-family:var(--mono);font-size:12px;line-height:20px;tab-size:4">
+                <div style="padding:0 8px 0 104px;background:var(--surface);color:var(--text-3)">{{ df.hdr }}</div>
+                <sc-for list="{{ df.lines }}" as="l" hint-placeholder-count="8">
+                  <div data-diff-hl="{{ l.hlAttr }}" style="display:grid;grid-template-columns:44px 44px 16px max-content;background:{{ l.bg }};box-shadow:{{ l.ring }}"><span style="padding-right:8px;text-align:right;color:var(--text-3);user-select:none">{{ l.o }}</span><span style="padding-right:8px;text-align:right;color:var(--text-3);user-select:none">{{ l.n }}</span><span style="color:{{ l.sc }};user-select:none">{{ l.sign }}</span><span style="white-space:pre;padding-right:16px">{{ l.code }}</span></div>
+                  <sc-if value="{{ l.hasNote }}"><div style="display:flex;align-items:center;gap:8px;margin:2px 0 4px 104px;padding:5px 8px;max-width:640px;border:1px solid var(--border-strong);border-radius:4px;background:var(--bg);font-family:var(--ui);font-size:12px;line-height:1.4"><dc-import name="StatePill" status="{{ l.noteSev }}" mode="plain" hint-size="50px,14px"></dc-import><span>{{ l.note }}</span><span style="font-family:var(--mono);color:var(--text-3)">ai-review</span></div></sc-if>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </sc-if>
+    </section>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isAlerts }}" hint-placeholder-val="{{ false }}">
+  <div style="position:sticky;top:0;z-index:2;height:44px;display:flex;align-items:center;gap:10px;padding:0 20px;background:var(--bg);border-bottom:1px solid var(--border)">
+    <h1 style="margin:0;font-size:14px;font-weight:600">Alerts</h1>
+    <span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ al.openCount }} open</span>
+    <span style="flex:1"></span>
+    <button onClick="{{ al.toggleResolved }}" aria-pressed="{{ al.showResolved }}" style="height:26px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px;cursor:pointer" style-hover="background:var(--hover)">{{ al.toggleLabel }}</button>
+  </div>
+  <div style="max-width:1080px;padding:0 20px 64px">
+    <sc-if value="{{ al.noneOpen }}"><div style="padding:32px 0 8px;color:var(--text-2)">No open alerts. Plumbix raises one when commits reach a protected branch without a verdict, or when a git host token is about to expire.</div></sc-if>
+    <sc-for list="{{ al.items }}" as="a" hint-placeholder-count="2">
+      <sc-if value="{{ a.isHdr }}"><div style="padding:24px 0 6px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--text-3)">Resolved</div></sc-if>
+      <sc-if value="{{ a.isItem }}">
+        <div style="display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:12px;align-items:start;padding:14px 0;border-bottom:1px solid var(--border);opacity:{{ a.op }}">
+          <span style="padding-top:3px;display:flex"><dc-import name="StatePill" status="{{ a.icon }}" mode="icon" hint-size="14px,14px"></dc-import></span>
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+            <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px"><span style="font-weight:600">{{ a.kindLabel }}</span><span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ a.kind }}</span><span style="font-family:var(--mono);font-size:12px;color:var(--text-2)">{{ a.repo }}</span><span style="font-size:12px;color:var(--text-3)">{{ a.when }}</span></div>
+            <span style="text-wrap:pretty">{{ a.message }}</span>
+            <sc-if value="{{ a.hasCommits }}">
+              <div style="border:1px solid var(--border);border-radius:5px;overflow:hidden;font-family:var(--mono);font-size:12px">
+                <sc-for list="{{ a.commits }}" as="cm" hint-placeholder-count="1">
+                  <div style="display:grid;grid-template-columns:110px 70px 130px minmax(0,1fr);gap:12px;padding:6px 10px;border-bottom:1px solid var(--border);background:var(--surface)"><span>{{ cm.sha }}</span><span style="color:var(--text-2)">{{ cm.author }}</span><span style="color:var(--text-3)">{{ cm.time }}</span><span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis">{{ cm.subject }}</span></div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ a.hasHint }}"><span style="font-size:12px;color:var(--text-2)">{{ a.hint }}</span></sc-if>
+          </div>
+          <sc-if value="{{ a.canResolve }}"><button onClick="{{ a.resolve }}" style="height:26px;padding:0 10px;border:0;border-radius:5px;background:transparent;color:var(--text-2);font-size:12px;cursor:pointer" style-hover="background:var(--hover);color:var(--text)">Resolve</button></sc-if>
+          <sc-if value="{{ a.isResolved }}"><span style="font-size:12px;color:var(--text-3)">Resolved {{ a.resolvedAt }}</span></sc-if>
+        </div>
+      </sc-if>
+    </sc-for>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isRepos }}" hint-placeholder-val="{{ false }}">
+  <div style="position:sticky;top:0;z-index:2;height:44px;display:flex;align-items:center;gap:10px;padding:0 20px;background:var(--bg);border-bottom:1px solid var(--border)">
+    <h1 style="margin:0;font-size:14px;font-weight:600">Repositories</h1>
+    <span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ repoCount }}</span>
+  </div>
+  <sc-if value="{{ reposEmpty }}">
+    <div style="max-width:520px;padding:64px 20px 0 40px;display:flex;flex-direction:column;gap:10px">
+      <h2 style="margin:0;font-size:14px;font-weight:600">No repositories yet</h2>
+      <p style="margin:0;color:var(--text-2)">In this release, repositories are registered from the terminal. They appear here as soon as you add one.</p>
+      <code style="padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-family:var(--mono);font-size:12px"><span style="color:var(--text-3)">$ </span>plumbix repo add https://github.com/you/repo</code>
+    </div>
+  </sc-if>
+  <sc-if value="{{ reposShow }}" hint-placeholder-val="{{ true }}">
+    <div style="padding:0 20px">
+      <div aria-hidden="true" style="display:grid;grid-template-columns:130px 110px minmax(0,1fr) 150px 80px 60px;gap:12px;align-items:center;height:28px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-3)"><span>Repository</span><span>Host</span><span>URL</span><span>Protected branches</span><span>Merge</span><span style="text-align:right">Changes</span></div>
+      <sc-for list="{{ repos }}" as="rp" hint-placeholder-count="3">
+        <div style="display:grid;grid-template-columns:130px 110px minmax(0,1fr) 150px 80px 60px;gap:12px;align-items:center;height:38px;border-bottom:1px solid var(--border)">
+          <span style="font-family:var(--mono);font-weight:500">{{ rp.id }}</span>
+          <span style="color:var(--text-2)">{{ rp.host }}</span>
+          <span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-family:var(--mono);font-size:12px;color:var(--text-2)">{{ rp.url }}</span>
+          <span style="font-family:var(--mono);font-size:12px">{{ rp.branches }}</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--text-2)">{{ rp.strategy }}</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--text-3);text-align:right">{{ rp.count }}</span>
+        </div>
+      </sc-for>
+      <p style="margin:14px 0 0;font-size:12px;color:var(--text-3)">Read-only. Register and edit repositories from the terminal with <span style="font-family:var(--mono);color:var(--text-2)">plumbix repo</span>.</p>
+    </div>
+  </sc-if>
+</sc-if>
+</main>
+
+<sc-if value="{{ hasLog }}" hint-placeholder-val="{{ false }}">
+  <div role="region" aria-label="Step log" style="position:fixed;top:0;right:0;bottom:0;z-index:20;width:min(860px,calc(100vw - 208px));display:flex;flex-direction:column;background:var(--bg);border-left:1px solid var(--border-strong);box-shadow:-24px 0 48px -32px oklch(0 0 0 / 0.4)">
+    <div style="display:flex;flex-direction:column;gap:6px;padding:10px 16px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-family:var(--mono);font-size:14px;font-weight:600">{{ log.step }}</span>
+        <dc-import name="StatePill" status="{{ log.status }}" hint-size="90px,20px"></dc-import>
+        <sc-if value="{{ log.validator }}"><span style="padding:1px 5px;border:1px solid var(--border);border-radius:3px;font-size:11px;color:var(--text-3)">validator</span></sc-if>
+        <span style="flex:1"></span>
+        <span style="font-size:12px;color:var(--text-3)"><span style="font-family:var(--mono)">esc</span> close</span>
+        <button onClick="{{ closeLog }}" aria-label="Close log" style="width:28px;height:28px;border:0;border-radius:5px;background:transparent;color:var(--text-2);font-size:16px;cursor:pointer" style-hover="background:var(--hover);color:var(--text)">×</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px 16px;font-family:var(--mono);font-size:12px;color:var(--text-2)">
+        <span>{{ log.cid }}</span><span>{{ log.runId }}</span><span><span style="font-family:var(--ui);color:var(--text-3)">iteration</span> {{ log.iter }}</span><span><span style="font-family:var(--ui);color:var(--text-3)">duration</span> {{ log.dur }}</span><span><span style="font-family:var(--ui);color:var(--text-3)">exit code</span> {{ log.exit }}</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border)">
+      <div style="position:relative;display:flex;align-items:center;width:280px">
+        <input ref="{{ logSearchRef }}" value="{{ log.q }}" onChange="{{ log.onQ }}" onKeyDown="{{ log.onQKey }}" placeholder="Search log" aria-label="Search log" style="width:100%;height:28px;padding:0 64px 0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:13px">
+        <span style="position:absolute;right:8px;font-family:var(--mono);font-size:11px;color:var(--text-3)">{{ log.matchLabel }}</span>
+      </div>
+      <button onClick="{{ log.next }}" aria-label="Next match" style="height:28px;padding:0 8px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px;cursor:pointer" style-hover="background:var(--hover)">Next ↓</button>
+      <span style="flex:1"></span>
+      <button onClick="{{ log.toggleWrap }}" aria-pressed="{{ log.wrap }}" style="height:28px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:{{ log.wrapBg }};font-size:12px;cursor:pointer" style-hover="background:var(--hover)">Wrap</button>
+      <sc-if value="{{ log.live }}"><button onClick="{{ log.toggleFollow }}" aria-pressed="{{ log.follow }}" style="height:28px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:{{ log.followBg }};font-size:12px;cursor:pointer" style-hover="background:var(--hover)">Follow</button></sc-if>
+    </div>
+    <div ref="{{ logRef }}" onScroll="{{ log.onScroll }}" style="flex:1;overflow:auto;padding:8px 0;font-family:var(--mono);font-size:12px;line-height:20px;tab-size:4">
+      <sc-for list="{{ log.lines }}" as="ln" hint-placeholder-count="20">
+        <div data-line="{{ ln.n }}" style="display:grid;grid-template-columns:{{ log.cols }};gap:14px;padding-right:16px;color:{{ ln.fg }}" style-hover="background:var(--hover)"><span style="text-align:right;color:var(--text-3);user-select:none">{{ ln.n }}</span><span style="white-space:{{ log.ws }};overflow-wrap:anywhere"><sc-for list="{{ ln.parts }}" as="p" hint-placeholder-count="1"><span data-m="{{ p.m }}" style="background:{{ p.bg }};border-radius:2px">{{ p.t }}</span></sc-for></span></div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;height:30px;padding:0 16px;border-top:1px solid var(--border);font-size:12px;color:var(--text-3)"><span>{{ log.footer }}</span><span style="flex:1"></span><span style="font-family:var(--mono)">{{ log.count }} lines</span></div>
+  </div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;system&quot;,&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;system&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;populated&quot;,&quot;loading&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;populated&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;mergeResult&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;success&quot;,&quot;source_moved&quot;,&quot;target_moved&quot;,&quot;push_rejected&quot;,&quot;invalid_state&quot;],&quot;default&quot;:&quot;success&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const REPOS = [
+  { id: 'plumbix', host: 'github', url: 'https://github.com/plumbix/plumbix', protected_branches: ['main'], merge_strategy: 'squash' },
+  { id: 'ledger-api', host: 'azuredevops', url: 'https://dev.azure.com/northwind/ledger/_git/ledger-api', protected_branches: ['main', 'release/*'], merge_strategy: 'merge' },
+  { id: 'infra-scripts', host: 'git', url: 'ssh://git@git.home.lan/eduard/infra-scripts.git', protected_branches: ['main'], merge_strategy: 'rebase' }
+];
+const HOST = { github: 'GitHub', azuredevops: 'Azure DevOps', git: 'git' };
+const NEEDS = ['approved', 'needs_human', 'escalated'];
+const fmt = s => { s = Math.round(s); return s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's'; };
+const ago = m => m < 1 ? 'now' : m < 60 ? m + 'm' : m < 1440 ? Math.floor(m / 60) + 'h' : m < 2880 ? 'yesterday' : Math.floor(m / 1440) + 'd';
+const agoLong = m => m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.floor(m / 60) + ' h ago' : m < 2880 ? 'yesterday' : Math.floor(m / 1440) + ' days ago';
+const st = (name, status, exit, ms, error) => ({ name, validator: name === 'validate' || name === 'ai-review', status, exit: exit ?? null, ms: ms ?? null, error });
+const OK5 = ms => [st('build', 'succeeded', 0, ms[0]), st('test', 'succeeded', 0, ms[1]), st('lint', 'succeeded', 0, ms[2]), st('validate', 'succeeded', 0, ms[3]), st('ai-review', 'succeeded', 0, ms[4])];
+const FIX5 = ms => [st('build', 'succeeded', 0, ms[0]), st('test', 'failed', 1, ms[1]), st('lint', 'succeeded', 0, ms[2]), st('validate', 'succeeded', 0, ms[3]), st('ai-review', 'succeeded', 0, ms[4])];
+
+const C = [
+  { id: 'c_k7m2q9x4w1zp', repo: 'plumbix', src: 'feat/retry-uploads', tgt: 'main', title: 'Retry failed artifact uploads', state: 'approved', iter: 2, by: 'kai', ago: 4, met: 3, total: 3, blockers: 0 },
+  { id: 'c_t8r3e6w1q4zm', repo: 'ledger-api', src: 'feat/request-id-errors', tgt: 'main', title: 'Log request IDs in error responses', state: 'approved', iter: 1, by: 'mira', ago: 18, met: 2, total: 2, blockers: 0, head: '0c94a7e',
+    intent: 'Support tickets quote an error message but not the request it came from. Include the X-Request-ID of the failing request in every JSON error body and in the matching log line.',
+    acs: ['Every 4xx and 5xx JSON body carries request_id', 'The error log line carries the same request_id'] },
+  { id: 'c_w4x6z1b8c3nf', repo: 'plumbix', src: 'chore/go-1.27', tgt: 'main', title: 'Bump Go toolchain to 1.27', state: 'needs_human', iter: 1, by: 'otto', ago: 9, note: 'build image not found' },
+  { id: 'c_r5t8m2k9q1vb', repo: 'ledger-api', src: 'fix/export-pagination', tgt: 'main', title: 'Paginate ledger export endpoint', state: 'escalated', iter: 3, by: 'mira', ago: 26, met: 2, total: 4, blockers: 1 },
+  { id: 'c_h9d3s7l2m5qe', repo: 'plumbix', src: 'feat/log-stream', tgt: 'main', title: 'Stream step logs over the event stream', state: 'running', iter: 1, by: 'kai', ago: 0, step: 'test', el: 72 },
+  { id: 'c_a1s4d7f0g3hk', repo: 'ledger-api', src: 'refactor/account-id', tgt: 'main', title: 'Rename AccountRef to AccountID', state: 'running', iter: 2, by: 'otto', ago: 0, step: 'build', el: 21, head: '3e7b19c',
+    intent: 'AccountRef is an ID, not a reference, and the name confuses new readers. Rename the type and its fields to AccountID across the module without changing the JSON field names.',
+    acs: ['The type and its uses are renamed', 'JSON field names are unchanged', 'No behaviour changes'] },
+  { id: 'c_e2y5u8i3o6pa', repo: 'ledger-api', src: 'feat/idempotency-keys', tgt: 'main', title: 'Add idempotency keys to POST /entries', state: 'open', iter: 0, by: 'otto', ago: 3 },
+  { id: 'c_p2v8n4r1t6ya', repo: 'plumbix', src: 'feat/ado-token-expiry', tgt: 'main', title: 'Add Azure DevOps token expiry warning', state: 'fix_requested', iter: 1, by: 'mira', ago: 12, met: 1, total: 3, blockers: 2 },
+  { id: 'c_z9x2c5v8b1nm', repo: 'ledger-api', src: 'fix/currency-codes', tgt: 'main', title: 'Validate currency codes on import', state: 'fix_requested', iter: 2, by: 'otto', ago: 52, met: 2, total: 3, blockers: 1, head: 'd8f20a4',
+    intent: 'CSV imports accept any three letters as a currency, and a typo like EUE creates an account nobody can settle. Reject rows whose currency is not an ISO 4217 code and report the row number.',
+    acs: ['Rows with unknown currency codes are rejected', 'The error names the row number', 'Valid files import as before'], blk: 'Lower-case codes such as eur are rejected; ISO 4217 matching should ignore case', file: 'internal/importer/currency.go', line: 31 },
+  { id: 'c_m3q7t1z8x2ra', repo: 'plumbix', src: 'feat/repo-strategy', tgt: 'main', title: 'Show merge strategy on the repositories page', state: 'merged', iter: 1, by: 'kai', ago: 70, met: 2, total: 2, blockers: 0 },
+  { id: 'c_j6b1w9e4n7ds', repo: 'infra-scripts', src: 'refactor/yaml-config', tgt: 'main', title: 'Let the backup host be set from the environment', state: 'rejected', iter: 1, by: 'otto', ago: 95, met: 1, total: 2, blockers: 1 },
+  { id: 'c_q5w8e1r4t7yu', repo: 'ledger-api', src: 'fix/fx-rounding', tgt: 'main', title: 'Fix rounding in currency conversion', state: 'merged', iter: 2, by: 'mira', ago: 180, met: 2, total: 2, blockers: 0, head: '71ab3c0',
+    intent: 'Conversions round each line before summing, so totals drift by a cent on large invoices. Round once, on the total, using banker’s rounding.', acs: ['Totals are rounded once', 'Rounding is half-to-even'] },
+  { id: 'c_u3i6o9p2a5sd', repo: 'plumbix', src: 'exp/parallel-steps', tgt: 'main', title: 'Experiment: run independent steps in parallel', state: 'closed', iter: 1, by: 'kai', ago: 300, met: 1, total: 2, blockers: 1, head: 'f02c6d8',
+    intent: 'Steps that do not depend on each other could run at the same time. Try running lint alongside test and measure the change in run time.', acs: ['lint and test run at the same time', 'Step logs stay separate'], blk: 'Both steps write to the same evidence directory; logs interleave', file: 'internal/runner/schedule.go', line: 58 },
+  { id: 'c_g7h0j3k6l9zx', repo: 'infra-scripts', src: 'chore/rotate-logs', tgt: 'main', title: 'Rotate backup logs weekly', state: 'merged', iter: 1, by: 'eduard', ago: 1500, met: 2, total: 2, blockers: 0, head: '9b3e5a1',
+    intent: 'Backup logs grow without limit on the NAS. Rotate them weekly and keep eight weeks.', acs: ['Logs rotate weekly', 'Eight weeks are kept'] },
+  { id: 'c_b2n5m8q1w4er', repo: 'plumbix', src: 'feat/evidence-cap', tgt: 'main', title: 'Cap evidence store size per run', state: 'merged', iter: 2, by: 'kai', ago: 1610, met: 3, total: 3, blockers: 0, head: '4d6a2f9',
+    intent: 'One noisy test run wrote 2 GB of logs. Cap evidence at 200 MB per run and mark the step log as truncated when the cap is hit.', acs: ['Evidence is capped at 200 MB per run', 'Truncated logs say so on their last line', 'The cap is configurable'] },
+  { id: 'c_v6c9x2z5a8sd', repo: 'plumbix', src: 'docs/step-timeouts', tgt: 'main', title: 'Document step timeouts in the pipeline reference', state: 'merged', iter: 1, by: 'mira', ago: 2900, met: 1, total: 1, blockers: 0, head: 'c18e7b2',
+    intent: 'The timeout field is supported but not documented. Add it to the pipeline reference with its default and an example.', acs: ['The reference documents timeout with its default'] },
+  { id: 'c_f4g7h0j3k6lp', repo: 'infra-scripts', src: 'feat/backup-metrics', tgt: 'main', title: 'Add Prometheus exporter for backups', state: 'closed', iter: 1, by: 'otto', ago: 4300, met: 1, total: 2, blockers: 1, head: '6a90d4e',
+    intent: 'Expose the last backup time and size as Prometheus metrics so the home dashboard can alert on stale backups.', acs: ['Last backup time is exported', 'Exporter needs no new packages'], blk: 'Adds prometheus-client as a new dependency', file: 'requirements.txt', line: 4 }
+];
+
+const D = {
+  c_k7m2q9x4w1zp: {
+    created: '08:12', head: '9f3c1e2', base: 'a81d7c0',
+    intent: ['Uploads to the evidence store fail a few times a day on transient network errors and the whole run is marked errored. Retry an upload up to three times with exponential backoff before giving up, and record each attempt in the step log so the failure is visible when it does happen.'],
+    constraints: ['no new dependencies'],
+    criteria: [
+      { id: 'AC-1', text: 'A transient upload error is retried up to three times', check: 'step test', status: 'met', as: [['ai-review', 'met', 'TestUploadRetriesThrice covers three attempts with backoff', ['evidence/ai-review/review.json']], ['validate', 'met', 'step test succeeded', ['evidence/test/log.txt']]] },
+      { id: 'AC-2', text: 'The retry attempts appear in the step log', check: 'step test', status: 'met', as: [['ai-review', 'met', 'Each attempt is logged with its error and the next delay', ['evidence/ai-review/review.json']], ['validate', 'met', 'step test succeeded', ['evidence/test/log.txt']]] },
+      { id: 'AC-3', text: 'No change to the public API or the pipeline format', check: null, status: 'met', as: [['ai-review', 'met', 'no files under contracts/ or .plumbix/ changed', ['evidence/ai-review/review.json']], ['validate', 'unknown', 'no check given', []]] }],
+    runs: [
+      { id: 'run_3d9x7p2c', iteration: 1, head: '4c2e8d1', base: 'a81d7c0', status: 'finished', outcome: 'fix_requested', ago: 41, headline: 'AC-1 unmet: only one retry attempted', steps: FIX5([41000, 123000, 10000, 3000, 35000]) },
+      { id: 'run_8h2k4m1q', iteration: 2, head: '9f3c1e2', base: 'a81d7c0', status: 'finished', outcome: 'approved', ago: 4, headline: 'All criteria met', steps: OK5([42000, 118000, 11000, 4000, 38000]) }],
+    findings: [{ v: 'ai-review', sev: 'minor', msg: 'Backoff ceiling is hard-coded at 8 s; consider a constant', file: 'internal/evidence/upload.go', line: 71 }],
+    risks: [{ v: 'ai-review', area: 'tests', msg: '2 test files were modified', hr: false }],
+    reasons: [], diff: 'retry'
+  },
+  c_p2v8n4r1t6ya: {
+    created: '08:40', head: '2b7e4f0', base: 'a81d7c0',
+    intent: ['Azure DevOps personal access tokens expire without warning and the next fetch fails with a 401. When a repository is checked, read the token’s expiry from the Azure DevOps API and raise a token_expiry alert seven days before it expires.'],
+    constraints: ['no new dependencies', 'never log token values'],
+    criteria: [
+      { id: 'AC-1', text: 'Expiry is read from the Azure DevOps API', check: 'step test', status: 'unmet', as: [['ai-review', 'unmet', 'Expiry is parsed from the token’s display name; the API is never called', ['evidence/ai-review/review.json']], ['validate', 'unmet', 'step test failed (exit 1)', ['evidence/test/log.txt']]] },
+      { id: 'AC-2', text: 'A token_expiry alert is raised seven days before expiry', check: 'step test', status: 'unmet', as: [['ai-review', 'unmet', 'The warning goes to the server log; no alert is created', ['evidence/ai-review/review.json']], ['validate', 'unmet', 'step test failed (exit 1)', ['evidence/test/log.txt']]] },
+      { id: 'AC-3', text: 'GitHub token checks are unchanged', check: 'go test ./internal/hosts/github/...', status: 'met', as: [['validate', 'met', 'command exited 0', ['evidence/validate/checks.txt']], ['ai-review', 'met', 'no files under internal/hosts/github/ changed', ['evidence/ai-review/review.json']]] }],
+    runs: [{ id: 'run_6t1v9b3n', iteration: 1, head: '2b7e4f0', base: 'a81d7c0', status: 'finished', outcome: 'fix_requested', ago: 12, headline: '2 blockers: AC-1 and AC-2 unmet', steps: FIX5([39000, 107000, 9000, 3000, 41000]) }],
+    findings: [
+      { v: 'ai-review', sev: 'blocker', msg: 'Expiry is parsed from the token name instead of calling GET _apis/tokens/pats', ac: 'AC-1', file: 'internal/hosts/azure/token.go', line: 112 },
+      { v: 'ai-review', sev: 'blocker', msg: 'Expiry is logged with slog.Warn but no alert is created', ac: 'AC-2', file: 'internal/alerts/token.go', line: 44 },
+      { v: 'ai-review', sev: 'minor', msg: 'TestTokenExpiry uses time.Now(); inject a clock so the test is stable', file: 'internal/hosts/azure/token_test.go', line: 18 }],
+    risks: [{ v: 'ai-review', area: 'credentials', msg: 'The token is sent through a new HTTP client; check it is not logged when a request fails', hr: true }],
+    reasons: []
+  },
+  c_h9d3s7l2m5qe: {
+    created: '09:11', head: '7d1a0b3', base: 'a81d7c0',
+    intent: ['The step log viewer polls every two seconds and misses the last lines when a step ends. Stream log lines to the browser over the existing event stream while a step runs, and close the stream when the step finishes.'],
+    constraints: ['no new dependencies', 'keep GET /runs/{id}/steps/{name}/log working'],
+    criteria: [
+      { id: 'AC-1', text: 'Log lines reach the browser within one second of being written', check: 'step test', status: 'pending' },
+      { id: 'AC-2', text: 'The stream closes when the step finishes', check: 'step test', status: 'pending' },
+      { id: 'AC-3', text: 'The polling code is removed', check: null, status: 'pending' }],
+    runs: [{ id: 'run_2m7c4x9z', iteration: 1, head: '7d1a0b3', base: 'a81d7c0', status: 'running', ago: 2, headline: 'Running test', steps: [st('build', 'succeeded', 0, 38000), st('test', 'running'), st('lint', 'queued'), st('validate', 'queued'), st('ai-review', 'queued')] }],
+    findings: [], risks: [], reasons: []
+  },
+  c_w4x6z1b8c3nf: {
+    created: '09:02', head: '5a0f3d9', base: 'a81d7c0',
+    intent: ['Move the module and the pipeline images to Go 1.27 so we can use the new iterator helpers. No code changes beyond what the toolchain requires.'],
+    constraints: ['no code changes beyond the toolchain'],
+    criteria: [
+      { id: 'AC-1', text: 'go.mod declares go 1.27', check: 'step build', status: 'unknown' },
+      { id: 'AC-2', text: 'Every pipeline step uses a golang:1.27 image', check: null, status: 'unknown' },
+      { id: 'AC-3', text: 'Tests pass on Go 1.27', check: 'step test', status: 'unknown' }],
+    note: 'Not judged: the pipeline stopped at build',
+    runs: [{ id: 'run_9q4w2e7r', iteration: 1, head: '5a0f3d9', base: 'a81d7c0', status: 'errored', outcome: 'needs_human', ago: 9, error: 'step build could not run: image golang:1.27 not found', headline: 'step build could not run: image golang:1.27 not found',
+      steps: [st('build', 'errored', null, 2100, 'pull golang:1.27: manifest unknown'), st('test', 'skipped'), st('lint', 'skipped'), st('validate', 'skipped'), st('ai-review', 'skipped')] }],
+    findings: [], risks: [],
+    reasons: ['step build could not run: image golang:1.27 not found', 'No criterion could be judged without the build.']
+  },
+  c_r5t8m2k9q1vb: {
+    created: 'yesterday 16:20', head: 'e93b0d2', base: 'a81d7c0',
+    intent: ['GET /exports returns every entry in one response and times out for accounts with more than 50,000 entries. Add cursor pagination with a default page size of 1,000, and keep the old behaviour behind ?all=true for one release.'],
+    constraints: ['keep the response shape for existing clients'],
+    criteria: [
+      { id: 'AC-1', text: 'Responses are paged with an opaque cursor', check: 'step test', status: 'met', as: [['ai-review', 'met', 'next_cursor is returned and accepted on the next request', ['evidence/ai-review/review.json']], ['validate', 'met', 'step test succeeded', ['evidence/test/log.txt']]] },
+      { id: 'AC-2', text: 'The default page size is 1,000', check: 'step test', status: 'met', as: [['validate', 'met', 'step test succeeded', ['evidence/test/log.txt']]] },
+      { id: 'AC-3', text: '?all=true returns every entry', check: 'step test', status: 'unmet', as: [['ai-review', 'unmet', 'all=true is ignored when a cursor is present; one page is returned', ['evidence/ai-review/review.json']], ['validate', 'met', 'step test succeeded', ['evidence/test/log.txt']]] },
+      { id: 'AC-4', text: 'Exporting 50,000 entries takes under 2 s', check: null, status: 'unknown', as: [['validate', 'unknown', 'no check given and no benchmark step in the pipeline', []]] }],
+    runs: [
+      { id: 'run_1k8f3j6d', iteration: 1, head: '8a2c7f1', base: 'a81d7c0', status: 'finished', outcome: 'fix_requested', ago: 1110, headline: 'AC-1 unmet: offset pagination, not a cursor', steps: FIX5([44000, 88000, 12000, 3000, 36000]) },
+      { id: 'run_5p0s2a9h', iteration: 2, head: 'b41e6d3', base: 'a81d7c0', status: 'finished', outcome: 'fix_requested', ago: 380, headline: 'AC-3 unmet: ?all=true ignored', steps: OK5([43000, 91000, 11000, 3000, 39000]) },
+      { id: 'run_7w3e9r1t', iteration: 3, head: 'e93b0d2', base: 'a81d7c0', status: 'finished', outcome: 'escalated', ago: 26, headline: 'AC-3 still unmet after three fix rounds', steps: OK5([42000, 94000, 11000, 4000, 40000]) }],
+    findings: [
+      { v: 'ai-review', sev: 'blocker', msg: '?all=true is checked after the cursor branch and never reached', ac: 'AC-3', file: 'internal/export/handler.go', line: 88 },
+      { v: 'ai-review', sev: 'major', msg: 'The cursor is a base64 row offset; pages shift when entries are inserted', ac: 'AC-1', file: 'internal/export/cursor.go', line: 23 }],
+    risks: [{ v: 'ai-review', area: 'api', msg: 'Responses gain next_cursor; clients that reject unknown fields will break', hr: true }],
+    reasons: ['Not approved after three fix rounds.', 'AC-3 was unmet in iterations 2 and 3.', 'AC-4 cannot be judged: there is no benchmark step.']
+  },
+  c_m3q7t1z8x2ra: {
+    created: '07:31', head: 'b62d0e4', base: '6e20b5f',
+    intent: ['The repositories page shows host and URL but not how changes land. Show each repository’s merge strategy next to its protected branches.'],
+    constraints: ['read-only page; no new endpoints'],
+    criteria: [
+      { id: 'AC-1', text: 'The merge strategy is shown for each repository', check: 'step test', status: 'met', as: [['validate', 'met', 'step test succeeded', ['evidence/test/log.txt']]] },
+      { id: 'AC-2', text: 'No new API endpoints', check: null, status: 'met', as: [['ai-review', 'met', 'no routes added in internal/server/routes.go', ['evidence/ai-review/review.json']]] }],
+    runs: [{ id: 'run_4b8n1m6v', iteration: 1, head: 'b62d0e4', base: '6e20b5f', status: 'finished', outcome: 'approved', ago: 78, headline: 'All criteria met', steps: OK5([40000, 96000, 10000, 3000, 29000]) }],
+    findings: [], risks: [], reasons: [],
+    merge: { commit: 'a81d7c0f2e19', previous: '6e20b5f1c8a4', strategy: 'squash', merged_at: '2026-10-16 08:04' }
+  },
+  c_j6b1w9e4n7ds: {
+    created: '07:20', head: '2f7a1c5', base: '0d3e9b8',
+    intent: ['Let the backup host be overridden with BACKUP_HOST so the staging box can point at its own bucket.'],
+    constraints: ['existing config files keep working'],
+    criteria: [
+      { id: 'AC-1', text: 'BACKUP_HOST overrides the host in backup.toml', check: 'step test', status: 'met', as: [['validate', 'met', 'step test succeeded', ['evidence/test/log.txt']]] },
+      { id: 'AC-2', text: 'Existing backup.toml files keep working', check: 'step test', status: 'unmet', as: [['ai-review', 'unmet', 'The TOML parser was removed; backup.toml is no longer read', ['evidence/ai-review/review.json']]] }],
+    runs: [{ id: 'run_0z6x3c8v', iteration: 1, head: '2f7a1c5', base: '0d3e9b8', status: 'finished', outcome: 'rejected', ago: 95, headline: 'Rewrites the config format; out of scope', steps: OK5([12000, 31000, 5000, 3000, 27000]) }],
+    findings: [{ v: 'ai-review', sev: 'blocker', msg: 'The config loader was rewritten from TOML to YAML; the intent asks only for an environment override', ac: 'AC-2', file: 'lib/config.sh', line: 12 }],
+    risks: [], reasons: ['The change rewrites the config loader from TOML to YAML; the intent asks only for an environment override.', 'Existing backup.toml files stop working (AC-2).']
+  },
+  c_e2y5u8i3o6pa: {
+    created: '09:11', head: '6c1f8e0', base: 'a81d7c0',
+    intent: ['Retried POST /entries requests create duplicate entries. Accept an Idempotency-Key header and return the original response for a repeated key within 24 hours.'],
+    constraints: ['no schema changes to entries'],
+    criteria: [
+      { id: 'AC-1', text: 'A repeated key returns the original response', check: 'step test', status: 'pending' },
+      { id: 'AC-2', text: 'Keys expire after 24 hours', check: 'step test', status: 'pending' },
+      { id: 'AC-3', text: 'Requests without a key behave as before', check: null, status: 'pending' }],
+    runs: [], findings: [], risks: [], reasons: []
+  }
+};
+
+const RETRY_FILES = [
+  { path: 'internal/evidence/upload.go', add: 48, del: 9, hdr: '@@ -56,5 +56,19 @@ func (s *Store) put(ctx context.Context, a Artifact) error', lines: [
+    [' ', 56, 56, ''], [' ', 57, 57, '// Upload sends one artifact to the evidence store.'], [' ', 58, 58, 'func (s *Store) Upload(ctx context.Context, a Artifact) error {'],
+    ['-', 59, '', '\treturn s.put(ctx, a)'], ['+', '', 59, '\tbackoff := time.Second'], ['+', '', 60, '\tvar err error'],
+    ['+', '', 61, '\tfor attempt := 1; attempt <= maxAttempts; attempt++ {'], ['+', '', 62, '\t\tif err = s.put(ctx, a); err == nil || !isTransient(err) {'],
+    ['+', '', 63, '\t\t\treturn err'], ['+', '', 64, '\t\t}'], ['+', '', 65, '\t\ts.log.Printf("upload attempt %d/%d failed: %v; retrying in %s", attempt, maxAttempts, err, backoff)'],
+    ['+', '', 66, '\t\tselect {'], ['+', '', 67, '\t\tcase <-ctx.Done():'], ['+', '', 68, '\t\t\treturn ctx.Err()'], ['+', '', 69, '\t\tcase <-time.After(backoff):'], ['+', '', 70, '\t\t}'],
+    ['+', '', 71, '\t\tbackoff = min(backoff*2, 8*time.Second)'], ['+', '', 72, '\t}'], ['+', '', 73, '\treturn fmt.Errorf("upload %s: giving up after %d attempts: %w", a.Path, maxAttempts, err)'], [' ', 60, 74, '}']] },
+  { path: 'internal/evidence/upload_test.go', add: 34, del: 2 },
+  { path: 'internal/evidence/store_test.go', add: 3, del: 1 },
+  { path: 'CHANGELOG.md', add: 1, del: 0 }
+];
+
+const L = {
+  'c_k7m2q9x4w1zp/2/build': ['$ go build ./...', 'go: downloading github.com/klauspost/compress v1.17.9', 'go: downloading golang.org/x/sync v0.8.0', 'go: downloading github.com/google/uuid v1.6.0', 'go: downloading modernc.org/sqlite v1.33.1', 'built ./cmd/plumbix (34.1 MB)', 'step build succeeded in 42s (exit 0)'],
+  'c_k7m2q9x4w1zp/2/test': ['$ go test ./... -count=1', 'ok  \tgithub.com/plumbix/plumbix/internal/config\t0.412s', 'ok  \tgithub.com/plumbix/plumbix/internal/events\t0.388s', '=== RUN   TestUploadRetriesThrice',
+    '    upload_test.go:41: upload attempt 1/3 failed: connection reset by peer; retrying in 1s', '    upload_test.go:41: upload attempt 2/3 failed: connection reset by peer; retrying in 2s', '    upload_test.go:48: attempt 3 succeeded', '--- PASS: TestUploadRetriesThrice (0.03s)',
+    '=== RUN   TestUploadGivesUpAfterThreeAttempts', '    upload_test.go:63: upload attempt 1/3 failed: i/o timeout; retrying in 1s', '    upload_test.go:63: upload attempt 2/3 failed: i/o timeout; retrying in 2s', '    upload_test.go:63: upload attempt 3/3 failed: i/o timeout; retrying in 4s',
+    '    upload_test.go:70: upload evidence/test/log.txt: giving up after 3 attempts: i/o timeout', '--- PASS: TestUploadGivesUpAfterThreeAttempts (0.02s)', '=== RUN   TestUploadDoesNotRetryPermanentErrors', '--- PASS: TestUploadDoesNotRetryPermanentErrors (0.00s)',
+    'ok  \tgithub.com/plumbix/plumbix/internal/evidence\t0.214s', 'ok  \tgithub.com/plumbix/plumbix/internal/hosts/github\t1.902s', 'ok  \tgithub.com/plumbix/plumbix/internal/pipeline\t14.902s', 'ok  \tgithub.com/plumbix/plumbix/internal/runner\t61.338s', 'ok  \tgithub.com/plumbix/plumbix/internal/server\t9.771s', 'PASS', 'step test succeeded in 1m 58s (exit 0)'],
+  'c_k7m2q9x4w1zp/2/lint': ['$ golangci-lint run ./...', '0 issues.', 'step lint succeeded in 11s (exit 0)'],
+  'c_k7m2q9x4w1zp/2/validate': ['$ plumbix-validate --criteria .plumbix/change.json', 'AC-1 check "step test": step test succeeded -> met', 'AC-2 check "step test": step test succeeded -> met', 'AC-3 no check given -> unknown', 'constraint "no new dependencies": go.mod and go.sum unchanged', 'wrote evidence/validate/result.json', 'step validate succeeded in 4s (exit 0)'],
+  'c_k7m2q9x4w1zp/2/ai-review': ['$ plumbix-ai-review --diff a81d7c0..9f3c1e2', 'reviewing 4 files, 86 lines added, 12 removed', 'AC-1 met: TestUploadRetriesThrice covers three attempts with backoff', 'AC-2 met: each attempt is logged with its error and the next delay', 'AC-3 met: no files under contracts/ or .plumbix/ changed', 'finding minor internal/evidence/upload.go:71 Backoff ceiling is hard-coded at 8 s; consider a constant', 'risk tests: 2 test files were modified (human_required=false)', 'wrote evidence/ai-review/review.json', 'step ai-review succeeded in 38s (exit 0)'],
+  'c_k7m2q9x4w1zp/1/test': ['$ go test ./... -count=1', 'ok  \tgithub.com/plumbix/plumbix/internal/config\t0.405s', '=== RUN   TestUploadRetriesThrice', '    upload_test.go:41: upload attempt 1 failed: connection reset by peer; retrying in 1s', '    upload_test.go:44: expected 3 attempts, got 2', '--- FAIL: TestUploadRetriesThrice (0.01s)', 'FAIL\tgithub.com/plumbix/plumbix/internal/evidence\t0.198s', 'FAIL', 'step test failed in 2m 03s (exit 1)'],
+  'c_p2v8n4r1t6ya/1/test': ['$ go test ./... -count=1', 'ok  \tgithub.com/plumbix/plumbix/internal/config\t0.398s', 'ok  \tgithub.com/plumbix/plumbix/internal/hosts/github\t1.874s', '=== RUN   TestTokenExpiryFromAPI', '    token_test.go:52: expected request to GET /_apis/tokens/pats, got none', '--- FAIL: TestTokenExpiryFromAPI (0.01s)', '=== RUN   TestTokenExpiryRaisesAlert', '    token_test.go:77: expected 1 alert of kind token_expiry, got 0', '--- FAIL: TestTokenExpiryRaisesAlert (0.00s)', 'FAIL\tgithub.com/plumbix/plumbix/internal/hosts/azure\t0.311s', 'FAIL', 'step test failed in 1m 47s (exit 1)'],
+  'c_w4x6z1b8c3nf/1/build': ['$ docker pull golang:1.27', 'Error response from daemon: manifest for golang:1.27 not found: manifest unknown', 'step build errored: image golang:1.27 not found', 'remaining steps skipped']
+};
+const LIVE_BASE = ['$ go test ./... -count=1', 'ok  \tgithub.com/plumbix/plumbix/internal/config\t0.402s', 'ok  \tgithub.com/plumbix/plumbix/internal/events\t0.371s', 'ok  \tgithub.com/plumbix/plumbix/internal/evidence\t0.226s', '=== RUN   TestStreamDeliversLinesWithinOneSecond'];
+const LIVE_POOL = ['    stream_test.go:38: line 1 written +0ms, received +41ms', '    stream_test.go:38: line 2 written +250ms, received +263ms', '    stream_test.go:38: line 3 written +500ms, received +512ms', '--- PASS: TestStreamDeliversLinesWithinOneSecond (1.21s)', '=== RUN   TestStreamClosesWhenStepFinishes', '    stream_test.go:71: step finished; waiting for close', '    stream_test.go:79: stream closed after 12ms', '--- PASS: TestStreamClosesWhenStepFinishes (0.34s)', '=== RUN   TestStreamResumesFromLastEventID', '    stream_test.go:102: reconnect with Last-Event-ID 41', '    stream_test.go:110: resumed at line 42', '--- PASS: TestStreamResumesFromLastEventID (0.52s)', 'ok  \tgithub.com/plumbix/plumbix/internal/logs\t2.118s', '=== RUN   TestRunnerStepTimeout', '    runner_test.go:211: step sleep timed out after 2s as configured', '--- PASS: TestRunnerStepTimeout (2.01s)', '=== RUN   TestRunnerCancelsOnNewPush', '    runner_test.go:254: run run_test01 cancelled by push 7d1a0b3', '--- PASS: TestRunnerCancelsOnNewPush (0.88s)', '=== RUN   TestRunnerEvidenceLayout'];
+
+class Component extends DCLogic {
+  state = { screen: 'changes', cid: null, q: '', repo: 'all', st: 'all', tick: 0, log: null, logQ: '', logM: 0, wrap: false, follow: true, diff: {}, runSel: {}, busy: {}, notice: {}, ov: {}, attempts: {}, resolved: {}, showResolved: false, hl: null, hlAC: null, exp: {}, evt: null };
+  searchRef = React.createRef(); mainRef = React.createRef(); logRef = React.createRef(); logSearchRef = React.createRef(); diffRef = React.createRef();
+
+  componentDidMount() {
+    this.iv = setInterval(() => this.setState(s => ({ tick: s.tick + 1 }), () => this.followLog()), 1000);
+    this.kd = e => this.onKey(e);
+    window.addEventListener('keydown', this.kd);
+  }
+  componentWillUnmount() { clearInterval(this.iv); window.removeEventListener('keydown', this.kd); }
+  followLog() {
+    setTimeout(() => {
+      const el = this.logRef.current;
+      if (this.state.log && el && this.state.follow && this.isLive()) { this._prog = true; el.scrollTop = el.scrollHeight; }
+    }, 30);
+  }
+  scrollMainTo(el, off) { const m = this.mainRef.current; if (el && m) m.scrollTop += el.getBoundingClientRect().top - m.getBoundingClientRect().top - off; }
+  scrollAfter(sel, off) {
+    let n = 0;
+    const tryIt = () => { const el = document.querySelector(sel); if (el) this.scrollMainTo(el, off); else if (n++ < 10) setTimeout(tryIt, 60); };
+    setTimeout(tryIt, 40);
+  }
+
+  onKey(e) {
+    const t = e.target, tag = (t.tagName || '').toLowerCase(), typing = tag === 'input' || tag === 'textarea' || tag === 'select';
+    if (e.key === '/' && !typing) {
+      e.preventDefault();
+      if (this.state.log) this.logSearchRef.current && this.logSearchRef.current.focus();
+      else { if (this.state.screen !== 'changes') this.setState({ screen: 'changes' }); setTimeout(() => this.searchRef.current && this.searchRef.current.focus(), 0); }
+      return;
+    }
+    if (e.key === 'Escape') {
+      if (typing) { t.blur(); return; }
+      if (this.state.log) { this.setState({ log: null }); return; }
+      if (this.state.screen === 'change') this.goList();
+      return;
+    }
+    if (this.state.screen === 'changes' && !this.state.log) {
+      const down = e.key === 'ArrowDown' || (!typing && e.key === 'j'), up = e.key === 'ArrowUp' || (!typing && e.key === 'k');
+      if (!down && !up) return;
+      if (typing && t !== this.searchRef.current) return;
+      e.preventDefault();
+      const rows = Array.from(document.querySelectorAll('[data-row]'));
+      const i = rows.indexOf(document.activeElement);
+      const n = i < 0 ? 0 : Math.max(0, Math.min(rows.length - 1, i + (down ? 1 : -1)));
+      if (rows[n]) { rows[n].focus(); const m = this.mainRef.current, r = rows[n].getBoundingClientRect(), mr = m.getBoundingClientRect(); if (r.bottom > mr.bottom) m.scrollTop += r.bottom - mr.bottom + 8; if (r.top < mr.top + 112) m.scrollTop -= mr.top + 112 - r.top; }
+    }
+  }
+
+  goList = () => { this.setState({ screen: 'changes', log: null }); setTimeout(() => { const el = document.querySelector('[data-row]:focus') || null; if (!el && this._lastRow) { const r = document.querySelectorAll('[data-row]')[this._lastRow]; r && r.focus(); } }, 30); };
+  openChange(id, idx) { this._lastRow = idx; this.setState({ screen: 'change', cid: id, log: null, hl: null }); if (this.mainRef.current) this.mainRef.current.scrollTop = 0; }
+
+  sum(c) {
+    const ov = this.state.ov[c.id] || {};
+    const s = { ...c, state: ov.state || c.state, ago: ov.ago != null ? Math.max(0, Math.floor((this.state.tick - ov.ago) / 60)) : c.ago };
+    if (c.id === 'c_a1s4d7f0g3hk' && this.state.tick >= 25) { s.step = 'test'; s.el = this.state.tick - 25; } else if (s.el != null) s.el = c.el + this.state.tick;
+    return s;
+  }
+  isLive() { const lg = this.state.log; if (!lg) return false; const d = this.detail(C.find(x => x.id === lg.cid)); const r = d.runs[lg.ri]; const s = r && r.steps.find(x => x.name === lg.step); return !!s && s.status === 'running'; }
+
+  gen(c) {
+    const s = this.sum(c);
+    const acs = c.acs || [c.title];
+    const pend = s.state === 'running' || s.state === 'open';
+    const criteria = acs.map((t, i) => {
+      const status = pend ? 'pending' : (i < (c.met ?? acs.length) ? 'met' : 'unmet');
+      const v = i < 2 ? 'validate' : 'ai-review';
+      return { id: 'AC-' + (i + 1), text: t, check: i < 2 ? 'step test' : null, status, as: pend ? [] : [[v, status, status === 'met' ? (v === 'validate' ? 'step test succeeded' : 'no unrelated files changed') : (c.blk || 'step test failed (exit 1)'), [v === 'validate' ? 'evidence/test/log.txt' : 'evidence/ai-review/review.json']]] };
+    });
+    const runs = [];
+    const n = c.iter;
+    for (let i = 1; i <= n; i++) {
+      const last = i === n;
+      let outcome = last ? (s.state === 'closed' ? 'fix_requested' : s.state) : 'fix_requested', status = 'finished', steps;
+      if (last && s.state === 'running') {
+        status = 'running'; outcome = null;
+        steps = s.step === 'build' ? [st('build', 'running'), st('test', 'queued'), st('lint', 'queued'), st('validate', 'queued'), st('ai-review', 'queued')]
+          : [st('build', 'succeeded', 0, 25000), st('test', 'running'), st('lint', 'queued'), st('validate', 'queued'), st('ai-review', 'queued')];
+      } else steps = outcome === 'fix_requested' ? FIX5([40000, 98000, 9000, 3000, 33000]) : OK5([40000, 101000, 10000, 3000, 31000]);
+      const head = last ? c.head : (c.head || '0000000').split('').reverse().join('');
+      runs.push({ id: 'run_' + c.id.slice(2, 9) + i, iteration: i, head, base: 'a81d7c0', status, outcome, ago: last ? s.ago : s.ago + 90 * (n - i), headline: status === 'running' ? 'Running ' + s.step : outcome === 'fix_requested' ? (c.blk || 'step test failed') : 'All criteria met', steps });
+    }
+    const findings = c.blockers ? [{ v: 'ai-review', sev: 'blocker', msg: c.blk, ac: 'AC-' + ((c.met || 0) + 1), file: c.file, line: c.line }] : [];
+    const repo = REPOS.find(r => r.id === c.repo);
+    return { created: ago(c.ago + 30), head: c.head, base: 'a81d7c0', intent: [c.intent || c.title + '.'], constraints: [], criteria, runs, findings, risks: [], reasons: [],
+      merge: s.state === 'merged' ? { commit: (c.head || '') + '5e1d', previous: 'a81d7c0f2e19', strategy: repo.merge_strategy, merged_at: '2026-10-' + (16 - Math.floor(c.ago / 1440)) + ' 0' + (8 - Math.floor(c.ago / 60) % 8) + ':12' } : null };
+  }
+  detail(c) {
+    const base = D[c.id] || this.gen(c);
+    const ov = this.state.ov[c.id];
+    if (ov && ov.merge) return { ...base, merge: ov.merge };
+    return base;
+  }
+  openLog(cid, ri, step) {
+    this.setState({ log: { cid, ri, step }, logQ: '', logM: 0, follow: true }, () => setTimeout(() => {
+      const el = this.logRef.current; if (!el) return;
+      this._prog = true; el.scrollTop = this.isLive() ? el.scrollHeight : 0;
+    }, 40));
+  }
+  logLines(cid, run, s, el) {
+    const k = cid + '/' + run.iteration + '/' + s.name;
+    if (L[k]) return L[k];
+    if (s.status === 'running') return LIVE_BASE.concat(LIVE_POOL.slice(0, Math.min(LIVE_POOL.length, 2 + Math.floor(this.state.tick / 1.5))));
+    if (s.status === 'skipped') return ['step ' + s.name + ' skipped: an earlier step did not finish'];
+    const cmd = { build: 'go build ./...', test: 'go test ./... -count=1', lint: 'golangci-lint run ./...', validate: 'plumbix-validate --criteria .plumbix/change.json', 'ai-review': 'plumbix-ai-review --diff ' + run.base + '..' + run.head }[s.name] || s.name;
+    const out = ['$ ' + cmd];
+    if (s.name === 'test' && s.status === 'failed') out.push('--- FAIL: TestImportRejectsUnknownCurrency (0.00s)', '    currency_test.go:27: row 4: "eur" rejected, want accepted', 'FAIL');
+    else out.push(s.name === 'lint' ? '0 issues.' : 'ok');
+    out.push('step ' + s.name + ' ' + s.status + ' in ' + fmt((s.ms || 0) / 1000) + ' (exit ' + s.exit + ')');
+    return out;
+  }
+  merge(c) {
+    const id = c.id;
+    this.setState(s => ({ busy: { ...s.busy, [id]: true }, notice: { ...s.notice, [id]: null } }));
+    setTimeout(() => {
+      let res = this.props.mergeResult || 'success';
+      const att = (this.state.attempts[id] || 0);
+      if (res === 'push_rejected' && att > 0) res = 'success';
+      this.setState(s => {
+        const busy = { ...s.busy, [id]: false }, attempts = { ...s.attempts, [id]: att + 1 };
+        if (res === 'success') return { busy, attempts, ov: { ...s.ov, [id]: { state: 'merged', ago: s.tick, merge: { commit: '5c0e7a3b9d21', previous: 'a81d7c0f2e19', strategy: 'squash', merged_at: '2026-10-16 09:14' } } }, evt: { text: 'merged · ' + id, t: s.tick } };
+        return { busy, attempts, notice: { ...s.notice, [id]: res } };
+      });
+    }, 900);
+  }
+  setNotice(id, n) { this.setState(s => ({ notice: { ...s.notice, [id]: n } })); }
+  close(c) { const prev = this.sum(c).state; this.setState(s => ({ ov: { ...s.ov, [c.id]: { state: 'closed', ago: s.tick, prev } }, notice: { ...s.notice, [c.id]: 'closed' }, evt: { text: 'state changed · ' + c.id + ' · closed', t: s.tick } })); }
+  undoClose(c) { this.setState(s => { const ov = { ...s.ov }; delete ov[c.id]; return { ov, notice: { ...s.notice, [c.id]: null } }; }); }
+  revalidate(c) { this.setState(s => ({ ov: { ...s.ov, [c.id]: { state: 'open', ago: s.tick } }, notice: { ...s.notice, [c.id]: 'queued' }, evt: { text: 'state changed · ' + c.id + ' · open', t: s.tick } })); }
+
+  noticeVM(c, s, d) {
+    const k = this.state.notice[c.id];
+    if (!k) return null;
+    const head = (d.runs[d.runs.length - 1] || {}).head || d.head;
+    const dismiss = () => this.setNotice(c.id, null);
+    const M = {
+      source_moved: { title: 'Not merged: new commits on ' + c.src, body: 'The verdict is for ' + head + '. The branch now points at 1e88b04. Validate again; merge becomes available if the new head is approved.', actions: [{ label: 'Validate again', on: () => this.revalidate(c) }] },
+      target_moved: { title: 'Not merged: ' + c.tgt + ' moved', body: c.tgt + ' is now at c40d7e1; the verdict was for base ' + d.base + '. Bring ' + c.tgt + ' into the branch and push. Plumbix validates the new head.', cmd: 'git fetch origin && git merge origin/' + c.tgt + ' && git push', actions: [{ label: 'Copy command', on: () => { try { navigator.clipboard.writeText('git fetch origin && git merge origin/' + c.tgt + ' && git push'); } catch (e) { } } }] },
+      push_rejected: { title: 'Not merged: the remote changed during the merge', body: 'Nothing was pushed and the verdict still stands. Try the merge again.', actions: [{ label: 'Merge again', on: () => this.merge(c) }] },
+      invalid_state: { title: 'Not merged: this change is no longer approved', body: 'A new push started another validation. Merge becomes available again if it is approved.', actions: [{ label: 'Show iterations', on: () => { dismiss(); const el = this.diffRef.current; this.scrollMainTo(el, 520); } }] },
+      queued: { title: 'Validation queued', body: 'Plumbix validates ' + c.src + ' again when a runner is free. This page updates when it starts.', actions: [] },
+      closed: { title: 'Closed', body: 'The branch is left as it is. Nothing was merged.', actions: [{ label: 'Undo', on: () => this.undoClose(c) }] }
+    };
+    const n = M[k];
+    return { ...n, hasCmd: !!n.cmd, cmd: n.cmd || '', dismiss };
+  }
+
+  changeVM() {
+    const c = C.find(x => x.id === this.state.cid) || C[0];
+    const s = this.sum(c), d = this.detail(c), tick = this.state.tick;
+    const repo = REPOS.find(r => r.id === c.repo);
+    const runs = d.runs, nR = runs.length;
+    const sel = Math.min(this.state.runSel[c.id] ?? nR - 1, nR - 1);
+    const cur = runs[nR - 1], run = runs[sel];
+    const stepDur = x => x.status === 'running' ? fmt(s.el ?? tick) : x.ms != null ? fmt(x.ms / 1000) : '—';
+    const stepVM = (x, ri) => {
+      const noLog = x.status === 'queued' || x.status === 'skipped';
+      return { name: x.name, validator: x.validator, status: x.status, exit: x.exit == null ? '—' : 'exit ' + x.exit, dur: x.status === 'queued' ? 'queued' : stepDur(x), noLog, cursor: noLog ? 'default' : 'pointer', logLabel: noLog ? '' : 'Log', open: () => !noLog && this.openLog(c.id, ri, x.name) };
+    };
+    const curIdx = nR - 1;
+    const evOpen = p => () => { const step = p.split('/')[1]; this.openLog(c.id, curIdx, step); };
+    const criteria = d.criteria.map(a => {
+      const as = (a.as || []).map(([v, st2, r, ev]) => ({ validator: v, status: st2, reason: r, ev: (ev || []).map(p => ({ path: p, open: evOpen(p) })) }));
+      const head = as[0], more = as.slice(1), key = c.id + a.id, exp = !!this.state.exp[key];
+      const pendingReason = a.check ? 'Waiting for ' + a.check : 'Judged by ai-review when the pipeline finishes';
+      return {
+        id: a.id, text: a.text, check: a.check ? 'check: ' + a.check : 'no check', status: a.status,
+        reason: head ? head.reason : (a.status === 'pending' ? pendingReason : (d.note || 'Not judged')),
+        hasBy: !!head, by: head ? head.validator : '', ev: head ? head.ev : [],
+        more: exp ? more : [], hasMore: more.length > 0, expanded: exp, moreLabel: exp ? 'hide' : '+' + more.length + ' validator',
+        toggle: () => this.setState(st3 => ({ exp: { ...st3.exp, [key]: !exp } })),
+        hl: this.state.hlAC === a.id ? 'var(--accent-bg)' : 'transparent', domId: 'crit-' + a.id
+      };
+    });
+    const metN = d.criteria.filter(x => x.status === 'met').length, tot = d.criteria.length;
+    const blockers = d.findings.filter(f => f.sev === 'blocker').length;
+    const diffKind = d.diff === 'retry';
+    const groups = ['blocker', 'major', 'minor'].map(sv => {
+      const items = d.findings.filter(f => f.sev === sv).map(f => ({
+        sev: sv, msg: f.msg, v: f.v, hasAc: !!f.ac, ac: f.ac || '', hasLoc: !!f.file, loc: f.file ? f.file + ':' + f.line : '',
+        goAc: () => { this.setState({ hlAC: f.ac }, () => this.scrollAfter('#crit-' + f.ac, 120)); clearTimeout(this._hlt); this._hlt = setTimeout(() => this.setState({ hlAC: null }), 1600); },
+        openLoc: () => this.setState(st3 => ({ diff: { ...st3.diff, [c.id]: 'open' }, hl: f.file + ':' + f.line + ':' + Date.now() }), () => this.scrollAfter(diffKind ? '[data-diff-hl="1"]' : '[data-diff-file-hl="1"]', 160))
+      }));
+      return { label: { blocker: 'Blockers', major: 'Major', minor: 'Minor' }[sv], count: items.length, items };
+    }).filter(g => g.count);
+    const judged = !['running', 'open'].includes(s.state);
+    const S = {
+      approved: `All ${tot} criteria met. No blockers.`,
+      fix_requested: `${blockers} blocker${blockers === 1 ? '' : 's'}. Sent back to ${c.by}; a new push validates again.`,
+      running: `Validating iteration ${nR}. The verdict arrives when ai-review finishes.`,
+      needs_human: 'A person must look: the pipeline could not produce evidence.',
+      escalated: 'Still not approved after three fix rounds. Push a fix yourself, or close the change.',
+      rejected: 'Wrong at the root. Fixing details will not get this approved.',
+      merged: `Merged into ${c.tgt}.`,
+      open: nR ? 'Waiting to validate again.' : 'Waiting to validate. 2 validations are running.',
+      closed: 'Closed without merging.'
+    };
+    const showSteps = s.state === 'running';
+    const vSteps = cur ? cur.steps.map(x => stepVM(x, curIdx)) : [];
+    const validators = cur && !showSteps ? cur.steps.filter(x => x.validator).map(x => stepVM(x, curIdx)) : [];
+    const strat = repo.merge_strategy;
+    const mergeNote = s.state === 'approved' ? ({ squash: 'Merge squashes ', merge: 'Merge creates a merge commit for ', rebase: 'Merge rebases ' }[strat]) + (cur ? cur.head : '') + ' onto ' + c.tgt + ' (' + strat + ', set per repository).' : '';
+    const busy = !!this.state.busy[c.id];
+    const primary = [], secondary = [];
+    if (s.state === 'approved') primary.push({ label: busy ? 'Merging…' : 'Merge', on: () => !busy && this.merge(c), busy });
+    if (s.state === 'needs_human' || s.state === 'escalated') primary.push({ label: 'Validate again', on: () => this.revalidate(c), busy: false });
+    if (!['merged', 'closed'].includes(s.state)) secondary.push({ label: 'Close', on: () => this.close(c) });
+    const notice = this.noticeVM(c, s, d);
+    const ds = this.state.diff[c.id] || 'closed';
+    const hlKey = this.state.hl ? this.state.hl.split(':').slice(0, 2).join(':') : '';
+    const files = (diffKind ? RETRY_FILES : d.findings.filter(f => f.file).map(f => ({ path: f.file, add: 24, del: 6 })).concat([{ path: 'CHANGELOG.md', add: 1, del: 0 }])).map(f => ({
+      path: f.path, add: f.add, del: f.del, hasHunk: !!f.lines, hdr: f.hdr || '',
+      bg: hlKey.startsWith(f.path) && !f.lines ? 'var(--accent-bg)' : 'var(--surface)', fileHl: hlKey.startsWith(f.path) && !f.lines ? '1' : '0',
+      lines: (f.lines || []).map(([sg, o, n, code]) => {
+        const fd = d.findings.find(x => x.file === f.path && x.line === n && sg !== '-');
+        const hl = hlKey === f.path + ':' + n;
+        return { sign: sg === ' ' ? '' : sg, o, n, code, bg: sg === '+' ? 'var(--diff-add)' : sg === '-' ? 'var(--diff-del)' : 'transparent', sc: sg === '+' ? 'var(--s-green)' : 'var(--s-red)', ring: hl ? 'inset 0 0 0 1px var(--accent)' : 'none', hlAttr: hl ? '1' : '0', hasNote: !!fd, note: fd ? fd.msg : '', noteSev: fd ? fd.sev : 'minor' };
+      })
+    }));
+    const add = files.reduce((a, f) => a + f.add, 0), del = files.reduce((a, f) => a + f.del, 0);
+    const ch = {
+      id: c.id, title: c.title, state: s.state, repo: c.repo, host: HOST[repo.host], src: c.src, tgt: c.tgt,
+      head: (cur && cur.head) || d.head, base: (cur && cur.base) || d.base, iter: nR ? nR + ' of ' + nR : '—', by: c.by, created: d.created,
+      updated: s.state === 'running' ? 'Live' : 'Updated ' + agoLong(s.ago),
+      primary, secondary, hasNotice: !!notice, notice: notice || { title: '', body: '', hasCmd: false, cmd: '', actions: [], dismiss: () => { } },
+      intent: d.intent, constraints: d.constraints, hasCons: d.constraints.length > 0,
+      critCount: judged ? metN + ' of ' + tot + ' met' : tot + ' pending',
+      criteria,
+      fCount: String(d.findings.length), groups, noFindings: d.findings.length === 0, noFindingsText: judged ? 'No findings.' : 'Findings appear with the verdict.',
+      rCount: String(d.risks.length), noRisks: d.risks.length === 0, noRisksText: judged ? 'No risks flagged.' : 'Risks appear with the verdict.',
+      risks: d.risks.map(r => ({ area: r.area, msg: r.msg, v: r.v, hr: r.hr, noHr: !r.hr, icon: r.hr ? 'human_required' : 'info' })),
+      iterCount: String(nR), noRuns: nR === 0,
+      iters: runs.slice().reverse().map((r, j, arr) => {
+        const ri = r.iteration - 1, selected = ri === sel;
+        const durS = r.status === 'running' ? null : r.steps.reduce((a, x) => a + (x.ms || 0), 0) / 1000;
+        return { n: r.iteration, status: r.status === 'running' ? 'running' : r.status === 'errored' ? 'errored' : r.outcome, headline: r.headline, head: r.head, dur: durS == null ? fmt(38 + (s.el || 0)) : fmt(durS), ago: ago(r.ago), selected, bg: selected ? 'var(--surface)' : 'transparent', fw: selected ? '600' : '400', dotBg: 'var(--bg)', lt: j === 0 ? '50%' : '0', lb: j === arr.length - 1 ? '50%' : '0', select: () => this.setState(st3 => ({ runSel: { ...st3.runSel, [c.id]: ri } })) };
+      }),
+      evLabel: run ? 'iteration ' + run.iteration + ' · ' + run.id + ' · ' + run.head : 'none yet',
+      runError: !!(run && run.error), runErrorText: run && run.error ? run.error : '',
+      steps: run ? run.steps.map(x => stepVM(x, sel)) : [],
+      diff: {
+        summary: files.length + ' files · +' + add + ' −' + del + ' · ' + ((cur && cur.base) || d.base) + '..' + ((cur && cur.head) || d.head),
+        open: ds === 'open', loading: ds === 'loading', btn: ds === 'open' ? 'Hide diff' : ds === 'loading' ? 'Loading…' : 'Load diff', files,
+        toggle: () => {
+          if (ds === 'open') return this.setState(st3 => ({ diff: { ...st3.diff, [c.id]: 'closed' }, hl: null }));
+          if (ds === 'loading') return;
+          this.setState(st3 => ({ diff: { ...st3.diff, [c.id]: 'loading' } }));
+          setTimeout(() => this.setState(st3 => ({ diff: { ...st3.diff, [c.id]: 'open' } })), 700);
+        }
+      }
+    };
+    const v = {
+      runId: cur ? cur.id : 'no run yet', state: s.state, iterLabel: nR ? 'iteration ' + nR : '',
+      sentence: S[s.state], hasCounts: judged && nR > 0 && s.state !== 'needs_human',
+      counts: metN + '/' + tot + ' met · ' + blockers + ' blocker' + (blockers === 1 ? '' : 's') + ' · ' + d.findings.length + ' finding' + (d.findings.length === 1 ? '' : 's') + ' · ' + d.risks.length + ' risk' + (d.risks.length === 1 ? '' : 's'),
+      hasReasons: d.reasons.length > 0 && ['rejected', 'needs_human', 'escalated'].includes(s.state), reasons: d.reasons,
+      hasSteps: showSteps || validators.length > 0, stepsLabel: showSteps ? 'Pipeline' : 'Validators', steps: showSteps ? vSteps : validators,
+      hasMergeNote: !!mergeNote, mergeNote, hasRecord: s.state === 'merged' && !!d.merge, rec: d.merge || { commit: '', previous: '', strategy: '', merged_at: '' }
+    };
+    return { ch, v };
+  }
+
+  logVM() {
+    const lg = this.state.log;
+    const empty = { step: '', status: 'queued', validator: false, cid: '', runId: '', iter: '', dur: '', exit: '', q: '', lines: [], matchLabel: '', count: 0, footer: '', live: false, cols: '56px 1fr', ws: 'pre', wrap: false, follow: false };
+    if (!lg) return empty;
+    const c = C.find(x => x.id === lg.cid), s = this.sum(c), d = this.detail(c), run = d.runs[lg.ri], step = run.steps.find(x => x.name === lg.step);
+    const raw = this.logLines(c.id, run, step);
+    const q = this.state.logQ.trim().toLowerCase();
+    let m = 0;
+    const cur = this.state.logM;
+    const lines = raw.map((t, i) => {
+      const parts = [];
+      if (q) {
+        const lo = t.toLowerCase(); let p = 0, k;
+        while ((k = lo.indexOf(q, p)) !== -1) { if (k > p) parts.push({ t: t.slice(p, k), bg: 'transparent', m: '' }); parts.push({ t: t.slice(k, k + q.length), bg: m === cur ? 'var(--hit-strong)' : 'var(--hit)', m: String(m) }); m++; p = k + q.length; }
+        if (p < t.length) parts.push({ t: t.slice(p), bg: 'transparent', m: '' });
+      } else parts.push({ t, bg: 'transparent', m: '' });
+      const fg = /FAIL|Error|errored|failed in|expected .* got/.test(t) ? 'var(--s-red)' : t.startsWith('$ ') ? 'var(--text-2)' : 'var(--text)';
+      return { n: i + 1, parts, fg };
+    });
+    const live = step.status === 'running';
+    const total = m;
+    const gotoMatch = idx => { this.setState({ logM: idx }, () => { const box = this.logRef.current; const el = box && box.querySelector('[data-m="' + idx + '"]'); if (el) { this.setState({ follow: false }); box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight / 3; } }); };
+    return {
+      step: step.name, status: step.status, validator: step.validator, cid: c.id, runId: run.id, iter: String(run.iteration),
+      dur: step.status === 'running' ? fmt(s.el ?? 0) : step.ms != null ? fmt(step.ms / 1000) : '—', exit: step.exit == null ? '—' : String(step.exit),
+      q: this.state.logQ, onQ: e => this.setState({ logQ: e.target.value, logM: 0 }),
+      onQKey: e => { if (e.key === 'Enter' && total) { e.preventDefault(); gotoMatch((cur + 1) % total); } },
+      next: () => total && gotoMatch((cur + 1) % total),
+      matchLabel: q ? (total ? (Math.min(cur, total - 1) + 1) + '/' + total : '0/0') : '',
+      lines, count: lines.length, live, follow: this.state.follow,
+      followBg: this.state.follow ? 'var(--surface-2)' : 'var(--bg)', wrap: this.state.wrap, wrapBg: this.state.wrap ? 'var(--surface-2)' : 'var(--bg)',
+      toggleWrap: () => this.setState(s2 => ({ wrap: !s2.wrap })), toggleFollow: () => this.setState(s2 => ({ follow: !s2.follow })),
+      ws: this.state.wrap ? 'pre-wrap' : 'pre', cols: this.state.wrap ? '56px minmax(0,1fr)' : '56px max-content',
+      onScroll: e => { if (this._prog) { this._prog = false; return; } const el = e.target; const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24; if (live && this.state.follow !== atBottom) this.setState({ follow: atBottom }); },
+      footer: live ? (this.state.follow ? 'Following · new lines appear as the step writes them' : 'Paused · scroll to the end or press Follow') : 'Step ' + step.status.replace('_', ' ') + '. Full log, fetched on open.'
+    };
+  }
+
+  renderVals() {
+    const { screen, tick } = this.state;
+    const ds = this.props.dataState || 'populated';
+    const theme = this.props.theme || 'system';
+    const all = C.map(c => this.sum(c));
+    const needsN = all.filter(c => NEEDS.includes(c.state)).length;
+    const alertsOpen = ALERTS.filter(a => !a.resolved && !this.state.resolved[a.id]);
+    const nav = [['changes', 'Changes', ds === 'populated' ? String(needsN) : ''], ['alerts', 'Alerts', ds === 'populated' && alertsOpen.length ? String(alertsOpen.length) : ''], ['repos', 'Repositories', ds === 'populated' ? String(REPOS.length) : '']].map(([k, label, count]) => {
+      const on = screen === k || (k === 'changes' && screen === 'change');
+      return { label, count, current: on ? 'page' : undefined, bg: on ? 'var(--surface-2)' : 'transparent', fg: on ? 'var(--text)' : 'var(--text-2)', go: () => this.setState({ screen: k, log: null }) };
+    });
+    const ev = this.state.evt || (tick >= 25 ? { text: 'step finished · build · c_a1s4d7f0g3hk', t: 25 } : { text: 'step finished · build · c_h9d3s7l2m5qe', t: -14 });
+    const lastEvent = ev.text + ' · ' + fmt(tick - ev.t) + ' ago';
+
+    const q = this.state.q.trim().toLowerCase();
+    const filtered = all.filter(c => (this.state.repo === 'all' || c.repo === this.state.repo) && (this.state.st === 'all' || c.state === this.state.st) && (!q || (c.title + ' ' + c.id + ' ' + c.src).toLowerCase().includes(q)));
+    const byAgo = (a, b) => a.ago - b.ago;
+    const need = filtered.filter(c => NEEDS.includes(c.state)).sort(byAgo), rest = filtered.filter(c => !NEEDS.includes(c.state)).sort(byAgo);
+    let idx = 0;
+    const row = (c, bg) => {
+      const i = idx++;
+      let verdict = '', hasBlk = false, blk = '';
+      if (c.state === 'running') verdict = c.step + ' · ' + fmt(c.el);
+      else if (c.state === 'open') verdict = 'waiting to validate';
+      else if (c.state === 'needs_human') verdict = c.note;
+      else if (c.total) { verdict = c.met + '/' + c.total + ' met'; if (c.blockers) { hasBlk = true; blk = c.blockers + ' blocker' + (c.blockers > 1 ? 's' : ''); } else if (c.state !== 'closed') verdict += ' · 0 blockers'; }
+      return { isRow: true, hdr: false, id: c.id, state: c.state, title: c.title, repo: c.repo, src: c.src, tgt: c.tgt, verdict, hasBlk, blk, iter: c.iter ? String(c.iter) : '—', by: c.by, ago: ago(c.ago), bg, open: () => this.openChange(c.id, i) };
+    };
+    const rows = [];
+    if (need.length) { rows.push({ hdr: true, isRow: false, title: 'Needs you', count: String(need.length), sub: 'Ready to merge, or waiting for a person', bg: 'var(--surface)', pad: '12px 20px 6px' }); need.forEach(c => rows.push(row(c, 'var(--surface)'))); }
+    if (rest.length) { rows.push({ hdr: true, isRow: false, title: need.length ? 'Everything else' : 'Changes', count: String(rest.length), sub: '', bg: 'transparent', pad: '18px 20px 6px' }); rest.forEach(c => rows.push(row(c, 'transparent'))); }
+    const repoOpts = [['all', 'All repositories']].concat(REPOS.map(r => [r.id, r.id])).map(([v, label]) => ({ label, on: this.state.repo === v, bg: this.state.repo === v ? 'var(--surface-2)' : 'transparent', fg: this.state.repo === v ? 'var(--text)' : 'var(--text-2)', pick: () => this.setState({ repo: v }) }));
+
+    const { ch, v } = this.changeVM();
+    const log = this.logVM();
+
+    const showRes = this.state.showResolved;
+    const mkA = a => {
+      const resolvedAt = a.resolved || this.state.resolved[a.id];
+      return { isItem: true, isHdr: false, kind: a.kind, kindLabel: a.kind === 'bypass_commit' ? 'Commits without a verdict' : (a.failed ? 'Token check failed' : 'Token expires soon'), repo: a.repo, when: a.created, message: a.message, hasCommits: !!a.commits, commits: a.commits || [], hasHint: !!a.hint && !resolvedAt, hint: a.hint || '', canResolve: !resolvedAt, isResolved: !!resolvedAt, resolvedAt: resolvedAt || '', icon: resolvedAt ? 'resolved' : 'alert', op: resolvedAt ? '0.8' : '1', resolve: () => this.setState(s => ({ resolved: { ...s.resolved, [a.id]: 'just now' } })) };
+    };
+    const openA = ds === 'empty' ? [] : ALERTS.filter(a => !a.resolved && !this.state.resolved[a.id]);
+    const resA = ds === 'empty' ? [] : ALERTS.filter(a => a.resolved || this.state.resolved[a.id]);
+    const alItems = openA.map(mkA);
+    if (showRes && resA.length) { alItems.push({ isHdr: true, isItem: false }); resA.forEach(a => alItems.push(mkA(a))); }
+    const al = { openCount: String(openA.length), noneOpen: openA.length === 0, items: alItems, showResolved: showRes, toggleLabel: (showRes ? 'Hide resolved' : 'Show resolved') + ' (' + resA.length + ')', toggleResolved: () => this.setState(s => ({ showResolved: !s.showResolved })) };
+
+    return {
+      theme, nav, lastEvent, mainRef: this.mainRef, searchRef: this.searchRef, logRef: this.logRef, logSearchRef: this.logSearchRef, diffRef: this.diffRef,
+      isChanges: screen === 'changes', isChange: screen === 'change', isAlerts: screen === 'alerts', isRepos: screen === 'repos',
+      listCount: ds === 'populated' ? String(filtered.length) : '',
+      q: this.state.q, onQ: e => this.setState({ q: e.target.value }), st: this.state.st, onSt: e => this.setState({ st: e.target.value }), repoOpts,
+      hasFilters: this.state.q !== '' || this.state.repo !== 'all' || this.state.st !== 'all',
+      clearFilters: () => this.setState({ q: '', repo: 'all', st: 'all' }),
+      isLoading: ds === 'loading', isEmpty: ds === 'empty', noMatch: ds === 'populated' && filtered.length === 0, showList: ds === 'populated' && filtered.length > 0,
+      skel: [62, 48, 70, 55, 40, 66, 52, 45, 60, 50].map(w => ({ w: w + '%' })), rows,
+      goList: this.goList, ch, v, al,
+      repoCount: ds === 'populated' ? String(REPOS.length) : '', reposEmpty: ds !== 'populated', reposShow: ds === 'populated',
+      repos: REPOS.map(r => ({ id: r.id, host: HOST[r.host], url: r.url, branches: r.protected_branches.join(', '), strategy: r.merge_strategy, count: String(C.filter(c => c.repo === r.id).length) })),
+      hasLog: !!this.state.log, log, closeLog: () => this.setState({ log: null })
+    };
+  }
+}
+
+const ALERTS = [
+  { id: 'al_5n2c8v1x', kind: 'bypass_commit', repo: 'plumbix', created: '27 min ago', message: 'commit 3b7f2a9d1c0e by eduard reached main without a verdict', commits: [{ sha: '3b7f2a9d1c0e', author: 'eduard', time: '2026-10-16 08:46', subject: 'hotfix: raise runner timeout to 15m' }], hint: 'If this was intended, resolve the alert. Otherwise revert the commit and submit it as a change.' },
+  { id: 'al_8k3m6p0q', kind: 'token_expiry', repo: 'ledger-api', created: '3 h ago', message: 'The Azure DevOps token for ledger-api expires on 2026-10-22, in 6 days.', hint: 'Create a new token in Azure DevOps and register it from the terminal before then.' },
+  { id: 'al_1x7z4c9v', kind: 'bypass_commit', repo: 'infra-scripts', created: '2026-10-12 21:10', resolved: '2026-10-13 08:02', message: '2 commits by eduard reached main without a verdict', commits: [{ sha: 'd04e1f6a7b22', author: 'eduard', time: '2026-10-12 21:04', subject: 'backup: fix path on new host' }, { sha: '91c3b8e5f0aa', author: 'eduard', time: '2026-10-12 21:08', subject: 'backup: log bucket name' }] },
+  { id: 'al_0r5t2y8u', kind: 'token_expiry', failed: true, repo: 'plumbix', created: '2026-10-09 10:31', resolved: '2026-10-09 10:44', message: 'The GitHub token for plumbix failed its check: 401 Bad credentials.' }
+];
+</script>
+</body>
+</html>

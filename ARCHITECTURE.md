@@ -48,7 +48,7 @@ Each package lives under `internal/` unless noted.
 | Events | `events` | Append-only event log in the store, published to clients as a Server-Sent Events (SSE) stream. |
 | Store | `store` | SQLite database plus embedded migrations. |
 | Config | `config` | Loads config and secrets, checks file permissions, enforces the local-only bind rule. |
-| Web interface | `web/` | React and TypeScript app built with Vite, embedded into the binary at build time. |
+| Web interface | `web/` | React and TypeScript app built with Vite, embedded into the binary at build time (`web/embed.go`, SPA fallback, CSP). The design handoff lives in `web/design/`. |
 | Reference validator | `validators/reference/` | Deterministic validator: a small Go program shipped as a container image. It maps criteria to step results and commands. |
 | AI validator | `validators/ai/` | A Go program shipped as a container image. It asks a Claude model to judge the change against its intent and criteria, and writes the same verdict file. |
 
@@ -106,7 +106,7 @@ Versioning: every document carries a version (`version: 1` in pipelines, `"plumb
 
 ### 4.1 HTTP API v1
 
-The base address comes from config `server.listen`, default `127.0.0.1:6400`. Every route except `GET /api/v1/health` needs `Authorization: Bearer <token>`, where the token is the content of `<data_dir>/api-token` (A14). Failures return 401 with `WWW-Authenticate: Bearer`. Errors use one JSON shape: `{"error": {"code": "...", "message": "...", "details": {...}}}`. Field problems are `invalid_request` with `details.problems: [{field, message}]` listing every problem. IDs are a prefix plus 12 random base32 characters: `r_` for repos, `c_` for changes.
+The base address comes from config `server.listen`, default `127.0.0.1:6400`. Every route except `GET /api/v1/health` and `POST /api/v1/sessions` needs either `Authorization: Bearer <token>`, where the token is the content of `<data_dir>/api-token` (A14), or the browser's `plumbix_session` cookie. Cookie requests must carry the server's own `Host` (DNS rebinding) and, when they change state, an `Origin` of `http://<that host>` (cross-site requests); failures are 401 and 403. Failures of the token are 401 with `WWW-Authenticate: Bearer`. Paths outside `/api/` serve the embedded web app. Errors use one JSON shape: `{"error": {"code": "...", "message": "...", "details": {...}}}`. Field problems are `invalid_request` with `details.problems: [{field, message}]` listing every problem. IDs are a prefix plus 12 random base32 characters: `r_` for repos, `c_` for changes.
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -115,7 +115,7 @@ The base address comes from config `server.listen`, default `127.0.0.1:6400`. Ev
 | POST | `/api/v1/changes` | Submit a change: repo, source and target branch, title, intent, acceptance criteria, constraints, submitted-by. |
 | GET | `/api/v1/changes` | List changes as `{"changes": [...]}`, filtered by `repo_id` and `state`. |
 | GET | `/api/v1/changes/{id}` | One change with its iterations, latest outcome and findings. |
-| GET | `/api/v1/changes/{id}/diff` | Diff between the target branch and the current iteration. |
+| GET | `/api/v1/changes/{id}/diff` | The diff the validators judged: base..head of the latest run with a head, parsed into files and hunks; `stat=true` for counts only. |
 | POST | `/api/v1/changes/{id}/merge` | Merge an approved change. Fails if the target branch moved since validation. |
 | POST | `/api/v1/changes/{id}/close` | Close without merging. |
 | GET | `/api/v1/runs/{id}` | A run with its steps, status, timings and evidence index. |
@@ -125,6 +125,11 @@ The base address comes from config `server.listen`, default `127.0.0.1:6400`. Ev
 | GET | `/api/v1/alerts` | Bypass commits and token-expiry warnings, open ones unless `include_resolved=true`. |
 | POST | `/api/v1/alerts/{id}/resolve` | Mark an alert as handled. |
 | GET | `/api/v1/events` | SSE stream, filtered by `repo_id` and `change_id`. Replays after `Last-Event-ID` (or `after`), then follows live, so clients resume with no gap. |
+| POST | `/api/v1/login-links` | Token only. Mints the one-time link `plumbix login` prints; valid 10 minutes. |
+| POST | `/api/v1/sessions` | No credentials. Exchanges a link once for the `plumbix_session` cookie (30 days); 401 `link_used`, `link_expired` or `link_invalid`. |
+| DELETE | `/api/v1/sessions` | Token only. Signs every browser out (`plumbix logout`). |
+| DELETE | `/api/v1/sessions/current` | Cookie only. Signs this browser out. |
+| GET | `/api/v1/session` | How the caller is signed in, with the cookie's expiry. |
 
 ### 4.2 Pipeline file, version 1
 
@@ -315,6 +320,7 @@ These are implementation calls made in this architecture step, with the reasons 
 | A13 | Secrets live in a dotenv file (`secrets_file`), mode `0600` | The user asked for a `.env` file. Dotenv is the most familiar format for open-source users. | A YAML secrets file |
 | A14 | The API needs a local bearer token, generated on first start in `<data_dir>/api-token` (mode `0600`). The browser gets a one-time login link with the web interface (WU-011) | Owner's choice (option A) after WU-003 showed Docker Desktop containers reach host loopback. Containers never see the data directory, so they can't authenticate. | No network for steps by default (partial fix, breaks dependency downloads), accepting the exposure |
 | A15 | A change merges only when its source branch already contains the target's head, and the target lands the validated tree byte for byte | The verdict decides what merges, so what merges must be what was judged. A merge Plumbix computed after validation would be untested code. The client brings the target into the source and gets a fresh verdict instead. | Merging as long as the target did not move (lands an untested tree when the source was behind), letting Plumbix resolve merges |
+| A17 | Browser sign-in is a one-time link minted by the token holder and exchanged once for an HttpOnly, SameSite=Strict cookie; cookie requests must carry the server's own Host and, on state changes, Origin | A browser cannot hold the file token. The link keeps the token out of the browser, the cookie keeps it out of page scripts, and the Host and Origin checks stop a rebinding or cross-site page from using it. | Pasting the token into the page (lands in browser storage), token in the URL on every request, no browser at all |
 | A16 | The store appends each event inside the transaction of the write it describes; services and the engine never emit events themselves, except `step.finished`, which has no write of its own | Every write path is covered by construction, data and event cannot disagree, and a client resuming from its last id misses nothing. | Emitting from services (easy to forget, lost on a crash between write and emit), a separate message broker |
 
 ## 9. Risks and open items

@@ -1,0 +1,54 @@
+/* Plumbix design tokens. One set of variables; light/dark resolved with light-dark().
+   Follows the system by default. Force a theme with data-theme="light|dark" on <html>. */
+:root {
+  color-scheme: light dark;
+
+  /* Neutrals (hue 265, near-zero chroma) */
+  --bg:            light-dark(oklch(0.992 0.002 265), oklch(0.165 0.006 265));
+  --surface:       light-dark(oklch(0.974 0.003 265), oklch(0.198 0.007 265)); /* sidebar, verdict panel, needs-you group, notices */
+  --surface-2:     light-dark(oklch(0.948 0.004 265), oklch(0.238 0.008 265)); /* selected nav/segment, skeleton bars */
+  --hover:         light-dark(oklch(0.962 0.004 265), oklch(0.215 0.008 265));
+  --border:        light-dark(oklch(0.91 0.005 265),  oklch(0.275 0.008 265));
+  --border-strong: light-dark(oklch(0.83 0.007 265),  oklch(0.36 0.01 265));  /* inputs, secondary buttons, notices */
+  --text:          light-dark(oklch(0.21 0.012 265),  oklch(0.94 0.004 265));  /* also primary button fill */
+  --text-2:        light-dark(oklch(0.41 0.012 265),  oklch(0.77 0.008 265));
+  --text-3:        light-dark(oklch(0.52 0.012 265),  oklch(0.65 0.008 265));  /* min AA on --bg and --surface */
+
+  /* The one accent: focus rings, links, evidence links, highlight */
+  --accent:    light-dark(oklch(0.5 0.18 275),  oklch(0.75 0.13 275));
+  --accent-bg: light-dark(oklch(0.95 0.03 275), oklch(0.28 0.06 275));
+
+  /* State colours: fg used for icon + label, bg is the pill tint. fg on bg >= 4.5:1 */
+  --s-neutral: light-dark(oklch(0.46 0.012 265), oklch(0.74 0.008 265)); --s-neutral-bg: light-dark(oklch(0.945 0.004 265), oklch(0.245 0.008 265));
+  --s-blue:    light-dark(oklch(0.49 0.12 230),  oklch(0.78 0.11 230));  --s-blue-bg:    light-dark(oklch(0.95 0.03 230),   oklch(0.27 0.045 230));
+  --s-green:   light-dark(oklch(0.48 0.12 152),  oklch(0.79 0.13 152));  --s-green-bg:   light-dark(oklch(0.95 0.035 152),  oklch(0.265 0.045 152));
+  --s-amber:   light-dark(oklch(0.5 0.11 70),    oklch(0.81 0.12 75));   --s-amber-bg:   light-dark(oklch(0.955 0.04 80),   oklch(0.27 0.045 70));
+  --s-red:     light-dark(oklch(0.5 0.17 25),    oklch(0.75 0.14 25));   --s-red-bg:     light-dark(oklch(0.95 0.025 25),   oklch(0.27 0.05 25));
+  --s-violet:  light-dark(oklch(0.5 0.17 320),   oklch(0.77 0.13 320));  --s-violet-bg:  light-dark(oklch(0.95 0.03 320),   oklch(0.27 0.05 320));
+
+  /* Diff and search */
+  --diff-add:   light-dark(oklch(0.96 0.03 152),  oklch(0.235 0.035 152));
+  --diff-del:   light-dark(oklch(0.96 0.025 25),  oklch(0.235 0.035 25));
+  --hit:        light-dark(oklch(0.92 0.09 95),   oklch(0.43 0.08 95));
+  --hit-strong: light-dark(oklch(0.84 0.15 85),   oklch(0.58 0.12 85));
+
+  /* Type */
+  --ui:   'IBM Plex Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Radii */
+  --r-xs: 3px;  /* kbd hints, validator tag */
+  --r-sm: 4px;  /* state pill, constraint chip, code block */
+  --r-md: 5px;  /* buttons, inputs */
+  --r-lg: 6px;  /* verdict panel, notices, segmented control */
+}
+[data-theme=light] { color-scheme: light; }
+[data-theme=dark]  { color-scheme: dark; }
+
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 var(--ui); -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+::selection { background: var(--accent-bg); }

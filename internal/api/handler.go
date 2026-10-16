@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/eduard-alloy/plumbix/internal/alert"
+	"github.com/eduard-alloy/plumbix/internal/auth"
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/engine"
 	"github.com/eduard-alloy/plumbix/internal/run"
@@ -23,6 +24,12 @@ type Deps struct {
 	Alerts  alert.Store     // nil leaves the alert routes out
 	Events  EventSource     // nil leaves the event stream out
 	Logger  *slog.Logger    // nil discards logs
+	// Sessions enables browser sign-in; nil leaves it out. Origin is the
+	// address browsers must use, such as http://127.0.0.1:6400: login
+	// links point there, and cookie requests must carry that Host.
+	Sessions *auth.Sessions
+	Origin   string
+	Web      http.Handler // the browser app, served outside /api/; nil answers 404 there
 }
 
 // NewHandler returns the HTTP handler for the public API.
@@ -32,6 +39,7 @@ func NewHandler(d Deps) http.Handler {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
+	az := newAuthz(d.Token, d.Sessions, d.Origin)
 	protected := http.NewServeMux()
 	protected.HandleFunc("POST /api/v1/pipelines/check", checkPipeline)
 	if d.Changes != nil {
@@ -55,7 +63,17 @@ func NewHandler(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": version})
 	})
-	mux.Handle("/", requireToken(d.Token, protected))
+	if d.Sessions != nil {
+		registerSessionRoutes(mux, protected, az, &sessionHandlers{sessions: d.Sessions, origin: d.Origin, authz: az, log: logger})
+	}
+	mux.Handle("/api/", az.wrap(protected))
+	if d.Web != nil {
+		mux.Handle("/", d.Web)
+	} else {
+		mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+			writeError(w, http.StatusNotFound, "not_found", "no such page; the web interface is not built into this server")
+		})
+	}
 	return mux
 }
 

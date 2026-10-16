@@ -22,6 +22,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/runner"
 	"github.com/eduard-alloy/plumbix/internal/secrets"
 	"github.com/eduard-alloy/plumbix/internal/store"
+	"github.com/eduard-alloy/plumbix/web"
 )
 
 // DatabaseFile is the SQLite database's file name inside the data directory.
@@ -110,7 +111,14 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		logger.Error("listen failed", "addr", cfg.Server.Listen, "err", err)
 		return 1
 	}
-	if err := api.Run(ctx, ln, api.NewHandler(api.Deps{Version: version, Token: token, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub, Logger: logger}), logger, config.DefaultShutdownTimeout); err != nil {
+	// Browsers must use the bound address: login links point there and
+	// cookie requests must carry it as Host.
+	deps := api.Deps{
+		Version: version, Token: token, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub, Logger: logger,
+		Sessions: auth.NewSessions(db), Origin: "http://" + ln.Addr().String(),
+		Web: web.Handler(web.Dist()),
+	}
+	if err := api.Run(ctx, ln, api.NewHandler(deps), logger, config.DefaultShutdownTimeout); err != nil {
 		logger.Error("server stopped with error", "err", err)
 		return 1
 	}

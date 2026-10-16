@@ -59,8 +59,10 @@ for h in host.docker.internal gateway.docker.internal "$gw" 172.17.0.1 192.168.6
   [ -n "$h" ] || continue
   out=$(wget -q -T 2 -O- --post-data='version: 1' "http://$h:%d/api/v1/pipelines/check" 2>&1)
   echo "route $h: ${out:-no response}"
+  out=$(wget -q -T 2 -O- "http://$h:%d/api/v1/changes" 2>&1)
+  echo "route $h changes: ${out:-no response}"
 done
-`, port)
+`, port, port)
 
 	d, err := runner.NewDocker()
 	if err != nil {
@@ -76,7 +78,7 @@ done
 	}
 	out := log.String()
 	t.Logf("probe results:\n%s", out)
-	if strings.Contains(out, `"valid"`) {
+	if strings.Contains(out, `"valid"`) || strings.Contains(out, `"changes"`) {
 		t.Fatalf("a step container got a real API response:\n%s", out)
 	}
 	if strings.Contains(out, "401") {

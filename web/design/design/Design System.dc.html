@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<title>Plumbix design system</title>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:light dark;
+--bg:light-dark(oklch(0.992 0.002 265),oklch(0.165 0.006 265));
+--surface:light-dark(oklch(0.974 0.003 265),oklch(0.198 0.007 265));
+--surface-2:light-dark(oklch(0.948 0.004 265),oklch(0.238 0.008 265));
+--hover:light-dark(oklch(0.962 0.004 265),oklch(0.215 0.008 265));
+--border:light-dark(oklch(0.91 0.005 265),oklch(0.275 0.008 265));
+--border-strong:light-dark(oklch(0.83 0.007 265),oklch(0.36 0.01 265));
+--text:light-dark(oklch(0.21 0.012 265),oklch(0.94 0.004 265));
+--text-2:light-dark(oklch(0.41 0.012 265),oklch(0.77 0.008 265));
+--text-3:light-dark(oklch(0.52 0.012 265),oklch(0.65 0.008 265));
+--accent:light-dark(oklch(0.5 0.18 275),oklch(0.75 0.13 275));
+--accent-bg:light-dark(oklch(0.95 0.03 275),oklch(0.28 0.06 275));
+--s-neutral:light-dark(oklch(0.46 0.012 265),oklch(0.74 0.008 265));--s-neutral-bg:light-dark(oklch(0.945 0.004 265),oklch(0.245 0.008 265));
+--s-blue:light-dark(oklch(0.49 0.12 230),oklch(0.78 0.11 230));--s-blue-bg:light-dark(oklch(0.95 0.03 230),oklch(0.27 0.045 230));
+--s-green:light-dark(oklch(0.48 0.12 152),oklch(0.79 0.13 152));--s-green-bg:light-dark(oklch(0.95 0.035 152),oklch(0.265 0.045 152));
+--s-amber:light-dark(oklch(0.5 0.11 70),oklch(0.81 0.12 75));--s-amber-bg:light-dark(oklch(0.955 0.04 80),oklch(0.27 0.045 70));
+--s-red:light-dark(oklch(0.5 0.17 25),oklch(0.75 0.14 25));--s-red-bg:light-dark(oklch(0.95 0.025 25),oklch(0.27 0.05 25));
+--s-violet:light-dark(oklch(0.5 0.17 320),oklch(0.77 0.13 320));--s-violet-bg:light-dark(oklch(0.95 0.03 320),oklch(0.27 0.05 320));
+--diff-add:light-dark(oklch(0.96 0.03 152),oklch(0.235 0.035 152));--diff-del:light-dark(oklch(0.96 0.025 25),oklch(0.235 0.035 25));
+--hit:light-dark(oklch(0.92 0.09 95),oklch(0.43 0.08 95));--hit-strong:light-dark(oklch(0.84 0.15 85),oklch(0.58 0.12 85));
+--ui:'IBM Plex Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace}
+[data-theme=light]{color-scheme:light}[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:oklch(0.9 0.004 265);font-family:var(--ui);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="display:flex;gap:0;width:1600px;font-size:13px;line-height:1.45">
+<sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+<div data-theme="{{ th.id }}" style="flex:1;min-width:0;display:flex;flex-direction:column;gap:40px;padding:40px 40px 64px;background:var(--bg);color:var(--text);border-right:1px solid var(--border)">
+  <header style="display:flex;flex-direction:column;gap:6px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:2px;background:var(--text)"></span><span style="font-family:var(--mono);font-weight:600">plumbix</span><span style="font-family:var(--mono);font-size:12px;color:var(--text-3);margin-left:auto">{{ th.label }}</span></div>
+    <h1 style="margin:8px 0 0;font-size:20px;line-height:26px;font-weight:600">Design system</h1>
+    <p style="margin:0;max-width:62ch;color:var(--text-2);text-wrap:pretty">Near-monochrome. One accent for focus, links and selection. Colour otherwise belongs to state, and state always pairs colour with an icon and a label. Light and dark follow the system through <span style="font-family:var(--mono);font-size:12px">light-dark()</span> on one set of CSS variables.</p>
+  </header>
+
+  <section style="display:flex;flex-direction:column;gap:10px">
+    <h2 style="margin:0;padding-bottom:6px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Tokens</h2>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 24px">
+      <sc-for list="{{ tokens }}" as="t" hint-placeholder-count="12">
+        <div style="display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;height:30px">
+          <span style="width:28px;height:20px;border-radius:4px;border:1px solid var(--border);background:{{ t.v }}"></span>
+          <span style="font-family:var(--mono);font-size:12px">{{ t.name }}</span>
+          <span style="font-size:12px;color:var(--text-3)">{{ t.use }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;margin-top:6px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-3)">State colours · text on tint ≥ 4.5:1 in both themes</div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:4px">
+        <sc-for list="{{ stateTones }}" as="t" hint-placeholder-count="6">
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;background:{{ t.bg }};color:{{ t.fg }};font-family:var(--mono);font-size:12px"><span style="font-weight:600">{{ t.name }}</span><span style="margin-left:auto;font-family:var(--ui)">{{ t.use }}</span></div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:6px">
+    <h2 style="margin:0 0 4px;padding-bottom:6px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Type</h2>
+    <div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px 16px;align-items:baseline">
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">title · 20/26 600</span><span style="font-size:20px;line-height:26px;font-weight:600;letter-spacing:-0.01em">Retry failed artifact uploads</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">prose · 14/1.55 400</span><span style="font-size:14px;line-height:1.55">Retry an upload up to three times with exponential backoff before giving up.</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">strong · 14 500</span><span style="font-size:14px;font-weight:500">A transient upload error is retried up to three times</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">body · 13 400/500</span><span>Sent back to mira; a new push validates again.</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">section · 13 600</span><span style="font-weight:600">Findings</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">label · 12 600 text-3</span><span style="font-size:12px;font-weight:600;color:var(--text-3)">Acceptance criteria</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">meta · 12 400</span><span style="font-size:12px;color:var(--text-2)">Updated 4 min ago</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">mono · 13 / 12 / 11</span><span style="font-family:var(--mono);font-size:12px">c_k7m2q9x4w1zp · 9f3c1e2 · internal/evidence/upload.go:71</span>
+    </div>
+    <p style="margin:6px 0 0;font-size:12px;color:var(--text-3)">IBM Plex Sans for UI, IBM Plex Mono for ids, SHAs, branches, paths, durations, logs and diffs. Hierarchy comes from size and weight; containers are reserved for the verdict panel and notices.</p>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:4px">
+    <h2 style="margin:0 0 4px;padding-bottom:6px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">State encoding</h2>
+    <sc-for list="{{ enc }}" as="g" hint-placeholder-count="5">
+      <div style="display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;flex-direction:column"><span style="font-weight:600">{{ g.name }}</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">{{ g.field }}</span></div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:128px 110px minmax(0,1fr);gap:10px;align-items:center;min-height:22px">
+              <span style="display:flex"><dc-import name="StatePill" status="{{ it.k }}" hint-size="100px,20px"></dc-import></span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--text-2)">{{ it.k }}</span>
+              <span style="font-size:12px;color:var(--text-2);text-wrap:pretty">{{ it.d }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+    <p style="margin:6px 0 0;font-size:12px;color:var(--text-3);text-wrap:pretty">One badge shape everywhere. The pill has four modes from the same component: pill (lists, headers), plain (icon + coloured label), icon (dense rows; label goes to screen readers), text (inline with a reason). queued and pending are display states for steps and criteria before a verdict.</p>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;padding-bottom:6px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Components</h2>
+
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-3)">State pill · modes</div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <dc-import name="StatePill" status="fix_requested" hint-size="100px,20px"></dc-import>
+        <dc-import name="StatePill" status="fix_requested" mode="plain" hint-size="90px,16px"></dc-import>
+        <dc-import name="StatePill" status="fix_requested" mode="icon" hint-size="14px,14px"></dc-import>
+        <dc-import name="StatePill" status="fix_requested" mode="text" hint-size="80px,14px"></dc-import>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-3)">Buttons</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button style="height:30px;padding:0 14px;border:1px solid var(--text);border-radius:5px;background:var(--text);color:var(--bg);font-size:13px;font-weight:500;cursor:pointer">Merge</button>
+        <button style="height:30px;padding:0 12px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:13px;font-weight:500;cursor:pointer">Close</button>
+        <button style="height:26px;padding:0 10px;border:0;border-radius:5px;background:transparent;color:var(--text-2);font-size:12px;cursor:pointer">Resolve</button>
+        <button style="padding:0;border:0;background:transparent;color:var(--accent);font-family:var(--mono);font-size:12px;cursor:pointer">internal/evidence/upload.go:71</button>
+        <span style="margin-left:auto;font-size:12px;color:var(--text-3)">primary (one per screen) · secondary · quiet · evidence link</span>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-3)">Filter bar</div>
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <div style="position:relative;display:flex;align-items:center;width:220px"><input placeholder="Filter by title, id or branch" aria-label="Filter" style="width:100%;height:28px;padding:0 28px 0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:13px"><span style="position:absolute;right:6px;min-width:16px;height:16px;display:grid;place-items:center;border:1px solid var(--border-strong);border-radius:3px;font-family:var(--mono);font-size:10px;color:var(--text-3)">/</span></div>
+        <div style="display:flex;gap:2px;padding:2px;border:1px solid var(--border);border-radius:6px"><span style="height:22px;padding:0 8px;border-radius:4px;background:var(--surface-2);font-size:12px;font-weight:500;display:flex;align-items:center">All repositories</span><span style="height:22px;padding:0 8px;font-size:12px;color:var(--text-2);display:flex;align-items:center">plumbix</span><span style="height:22px;padding:0 8px;font-size:12px;color:var(--text-2);display:flex;align-items:center">ledger-api</span></div>
+        <span style="height:28px;padding:0 8px;border:1px solid var(--border-strong);border-radius:5px;font-size:12px;display:flex;align-items:center">All states ▾</span>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-3)">Change row · 36px, one line</div>
+      <div style="border-top:1px solid var(--border)">
+        <div style="display:grid;grid-template-columns:108px minmax(0,1.2fr) minmax(0,1fr) 120px 40px;gap:12px;align-items:center;height:36px;padding:0 8px;border-bottom:1px solid var(--border);background:var(--surface)"><span style="display:flex"><dc-import name="StatePill" status="approved" hint-size="90px,20px"></dc-import></span><span style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Retry failed artifact uploads</span><span style="font-family:var(--mono);font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">plumbix · feat/retry-uploads → main</span><span style="font-family:var(--mono);font-size:12px;color:var(--text-2)">3/3 met · 0 blockers</span><span style="font-family:var(--mono);font-size:12px;color:var(--text-3);text-align:right">4m</span></div>
+        <div style="display:grid;grid-template-columns:108px minmax(0,1.2fr) minmax(0,1fr) 120px 40px;gap:12px;align-items:center;height:36px;padding:0 8px;border-bottom:1px solid var(--border)"><span style="display:flex"><dc-import name="StatePill" status="running" hint-size="90px,20px"></dc-import></span><span style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Stream step logs over the event stream</span><span style="font-family:var(--mono);font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">plumbix · feat/log-stream → main</span><span style="font-family:var(--mono);font-size:12px;color:var(--text-2)">test · 1m 12s</span><span style="font-family:var(--mono);font-size:12px;color:var(--text-3);text-align:right">now</span></div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-3)">Criterion row</div>
+      <div style="display:grid;grid-template-columns:14px 34px minmax(0,1fr);column-gap:10px;padding:10px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <span style="padding-top:3px;display:flex"><dc-import name="StatePill" status="met" mode="icon" hint-size="14px,14px"></dc-import></span>
+        <span style="padding-top:2px;font-family:var(--mono);font-size:12px;color:var(--text-2)">AC-3</span>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="display:flex;justify-content:space-between;gap:12px"><span style="font-size:14px;font-weight:500">No change to the public API or the pipeline format</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">no check</span></div>
+          <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:12.5px;color:var(--text-2)"><dc-import name="StatePill" status="met" mode="text" hint-size="30px,14px"></dc-import><span>no files under contracts/ or .plumbix/ changed</span><span style="font-family:var(--mono);font-size:11.5px;color:var(--text-3)">ai-review</span><span style="font-family:var(--mono);font-size:11.5px;color:var(--accent)">evidence/ai-review/review.json</span><span style="font-size:12px;color:var(--text-3)">hide</span></div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-2)"><dc-import name="StatePill" status="unknown" mode="plain" hint-size="70px,14px"></dc-import><span>no check given</span><span style="font-family:var(--mono);font-size:11.5px;color:var(--text-3)">validate</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-3)">Finding row · grouped by severity, links to file:line and criterion</div>
+      <div style="display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <span style="padding-top:3px;display:flex"><dc-import name="StatePill" status="blocker" mode="icon" hint-size="14px,14px"></dc-import></span>
+        <div style="display:flex;flex-direction:column;gap:2px"><span>Expiry is parsed from the token name instead of calling GET _apis/tokens/pats</span><span style="display:flex;gap:8px;align-items:baseline;font-size:12px;color:var(--text-3)"><dc-import name="StatePill" status="blocker" mode="text" hint-size="44px,14px"></dc-import><span style="font-family:var(--mono)">ai-review</span><span style="font-family:var(--mono);color:var(--accent)">AC-1</span></span></div>
+        <span style="font-family:var(--mono);font-size:12px;color:var(--accent)">internal/hosts/azure/token.go:112</span>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-3)">Step row · click opens the log</div>
+      <div style="border-top:1px solid var(--border)">
+        <sc-for list="{{ steps }}" as="s" hint-placeholder-count="3">
+          <div style="display:grid;grid-template-columns:14px 110px 70px minmax(0,1fr) 56px 64px 28px;gap:12px;align-items:center;height:34px;padding:0 8px;border-bottom:1px solid var(--border)">
+            <dc-import name="StatePill" status="{{ s.st }}" mode="icon" hint-size="14px,14px"></dc-import>
+            <span style="font-family:var(--mono)">{{ s.name }}</span>
+            <span><sc-if value="{{ s.v }}"><span style="padding:1px 5px;border:1px solid var(--border);border-radius:3px;font-size:11px;color:var(--text-3)">validator</span></sc-if></span>
+            <dc-import name="StatePill" status="{{ s.st }}" mode="text" hint-size="70px,14px"></dc-import>
+            <span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ s.exit }}</span>
+            <span style="font-family:var(--mono);font-size:12px;color:var(--text-2);text-align:right">{{ s.dur }}</span>
+            <span style="font-size:12px;color:var(--accent);text-align:right">Log</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-3)">Iteration timeline</div>
+      <div style="border-top:1px solid var(--border)">
+        <sc-for list="{{ iters }}" as="it" hint-placeholder-count="3">
+          <div style="position:relative;display:grid;grid-template-columns:14px 82px 104px minmax(0,1fr) 64px;gap:12px;align-items:center;min-height:36px;padding:6px 8px;border-bottom:1px solid var(--border);background:{{ it.bg }}">
+            <span style="position:absolute;left:14.5px;top:{{ it.lt }};bottom:{{ it.lb }};width:1px;background:var(--border-strong)"></span>
+            <span style="position:relative;display:flex;background:var(--bg);border-radius:50%"><dc-import name="StatePill" status="{{ it.st }}" mode="icon" hint-size="14px,14px"></dc-import></span>
+            <span style="font-weight:{{ it.fw }}">Iteration {{ it.n }}</span>
+            <dc-import name="StatePill" status="{{ it.st }}" mode="text" hint-size="80px,14px"></dc-import>
+            <span style="color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.h }}</span>
+            <span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ it.sha }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-3)">Log viewer · line numbers, search hits, wrap, follow</div>
+      <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border)"><span style="font-family:var(--mono);font-weight:600">test</span><dc-import name="StatePill" status="succeeded" hint-size="90px,20px"></dc-import><span style="font-family:var(--mono);font-size:12px;color:var(--text-2)">1m 58s · exit 0</span><span style="flex:1"></span><span style="height:24px;padding:0 8px;border:1px solid var(--border-strong);border-radius:5px;font-size:12px;display:flex;align-items:center">attempt <span style="font-family:var(--mono);color:var(--text-3);margin-left:8px">2/5</span></span><span style="height:24px;padding:0 8px;border:1px solid var(--border-strong);border-radius:5px;font-size:12px;display:flex;align-items:center;background:var(--surface-2)">Wrap</span></div>
+        <div style="padding:6px 0;font-family:var(--mono);font-size:12px;line-height:20px">
+          <sc-for list="{{ logLines }}" as="l" hint-placeholder-count="5">
+            <div style="display:grid;grid-template-columns:40px minmax(0,1fr);gap:14px;padding-right:10px;color:{{ l.fg }}"><span style="text-align:right;color:var(--text-3)">{{ l.n }}</span><span style="white-space:pre-wrap">{{ l.a }}<span style="background:{{ l.hb }};border-radius:2px">{{ l.h }}</span>{{ l.b }}</span></div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-3)">Next-step notice · the four merge refusals</div>
+      <sc-for list="{{ notices }}" as="n" hint-placeholder-count="4">
+        <div style="display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:10px;align-items:start;padding:10px 12px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface)">
+          <span style="padding-top:2px;display:flex"><dc-import name="StatePill" status="info" mode="icon" hint-size="14px,14px"></dc-import></span>
+          <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+            <span style="display:flex;gap:8px;align-items:baseline"><span style="font-weight:600">{{ n.title }}</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">{{ n.code }}</span></span>
+            <span style="color:var(--text-2);text-wrap:pretty">{{ n.body }}</span>
+            <sc-if value="{{ n.hasCmd }}"><code style="margin-top:4px;padding:6px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);font-family:var(--mono);font-size:12px">{{ n.cmd }}</code></sc-if>
+          </div>
+          <span style="height:26px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px;font-weight:500;display:flex;align-items:center;white-space:nowrap">{{ n.action }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-3)">Empty state · says what is missing and the one command that fixes it</div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:20px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <span style="font-size:14px;font-weight:600">No repositories yet</span>
+        <span style="color:var(--text-2)">In this release, repositories are registered from the terminal.</span>
+        <code style="align-self:flex-start;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-family:var(--mono);font-size:12px"><span style="color:var(--text-3)">$ </span>plumbix repo add https://github.com/you/repo</code>
+      </div>
+    </div>
+  </section>
+</div>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const tok = [['--bg', 'page'], ['--surface', 'sidebar, verdict, group'], ['--surface-2', 'selected, skeleton'], ['--hover', 'row hover'], ['--border', 'rules'], ['--border-strong', 'inputs, notices'], ['--text', 'primary text, primary button'], ['--text-2', 'secondary text'], ['--text-3', 'meta, labels'], ['--accent', 'focus, links, selection'], ['--diff-add', 'added lines'], ['--diff-del', 'removed lines']];
+    const tones = [['green', 'approved, met, succeeded'], ['amber', 'fix requested, major'], ['red', 'rejected, unmet, failed, blocker'], ['violet', 'a person must look'], ['blue', 'running'], ['neutral', 'open, closed, skipped, unknown']];
+    const enc = [
+      { name: 'Change', field: 'change.state', items: [['open', 'Submitted, not yet validating'], ['running', 'A validation is in progress'], ['approved', 'Ready for you to merge'], ['fix_requested', 'Sent back to the author with findings'], ['rejected', 'Wrong at the root'], ['needs_human', 'Infrastructure failed or a criterion could not be judged'], ['escalated', 'Not approved after three fix rounds'], ['merged', 'Landed on the target branch'], ['closed', 'Abandoned without merging']] },
+      { name: 'Run', field: 'run.status', items: [['running', 'Pipeline in progress'], ['finished', 'Done; outcome is a change state'], ['errored', 'Could not complete; see run.error'], ['cancelled', 'Stopped, usually by a new push']] },
+      { name: 'Step', field: 'step.status', items: [['succeeded', 'Exit 0'], ['failed', 'Non-zero exit'], ['timed_out', 'Hit the step timeout'], ['errored', 'Could not run'], ['skipped', 'An earlier step did not finish'], ['cancelled', 'Run was cancelled'], ['queued', 'Display only: not started']] },
+      { name: 'Criterion', field: 'criteria[].status', items: [['met', 'Evidence shows it holds'], ['unmet', 'Evidence shows it does not'], ['unknown', 'Could not be judged'], ['pending', 'Display only: no verdict yet']] },
+      { name: 'Finding', field: 'findings[].severity', items: [['blocker', 'Prevents approval'], ['major', 'Should be fixed'], ['minor', 'Worth a look']] },
+      { name: 'Other', field: 'risk · alert', items: [['human_required', 'risks[].human_required = true'], ['alert', 'Open alert'], ['resolved', 'Resolved alert']] }
+    ];
+    return {
+      themes: [{ id: 'light', label: 'light' }, { id: 'dark', label: 'dark' }],
+      tokens: tok.map(([name, use]) => ({ name, use, v: 'var(' + name + ')' })),
+      stateTones: tones.map(([n, use]) => ({ name: n, use, fg: 'var(--s-' + n + ')', bg: 'var(--s-' + n + '-bg)' })),
+      enc: enc.map(g => ({ ...g, items: g.items.map(([k, d]) => ({ k, d })) })),
+      steps: [{ st: 'succeeded', name: 'build', v: false, exit: 'exit 0', dur: '42s' }, { st: 'timed_out', name: 'test', v: false, exit: 'exit —', dur: '10m 00s' }, { st: 'succeeded', name: 'ai-review', v: true, exit: 'exit 0', dur: '38s' }],
+      iters: [{ n: 2, st: 'approved', h: 'All criteria met', sha: '9f3c1e2', bg: 'var(--surface)', fw: '600', lt: '50%', lb: '0' }, { n: 1, st: 'fix_requested', h: 'AC-1 unmet: only one retry attempted', sha: '4c2e8d1', bg: 'transparent', fw: '400', lt: '0', lb: '50%' }],
+      logLines: [
+        { n: 4, a: '=== RUN   TestUploadRetriesThrice', h: '', b: '', fg: 'var(--text)', hb: 'transparent' },
+        { n: 5, a: '    upload_test.go:41: upload ', h: 'attempt', b: ' 1/3 failed: connection reset by peer; retrying in 1s', fg: 'var(--text)', hb: 'var(--hit)' },
+        { n: 6, a: '    upload_test.go:41: upload ', h: 'attempt', b: ' 2/3 failed: connection reset by peer; retrying in 2s', fg: 'var(--text)', hb: 'var(--hit-strong)' },
+        { n: 7, a: '--- PASS: TestUploadRetriesThrice (0.03s)', h: '', b: '', fg: 'var(--text)', hb: 'transparent' },
+        { n: 8, a: '--- FAIL: TestTokenExpiryFromAPI (0.01s)', h: '', b: '', fg: 'var(--s-red)', hb: 'transparent' }
+      ],
+      notices: [
+        { code: 'source_moved', title: 'Not merged: new commits on feat/retry-uploads', body: 'The verdict is for 9f3c1e2. The branch now points at 1e88b04. Validate again; merge becomes available if the new head is approved.', action: 'Validate again', hasCmd: false, cmd: '' },
+        { code: 'target_moved', title: 'Not merged: main moved', body: 'main is now at c40d7e1; the verdict was for base a81d7c0. Bring main into the branch and push. Plumbix validates the new head.', action: 'Copy command', hasCmd: true, cmd: 'git fetch origin && git merge origin/main && git push' },
+        { code: 'push_rejected', title: 'Not merged: the remote changed during the merge', body: 'Nothing was pushed and the verdict still stands. Try the merge again.', action: 'Merge again', hasCmd: false, cmd: '' },
+        { code: 'invalid_state', title: 'Not merged: this change is no longer approved', body: 'A new push started another validation. Merge becomes available again if it is approved.', action: 'Show iterations', hasCmd: false, cmd: '' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

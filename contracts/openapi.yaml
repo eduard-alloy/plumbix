@@ -13,7 +13,105 @@ servers:
   - url: http://127.0.0.1:6400/api/v1
 security:
   - bearerToken: []
+  - cookieSession: []
 paths:
+  /login-links:
+    post:
+      operationId: createLoginLink
+      summary: Mint a one-time browser sign-in link.
+      description: >
+        Only the bearer token may call this; plumbix login does. The link opens the web app, which exchanges
+        its token once with POST /sessions. Links expire after 10 minutes.
+      security:
+        - bearerToken: []
+      responses:
+        "201":
+          description: The link.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginLink"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /sessions:
+    post:
+      operationId: exchangeLoginLink
+      summary: Sign a browser in with a login link.
+      description: >
+        A browser request without credentials. It must carry the server's own Host and an Origin of
+        http://<that host>. On success the response sets the plumbix_session cookie (HttpOnly, SameSite=Strict,
+        30 days). A link works once: a second use is 401 link_used, after 10 minutes 401 link_expired, an unknown
+        token 401 link_invalid.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: Signed in; the cookie is set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionStatus"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          description: The link was used, expired or is unknown (codes link_used, link_expired, link_invalid), or the Host is not the server's.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    delete:
+      operationId: revokeAllSessions
+      summary: Sign every browser out.
+      description: Only the bearer token may call this; plumbix logout does.
+      security:
+        - bearerToken: []
+      responses:
+        "200":
+          description: How many sessions were ended.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Revoked"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /sessions/current:
+    delete:
+      operationId: signOut
+      summary: Sign this browser out.
+      security:
+        - cookieSession: []
+      responses:
+        "204":
+          description: The session ended and the cookie is cleared.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /session:
+    get:
+      operationId: getSession
+      summary: How the caller is signed in.
+      responses:
+        "200":
+          description: Signed in, by cookie (with its expiry) or by token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /health:
     get:
       operationId: getHealth
@@ -339,6 +437,38 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /changes/{id}/diff:
+    get:
+      operationId: getChangeDiff
+      summary: The diff the validators judged.
+      description: >
+        base..head of the change's latest run that has a head. Files are sorted by path; renames are not
+        detected (a rename is a delete and an add). With stat=true the hunks are left out. A diff larger than
+        4 MiB comes back as stats only with truncated set.
+      parameters:
+        - $ref: "#/components/parameters/ChangeID"
+        - name: stat
+          in: query
+          description: true returns files and counts without hunks.
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: The diff.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Diff"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: No run of the change has reached a commit yet (invalid_state).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /alerts:
     get:
       operationId: listAlerts
@@ -431,6 +561,13 @@ components:
       type: http
       scheme: bearer
       description: The 64-character hex token in <data_dir>/api-token.
+    cookieSession:
+      type: apiKey
+      in: cookie
+      name: plumbix_session
+      description: >
+        A browser session from POST /sessions. Cookie requests must carry the server's own Host, and
+        state-changing ones an Origin of http://<that host>; otherwise 401 or 403.
   parameters:
     ChangeID:
       name: id
@@ -463,8 +600,14 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: A browser request whose Origin is not the server's own address.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     Unauthorized:
-      description: The bearer token is missing or wrong.
+      description: The bearer token is missing or wrong, or the browser session is missing, expired, or sent to another Host.
       headers:
         WWW-Authenticate:
           schema:
@@ -729,6 +872,124 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Alert"
+    Diff:
+      type: object
+      additionalProperties: false
+      required: [base, head, additions, deletions, truncated, files]
+      properties:
+        base:
+          type: string
+        head:
+          type: string
+        additions:
+          type: integer
+          minimum: 0
+        deletions:
+          type: integer
+          minimum: 0
+        truncated:
+          description: True when the diff was too large to parse; files then carry counts only.
+          type: boolean
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiffFile"
+    DiffFile:
+      type: object
+      additionalProperties: false
+      required: [path, status, binary, additions, deletions]
+      properties:
+        path:
+          type: string
+        status:
+          type: string
+          enum: [added, modified, deleted]
+        binary:
+          type: boolean
+        additions:
+          type: integer
+          minimum: 0
+        deletions:
+          type: integer
+          minimum: 0
+        hunks:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiffHunk"
+    DiffHunk:
+      type: object
+      additionalProperties: false
+      required: [old_start, old_lines, new_start, new_lines, header, lines]
+      properties:
+        old_start:
+          type: integer
+          minimum: 0
+        old_lines:
+          type: integer
+          minimum: 0
+        new_start:
+          type: integer
+          minimum: 0
+        new_lines:
+          type: integer
+          minimum: 0
+        header:
+          description: The text after the hunk range, usually the enclosing function.
+          type: string
+        lines:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [type, text]
+            properties:
+              type:
+                type: string
+                enum: [context, add, del]
+              old:
+                description: Line number on the old side; absent for added lines.
+                type: integer
+                minimum: 1
+              new:
+                description: Line number on the new side; absent for deleted lines.
+                type: integer
+                minimum: 1
+              text:
+                type: string
+    LoginLink:
+      type: object
+      additionalProperties: false
+      required: [url, expires_at]
+      properties:
+        url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+    SessionStatus:
+      type: object
+      additionalProperties: false
+      required: [status, via]
+      properties:
+        status:
+          type: string
+          enum: [signed_in]
+        via:
+          type: string
+          enum: [cookie, token]
+        expires_at:
+          description: When the browser session ends; absent for the token.
+          type: string
+          format: date-time
+    Revoked:
+      type: object
+      additionalProperties: false
+      required: [revoked]
+      properties:
+        revoked:
+          type: integer
+          minimum: 0
     Event:
       description: One event on the stream. The full schema, with every payload, is contracts/events.schema.json.
       $ref: "https://github.com/eduard-alloy/plumbix/blob/main/contracts/events.schema.json"

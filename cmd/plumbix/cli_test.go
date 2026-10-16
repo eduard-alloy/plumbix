@@ -173,6 +173,16 @@ func TestCLIFlow(t *testing.T) {
 		t.Errorf("submit from stdin = %v", got)
 	}
 
+	// Browser sign-in: login prints a one-time link for this server; logout
+	// revokes every browser session (none yet).
+	code, out, errOut := c.run("", "login")
+	if code != 0 || !strings.Contains(out, "http://"+addr+"/login?t=") || !strings.Contains(out, "10 minutes") {
+		t.Errorf("login: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	if revoked := c.mustRun("", "logout"); revoked["revoked"] != float64(0) {
+		t.Errorf("logout = %v", revoked)
+	}
+
 	// Events: one JSON object per line, resumable, filterable.
 	first := c.events("--max", "3")
 	if len(first) != 3 || first[0]["type"] != "change.submitted" || first[0]["change_id"] != id || first[1]["type"] != "run.started" {
@@ -239,6 +249,8 @@ func TestCLIUsageErrors(t *testing.T) {
 		{"change", "nope"},
 		{"events", "extra"},
 		{"events", "--max", "-1"},
+		{"login", "extra"},
+		{"logout", "extra"},
 	} {
 		if code, _, _ := c.run("", args...); code != 2 {
 			t.Errorf("plumbix %v: exit %d, want 2", args, code)
