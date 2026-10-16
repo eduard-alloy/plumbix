@@ -73,17 +73,13 @@ func (m *Mirror) WithAuth(a Auth, askpass string) *Mirror {
 
 // command builds a git command. Credentials go only into the process
 // environment, never into its arguments, and personal credential helpers
-// are switched off. The command runs in the mirror once it exists and in a
-// neutral directory before that: git must never depend on the caller's
-// working directory, which inside Plumbix's own pipeline is a worktree
-// whose git directory lives on the host.
+// are switched off.
 func (m *Mirror) command(ctx context.Context, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "credential.helper="}, args...)...)
+	full := []string{"-c", "credential.helper="}
 	if _, err := os.Stat(m.dir); err == nil {
-		cmd.Dir = m.dir
-	} else {
-		cmd.Dir = os.TempDir()
+		full = append(full, "-C", m.dir)
 	}
+	cmd := exec.CommandContext(ctx, "git", append(full, args...)...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1")
 	if os.Getenv("GIT_SSH_COMMAND") == "" && os.Getenv("GIT_SSH") == "" {
 		// Never let SSH wait for a password or a host key prompt.

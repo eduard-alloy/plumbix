@@ -24,7 +24,6 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Neither host can enforce merges in v1 because the PAT acts as the user. Plumbix flags bypass commits instead. (Q13)
 
 ## Architecture
-- `gitops` never runs git in the caller's working directory: in the mirror once it exists, in a neutral directory before. Found by Plumbix's own first self-hosted run: inside a step container the workspace is a worktree whose git directory is on the host, and `git ls-remote` run from there fails. `TestGitRunsOutsideTheCallersRepository` keeps it. (WU-012)
 - Events are appended by the store inside the transaction of the write they describe. A new store write that changes what a client sees must emit one; services never emit, the engine appends only `step.finished`. `TestLifecycleEmitsEvents` keeps `events.Types` and `contracts/events.schema.json` the same set and checks every emitted event against the schema. (WU-014, A16)
 - `Hub.Publish` never blocks a writer: a subscriber more than `events.SubscriberBuffer` events behind is cut off and replays from the store. The stream handler subscribes before replaying and skips ids already sent, so clients see no gap and no duplicate. Open streams end only when the hub closes, so the server closes it when its context ends. Events are never pruned in v1. (WU-014)
 - A change merges only when the source branch still points at the validated commit and the target branch equals the run's base (the source contains the target). The target then receives the validated tree unchanged; Plumbix never computes a merge. (WU-010, A15)

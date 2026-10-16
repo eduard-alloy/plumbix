@@ -50,7 +50,7 @@ The fix loop runs across the contract. A "fix" verdict goes back to the client, 
 - [x] Independent pipeline steps run in parallel containers. Evidence: `build`, `test`, `lint` and `web` have no `needs`; `scheduler.TestIndependentStepsRunConcurrently`; the acceptance run's step timings in WU-012.
 - [x] A push to GitHub or Azure DevOps triggers a pipeline run through polling. Evidence: `poller` tests; WU-012 iteration 2 started from a push with no API call.
 - [x] Commits that reach a protected branch without a verdict are flagged. Evidence: alert `al_xcncmstxyhxi` for the bootstrap commit `2da8efa` on `main` (WU-012).
-- [x] All tests, lint and build pass. Evidence: `make check` and `make integration` at every work unit; the `build`, `test`, `lint` and `web` steps of Plumbix's own pipeline on the merged iteration (iteration 1's `test` step failed on a real bug, fixed in iteration 2).
+- [x] All tests, lint and build pass. Evidence: `make check` and `make integration` at every work unit; the `build`, `test`, `lint` and `web` steps of Plumbix's own pipeline on every iteration recorded in `work_units/WU-012.md` after the first (iteration 1's `test` step failed on a real bug, fixed by its own change).
 
 ## Features
 
