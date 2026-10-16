@@ -25,6 +25,7 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Neither host can enforce merges in v1 because the PAT acts as the user. Plumbix flags bypass commits instead. (Q13)
 
 ## Architecture
+- A push never moves a change out of `needs_human`, `escalated` or `rejected` (`State.NeedsPerson`); the poller records the new head and the change exposes it as `source_head`. Only `Validate again` or `Close` move those states. (A21)
 - Pipeline steps may not set `PLUMBIX_*` environment variables themselves (the parser reserves them), so the AI model reaches validator steps only through the settings (`scheduler.StepSetup.Env`, filled only for names the step or its secrets did not set) or through a secret of that name. Operator guidance is trusted by validators because it comes from the settings, never from the repository. (WU-018, A19)
 - The engine and the poller read secrets and host adapters through `host.Source` / `Config.SecretSource` on every use, never from a copy taken at start. New code that needs a token must do the same. (WU-018)
 - `gitops` never runs git in the caller's working directory and never passes on `GIT_DIR`, `GIT_WORK_TREE` and the other repository-location variables: in the mirror once it exists, in a neutral directory before. Found by Plumbix's own first self-hosted run: inside a step container the workspace is a worktree whose git directory is on the host, and `git ls-remote` run from there fails. `TestGitRunsOutsideTheCallersRepository` and `TestInheritedGitVariablesAreDropped` keep it. (WU-012)

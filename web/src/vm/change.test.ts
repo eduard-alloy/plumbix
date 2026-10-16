@@ -137,6 +137,23 @@ describe('changeView for other states', () => {
   })
 })
 
+describe('newer commits on the branch', () => {
+  it('is reported when the branch head differs from the judged head and the change is not running', () => {
+    const judged = changeView(approved, approvedRuns, plumbix, undefined, NOW)
+    expect(judged.newerCommits).toBeNull()
+    const moved = changeView({ ...approved, source_head: '1e88b04fffffffffffffffffffffffffffffffff' }, approvedRuns, plumbix, undefined, NOW)
+    expect(moved.newerCommits).toBe('1e88b04')
+    const same = changeView({ ...approved, source_head: approvedRuns[1].head }, approvedRuns, plumbix, undefined, NOW)
+    expect(same.newerCommits).toBeNull()
+    const live = changeView({ ...running, source_head: 'ffffffff' }, runningRuns, plumbix, undefined, NOW)
+    expect(live.newerCommits).toBeNull()
+    const sticky = changeView({ ...needsHuman, source_head: 'abcdef0123' }, needsHumanRuns, repos[1], undefined, NOW)
+    expect(sticky.newerCommits).toBe('abcdef0')
+    const done = changeView({ ...merged, source_head: 'abcdef0123' }, approvedRuns, plumbix, undefined, NOW)
+    expect(done.newerCommits).toBeNull()
+  })
+})
+
 describe('refusalNotice', () => {
   const ctx = { src: 'feat/retry-uploads', tgt: 'main', head: '9f3c1e2', base: 'a81d7c0' }
   it('turns each merge refusal into a next step', () => {
