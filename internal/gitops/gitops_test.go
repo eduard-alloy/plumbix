@@ -130,10 +130,12 @@ func TestGitRunsOutsideTheCallersRepository(t *testing.T) {
 // TestInheritedGitVariablesAreDropped: GIT_DIR and friends in the server's
 // environment must not point git away from the mirror.
 func TestInheritedGitVariablesAreDropped(t *testing.T) {
-	t.Setenv("GIT_DIR", "/nonexistent/elsewhere.git")
-	t.Setenv("GIT_WORK_TREE", "/nonexistent/tree")
 	r := gittest.New(t)
 	want := r.Commit("feat", map[string]string{"a.txt": "a\n"}, "a")
+	// Set after the test repository exists: the helper's own git would be
+	// misled too, which is the point.
+	t.Setenv("GIT_DIR", "/nonexistent/elsewhere.git")
+	t.Setenv("GIT_WORK_TREE", "/nonexistent/tree")
 	m := Open(filepath.Join(t.TempDir(), "mirror.git"), r.Remote)
 	if err := m.Fetch(ctx); err != nil {
 		t.Fatalf("Fetch with GIT_DIR set: %v", err)
