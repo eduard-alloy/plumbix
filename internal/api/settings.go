@@ -148,7 +148,7 @@ func (h *settingsHandlers) setSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.secrets.Set(key, body.Value); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", redactSecret(err.Error(), body.Value))
 		return
 	}
 	if err := h.settings.MarkSecret(r.Context(), key); err != nil {
@@ -268,7 +268,7 @@ func (h *settingsHandlers) setRepoToken(w http.ResponseWriter, r *http.Request) 
 	}
 	key := host.RepoTokenKey(repo.ID)
 	if err := h.secrets.Set(key, body.Value); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", redactSecret(err.Error(), body.Value))
 		return
 	}
 	if err := h.settings.MarkSecret(r.Context(), key); err != nil {

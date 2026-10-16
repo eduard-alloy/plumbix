@@ -96,10 +96,13 @@ describe('Settings page', () => {
   })
 
   it('gives a repository its own token and checks it', async () => {
+    db.repoTokens.r_ledgerapi001 = 'already-set'
     window.history.replaceState(null, '', '/repos')
     render(<App />)
     const rows = await screen.findAllByRole('row')
     const plumbix = rows.find((r) => r.textContent?.includes('https://github.com/plumbix/plumbix'))!
+    const ledger = rows.find((r) => r.textContent?.includes('ledger-api'))!
+    await waitFor(() => expect(ledger.textContent).toContain('Own token'))
     expect(plumbix.textContent).toContain('Host token')
     fireEvent.click(within(plumbix).getByRole('button', { name: 'Token' }))
     const panel = await screen.findByLabelText('Token for plumbix')

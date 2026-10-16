@@ -131,6 +131,20 @@ export function ReposPage() {
   const changes = Object.values(state.changes)
   const [open, setOpen] = useState<{ id: string; what: 'guidance' | 'token' } | null>(null)
   const [ownToken, setOwnToken] = useState<Record<string, boolean>>({})
+  // The Token column must be right before any panel is opened.
+  const repoIDs = state.repos.map((r) => r.id).join(',')
+  useEffect(() => {
+    let live = true
+    for (const id of repoIDs.split(',').filter(Boolean)) {
+      api
+        .repoSettings(id)
+        .then((s) => live && setOwnToken((m) => (m[id] === !!s.token_set ? m : { ...m, [id]: !!s.token_set })))
+        .catch(() => undefined)
+    }
+    return () => {
+      live = false
+    }
+  }, [repoIDs])
   return (
     <>
       <div className="sticky">
