@@ -41,6 +41,10 @@ type Options struct {
 	// Setup, when set, runs just before a step starts. It sees the steps
 	// finished so far and can add mounts, for example validator inputs.
 	Setup func(step pipeline.Step, finished []StepResult) (StepSetup, error)
+	// Finished, when set, is called exactly once per step with its final
+	// result, as soon as it is known: after the step ran, when it was
+	// skipped, or when it could not be built.
+	Finished func(step pipeline.Step, result StepResult)
 }
 
 // StepSetup is extra configuration for one step.
@@ -90,10 +94,17 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 	}
 	done := make(chan finished)
 	running := 0
+	// settle records a step's final result and tells the Finished hook.
+	settle := func(i int, r StepResult) {
+		results[i] = r
+		if o.Finished != nil {
+			o.Finished(steps[i], r)
+		}
+	}
 
 	for {
 		if ctx.Err() == nil {
-			markSkipped(steps, results, index)
+			markSkipped(steps, results, index, settle)
 			for i, st := range steps {
 				if running >= o.MaxParallel {
 					break
@@ -103,7 +114,7 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 				}
 				job, err := buildJob(st, o, finishedSoFar(results))
 				if err != nil {
-					results[i].Status, results[i].Err = Errored, err
+					settle(i, StepResult{Name: st.Name, Status: Errored, Err: err})
 					continue
 				}
 				results[i].Status = inProgress
@@ -116,11 +127,11 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 		}
 		select {
 		case f := <-done:
-			results[f.index] = f.result
+			settle(f.index, f.result)
 			running--
 		case <-ctx.Done():
 			f := <-done
-			results[f.index] = f.result
+			settle(f.index, f.result)
 			running--
 		}
 	}
@@ -128,9 +139,9 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 	for i := range results {
 		if results[i].Status == "" {
 			if ctx.Err() != nil {
-				results[i].Status = Cancelled
+				settle(i, StepResult{Name: steps[i].Name, Status: Cancelled})
 			} else {
-				results[i].Status = Skipped
+				settle(i, StepResult{Name: steps[i].Name, Status: Skipped})
 			}
 		}
 	}
@@ -140,7 +151,7 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 // markSkipped marks pending steps whose needs can no longer succeed,
 // repeating until nothing changes so skips cascade. Validators are never
 // skipped: they judge the evidence, including failures.
-func markSkipped(steps []pipeline.Step, results []StepResult, index map[string]int) {
+func markSkipped(steps []pipeline.Step, results []StepResult, index map[string]int, settle func(int, StepResult)) {
 	for changed := true; changed; {
 		changed = false
 		for i, st := range steps {
@@ -150,7 +161,7 @@ func markSkipped(steps []pipeline.Step, results []StepResult, index map[string]i
 			for _, n := range st.Needs {
 				s := results[index[n]].Status
 				if s != "" && s != inProgress && s != Succeeded {
-					results[i].Status = Skipped
+					settle(i, StepResult{Name: st.Name, Status: Skipped})
 					changed = true
 					break
 				}

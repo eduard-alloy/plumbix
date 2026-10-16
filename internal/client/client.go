@@ -18,14 +18,23 @@ const RequestTimeout = 30 * time.Second
 
 // Client talks to one server.
 type Client struct {
-	base  string
-	token string
-	http  *http.Client
+	base   string
+	token  string
+	http   *http.Client
+	stream *http.Client // no timeout: streams stay open
 }
 
 // New returns a client for the server at addr (host:port).
 func New(addr, token string) *Client {
-	return &Client{base: "http://" + addr, token: token, http: &http.Client{Timeout: RequestTimeout}}
+	return &Client{base: "http://" + addr, token: token, http: &http.Client{Timeout: RequestTimeout}, stream: &http.Client{}}
+}
+
+// connectError explains a refused connection in the user's terms.
+func (c *Client) connectError(err error) error {
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return fmt.Errorf("cannot reach the Plumbix server at %s; is plumbix serve running?", c.base)
+	}
+	return err
 }
 
 // Response is a raw API response.
@@ -79,10 +88,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader) (R
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		if errors.Is(err, syscall.ECONNREFUSED) {
-			return Response{}, fmt.Errorf("cannot reach the Plumbix server at %s; is plumbix serve running?", c.base)
-		}
-		return Response{}, err
+		return Response{}, c.connectError(err)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)

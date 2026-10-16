@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/validation"
 )
@@ -19,10 +20,16 @@ func (db *DB) CreateRun(ctx context.Context, r run.Run) error {
 	if r.ChangeID != "" {
 		changeID = r.ChangeID
 	}
-	_, err := db.sql.ExecContext(ctx,
-		`INSERT INTO runs (id, repo_id, change_id, branch, iteration, head, base, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.ID, r.RepoID, changeID, r.Branch, r.Iteration, r.Head, r.Base, string(r.Status), formatTime(r.StartedAt))
-	return mapErr(err)
+	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO runs (id, repo_id, change_id, branch, iteration, head, base, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			r.ID, r.RepoID, changeID, r.Branch, r.Iteration, r.Head, r.Base, string(r.Status), formatTime(r.StartedAt)); err != nil {
+			return mapErr(err)
+		}
+		_, err := emit(events.Event{Type: events.RunStarted, Time: r.StartedAt, RepoID: r.RepoID, ChangeID: r.ChangeID, RunID: r.ID,
+			Payload: events.RunStartedPayload{Branch: r.Branch, Iteration: r.Iteration}})
+		return err
+	})
 }
 
 // SetRunCommits records the commits a run compares.
@@ -40,27 +47,37 @@ func (db *DB) FinishRun(ctx context.Context, id string, f run.Finish) error {
 		}
 		result = string(data)
 	}
-	tx, err := db.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, `UPDATE runs SET status = ?, outcome = ?, result = ?, error = ?, finished_at = ? WHERE id = ?`,
-		string(f.Status), string(f.Outcome), result, f.Error, formatTime(f.At), id)
-	if err != nil {
-		return mapErr(err)
-	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return change.ErrNotFound
-	}
-	for i, s := range f.Steps {
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO steps (run_id, position, name, validator, status, exit_code, duration_ms, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			id, i, s.Name, s.Validator, s.Status, s.ExitCode, s.DurationMS, s.Error); err != nil {
+	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		var repoID, changeID, branch, head, base string
+		var iteration int
+		if err := tx.QueryRowContext(ctx,
+			`UPDATE runs SET status = ?, outcome = ?, result = ?, error = ?, finished_at = ? WHERE id = ?
+			 RETURNING repo_id, COALESCE(change_id, ''), branch, iteration, head, base`,
+			string(f.Status), string(f.Outcome), result, f.Error, formatTime(f.At), id).Scan(&repoID, &changeID, &branch, &iteration, &head, &base); err != nil {
 			return mapErr(err)
 		}
-	}
-	return tx.Commit()
+		for i, s := range f.Steps {
+			if _, err := tx.ExecContext(ctx,
+				`INSERT INTO steps (run_id, position, name, validator, status, exit_code, duration_ms, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				id, i, s.Name, s.Validator, s.Status, s.ExitCode, s.DurationMS, s.Error); err != nil {
+				return mapErr(err)
+			}
+		}
+		if _, err := emit(events.Event{Type: events.RunFinished, Time: f.At, RepoID: repoID, ChangeID: changeID, RunID: id,
+			Payload: events.RunFinishedPayload{Branch: branch, Iteration: iteration, Status: string(f.Status), Outcome: string(f.Outcome), Error: f.Error, Head: head, Base: base}}); err != nil {
+			return err
+		}
+		if f.Result == nil {
+			return nil
+		}
+		criteria := make([]events.CriterionStatus, 0, len(f.Result.Criteria))
+		for _, c := range f.Result.Criteria {
+			criteria = append(criteria, events.CriterionStatus{ID: c.ID, Status: string(c.Status)})
+		}
+		_, err := emit(events.Event{Type: events.VerdictIssued, Time: f.At, RepoID: repoID, ChangeID: changeID, RunID: id,
+			Payload: events.VerdictIssuedPayload{Iteration: iteration, Outcome: string(f.Outcome), Criteria: criteria, Findings: len(f.Result.Findings), Reasons: nonNil(f.Result.Reasons)}})
+		return err
+	})
 }
 
 const runColumns = `id, repo_id, COALESCE(change_id, ''), branch, iteration, head, base, status, outcome, result, error, started_at, finished_at`

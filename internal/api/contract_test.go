@@ -13,7 +13,11 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-const openAPIPath = "../../contracts/openapi.yaml"
+const (
+	openAPIPath      = "../../contracts/openapi.yaml"
+	eventsSchemaPath = "../../contracts/events.schema.json"
+	eventsSchemaID   = "https://github.com/eduard-alloy/plumbix/blob/main/contracts/events.schema.json"
+)
 
 // openAPISchemas compiles schemas from the OpenAPI file's components.
 type openAPISchemas struct {
@@ -42,6 +46,18 @@ func loadOpenAPI(t *testing.T) *openAPISchemas {
 	c := jsonschema.NewCompiler()
 	c.AssertFormat()
 	if err := c.AddResource("openapi.json", parsed); err != nil {
+		t.Fatal(err)
+	}
+	ev, err := os.Open(eventsSchemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ev.Close()
+	evDoc, err := jsonschema.UnmarshalJSON(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.AddResource(eventsSchemaID, evDoc); err != nil {
 		t.Fatal(err)
 	}
 	return &openAPISchemas{t: t, c: c}

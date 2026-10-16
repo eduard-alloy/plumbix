@@ -16,6 +16,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/config"
 	"github.com/eduard-alloy/plumbix/internal/engine"
+	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/host"
 	"github.com/eduard-alloy/plumbix/internal/poller"
 	"github.com/eduard-alloy/plumbix/internal/runner"
@@ -66,6 +67,11 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return 1
 	}
 	defer db.Close()
+	// Events are written by the store; the hub fans them out to open
+	// streams and ends them when the server stops.
+	hub := events.NewHub(db)
+	db.OnEvent(hub.Publish)
+	go func() { <-ctx.Done(); hub.Close() }()
 
 	secretValues, err := loadSecrets(cfg.SecretsFile)
 	if err != nil {
@@ -104,7 +110,7 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		logger.Error("listen failed", "addr", cfg.Server.Listen, "err", err)
 		return 1
 	}
-	if err := api.Run(ctx, ln, api.NewHandler(api.Deps{Version: version, Token: token, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Logger: logger}), logger, config.DefaultShutdownTimeout); err != nil {
+	if err := api.Run(ctx, ln, api.NewHandler(api.Deps{Version: version, Token: token, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub, Logger: logger}), logger, config.DefaultShutdownTimeout); err != nil {
 		logger.Error("server stopped with error", "err", err)
 		return 1
 	}

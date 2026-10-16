@@ -17,3 +17,4 @@
 | 2026-10-16 | WU-015 | ✅ | Plain git host (local path, file://, SSH), SSH batch mode, README local quickstart. Gate-in-front-of-host idea recorded as M2 candidate. 181 tests. Next: WU-009. |
 | 2026-10-16 | WU-009 | ✅ | Azure DevOps adapter behind the host boundary: PAT auth, expiry date from the secrets file (Azure DevOps reports none), engine credentials test for both hosts. 184 tests. Next: WU-010. |
 | 2026-10-16 | WU-010 | ✅ | Merge on approval (squash/merge/rebase via commit-tree, lease push, strict source-contains-target rule, A15), bypass detection with Plumbix merge ranges, alerts (bypass, token expiry) with API and CLI. 201 tests. Next: WU-014. |
+| 2026-10-16 | WU-014 | ✅ | Event stream: store-sourced events in the write's transaction (A16), hub fan-out, SSE at /api/v1/events with replay from Last-Event-ID and filters, events.schema.json contract, client Stream, `plumbix events`. 221 tests, integration green. Next: WU-011. |

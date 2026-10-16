@@ -379,6 +379,52 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /events:
+    get:
+      operationId: streamEvents
+      summary: Stream events as Server-Sent Events.
+      description: >
+        Each frame carries the event's id as its id, the event type as its event name, and the event JSON
+        (schema Event, defined in contracts/events.schema.json) as its data. The stream first replays recorded
+        events after the Last-Event-ID header or the after parameter, then follows live. Ids increase and are
+        never reused, so a client that reconnects with the last id it saw misses nothing and sees nothing twice.
+        Events describe facts the other endpoints expose; those endpoints are the source of truth. An idle stream
+        sends a comment line every 15 seconds. The stream ends when the server stops.
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          description: Resume after this event id. Takes precedence over after.
+          schema:
+            type: integer
+            minimum: 0
+        - name: after
+          in: query
+          description: Resume after this event id; 0 or absent replays from the first recorded event.
+          schema:
+            type: integer
+            minimum: 0
+        - name: repo_id
+          in: query
+          description: Only events of this repo.
+          schema:
+            type: string
+        - name: change_id
+          in: query
+          description: Only events of this change.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The event stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Frames of id, event and data lines; each data line is one Event.
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 components:
   securitySchemes:
     bearerToken:
@@ -683,6 +729,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Alert"
+    Event:
+      description: One event on the stream. The full schema, with every payload, is contracts/events.schema.json.
+      $ref: "https://github.com/eduard-alloy/plumbix/blob/main/contracts/events.schema.json"
     RunStep:
       type: object
       additionalProperties: false

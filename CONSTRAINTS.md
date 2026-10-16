@@ -22,6 +22,8 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Neither host can enforce merges in v1 because the PAT acts as the user. Plumbix flags bypass commits instead. (Q13)
 
 ## Architecture
+- Events are appended by the store inside the transaction of the write they describe. A new store write that changes what a client sees must emit one; services never emit, the engine appends only `step.finished`. `TestLifecycleEmitsEvents` keeps `events.Types` and `contracts/events.schema.json` the same set and checks every emitted event against the schema. (WU-014, A16)
+- `Hub.Publish` never blocks a writer: a subscriber more than `events.SubscriberBuffer` events behind is cut off and replays from the store. The stream handler subscribes before replaying and skips ids already sent, so clients see no gap and no duplicate. Open streams end only when the hub closes, so the server closes it when its context ends. Events are never pruned in v1. (WU-014)
 - A change merges only when the source branch still points at the validated commit and the target branch equals the run's base (the source contains the target). The target then receives the validated tree unchanged; Plumbix never computes a merge. (WU-010, A15)
 - Bypass detection walks first-parent commits between the last known head and the new head; commits inside a recorded Plumbix merge range are not bypasses. One alert per push, one open alert per kind and key. (WU-010)
 - During a merge the engine refuses to start a validation for that change; a close that races a merge leaves the change closed with a merge record, which is logged. (WU-010)

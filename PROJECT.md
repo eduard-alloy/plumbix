@@ -92,7 +92,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-009 | Azure DevOps adapter behind the same boundary | F-005 | ✅ |
 | WU-010 | Merge on approval and bypass detection, for both hosts | F-001, F-007 | ✅ |
 | WU-011 | Web interface: change list, change view, evidence, logs, diff on demand, merge action, one-time login link with Host and Origin checks | F-004, F-008 | ⚪ |
-| WU-014 | Event stream: SSE with resumable ids, events contract (split from WU-007) | F-001 | ⚪ |
+| WU-014 | Event stream: SSE with resumable ids, events contract (split from WU-007) | F-001 | ✅ |
 | WU-012 | Self-hosting: Plumbix validates its own changes on GitHub, milestone acceptance | All M1 | ⚪ |
 
 ## Milestone 2 candidates

@@ -124,7 +124,7 @@ The base address comes from config `server.listen`, default `127.0.0.1:6400`. Ev
 | POST | `/api/v1/pipelines/check` | Validate a pipeline file without running it. |
 | GET | `/api/v1/alerts` | Bypass commits and token-expiry warnings, open ones unless `include_resolved=true`. |
 | POST | `/api/v1/alerts/{id}/resolve` | Mark an alert as handled. |
-| GET | `/api/v1/events` | SSE stream. Supports `Last-Event-ID` so clients can resume. |
+| GET | `/api/v1/events` | SSE stream, filtered by `repo_id` and `change_id`. Replays after `Last-Event-ID` (or `after`), then follows live, so clients resume with no gap. |
 
 ### 4.2 Pipeline file, version 1
 
@@ -204,7 +204,11 @@ Plumbix mounts these paths into a validator step's container:
 
 ### 4.4 Events
 
-Event types: `change.submitted`, `iteration.started`, `run.started`, `step.finished`, `run.finished`, `verdict.issued`, `change.state_changed`, `change.merged`, `alert.raised`. Each event has an increasing id, a timestamp, a type and a payload defined in `contracts/events.schema.json`. Outgoing webhooks come later, once Plumbix has authentication.
+Every fact Plumbix records is also an event: `{id, type, time, repo_id?, change_id?, run_id?, payload}`, with the payload of each type in `contracts/events.schema.json`. Types: `change.submitted`, `change.state_changed`, `change.merged`, `run.started`, `step.finished`, `run.finished`, `verdict.issued`, `alert.raised`, `alert.resolved`. (`iteration.started` from the first draft was dropped: a change's run is its iteration, and `run.started` carries `change_id` and `iteration`.)
+
+The store is the event source (A16): the write that records a fact appends its event in the same transaction, so no write path can forget one and a crash never leaves data without its event. `step.finished` is the one event with no write of its own; the engine appends it. Emitting writes are serialised, so ids are published in order. The hub (`events.Hub`) fans events out to open streams and never blocks a writer: a stream that falls behind is cut off and resumes from the store.
+
+`GET /api/v1/events` serves the stream as Server-Sent Events with `id`, `event` and `data` lines. It replays everything after `Last-Event-ID` (or `after`) before following live, filtered by `repo_id` and `change_id`, and sends a keep-alive comment every 15 seconds. Open streams end when the server stops. Events are notifications: the other endpoints stay the source of truth. Events are not pruned in v1. Outgoing webhooks come later, once Plumbix has authentication.
 
 ### 4.5 Host boundary (internal)
 
@@ -311,6 +315,7 @@ These are implementation calls made in this architecture step, with the reasons 
 | A13 | Secrets live in a dotenv file (`secrets_file`), mode `0600` | The user asked for a `.env` file. Dotenv is the most familiar format for open-source users. | A YAML secrets file |
 | A14 | The API needs a local bearer token, generated on first start in `<data_dir>/api-token` (mode `0600`). The browser gets a one-time login link with the web interface (WU-011) | Owner's choice (option A) after WU-003 showed Docker Desktop containers reach host loopback. Containers never see the data directory, so they can't authenticate. | No network for steps by default (partial fix, breaks dependency downloads), accepting the exposure |
 | A15 | A change merges only when its source branch already contains the target's head, and the target lands the validated tree byte for byte | The verdict decides what merges, so what merges must be what was judged. A merge Plumbix computed after validation would be untested code. The client brings the target into the source and gets a fresh verdict instead. | Merging as long as the target did not move (lands an untested tree when the source was behind), letting Plumbix resolve merges |
+| A16 | The store appends each event inside the transaction of the write it describes; services and the engine never emit events themselves, except `step.finished`, which has no write of its own | Every write path is covered by construction, data and event cannot disagree, and a client resuming from its last id misses nothing. | Emitting from services (easy to forget, lost on a crash between write and emit), a separate message broker |
 
 ## 9. Risks and open items
 

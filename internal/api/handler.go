@@ -21,6 +21,7 @@ type Deps struct {
 	Engine  *engine.Engine  // nil leaves the run routes out and skips auto-validation
 	Runs    run.Store       // required with Engine
 	Alerts  alert.Store     // nil leaves the alert routes out
+	Events  EventSource     // nil leaves the event stream out
 	Logger  *slog.Logger    // nil discards logs
 }
 
@@ -42,6 +43,9 @@ func NewHandler(d Deps) http.Handler {
 	}
 	if d.Alerts != nil {
 		registerAlertRoutes(protected, &alertHandlers{alerts: d.Alerts, log: logger})
+	}
+	if d.Events != nil {
+		registerEventRoutes(protected, &eventHandlers{events: d.Events, log: logger})
 	}
 	protected.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such endpoint")

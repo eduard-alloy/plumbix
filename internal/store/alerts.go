@@ -10,6 +10,7 @@ import (
 
 	"github.com/eduard-alloy/plumbix/internal/alert"
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/events"
 )
 
 var _ alert.Store = (*DB)(nil)
@@ -29,14 +30,27 @@ func (db *DB) Raise(ctx context.Context, a alert.Alert) (alert.Alert, bool, erro
 		a.ID = change.NewID("al_")
 	}
 	a.CreatedAt = a.CreatedAt.UTC()
-	res, err := db.sql.ExecContext(ctx,
-		`INSERT INTO alerts (id, kind, key, repo_id, message, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT (kind, key) WHERE resolved_at IS NULL DO NOTHING`,
-		a.ID, string(a.Kind), a.Key, a.RepoID, a.Message, string(details), formatTime(a.CreatedAt))
+	created := false
+	err = db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		res, err := tx.ExecContext(ctx,
+			`INSERT INTO alerts (id, kind, key, repo_id, message, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+			 ON CONFLICT (kind, key) WHERE resolved_at IS NULL DO NOTHING`,
+			a.ID, string(a.Kind), a.Key, a.RepoID, a.Message, string(details), formatTime(a.CreatedAt))
+		if err != nil {
+			return mapErr(err)
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			return nil
+		}
+		created = true
+		_, err = emit(events.Event{Type: events.AlertRaised, Time: a.CreatedAt, RepoID: a.RepoID,
+			Payload: events.AlertRaisedPayload{AlertID: a.ID, Kind: string(a.Kind), Key: a.Key, Message: a.Message}})
+		return err
+	})
 	if err != nil {
-		return alert.Alert{}, false, mapErr(err)
+		return alert.Alert{}, false, err
 	}
-	if n, _ := res.RowsAffected(); n == 1 {
+	if created {
 		return a, true, nil
 	}
 	open, err := scanAlert(db.sql.QueryRowContext(ctx, `SELECT `+alertColumns+` FROM alerts WHERE kind = ? AND key = ? AND resolved_at IS NULL`, string(a.Kind), a.Key))
@@ -45,20 +59,60 @@ func (db *DB) Raise(ctx context.Context, a alert.Alert) (alert.Alert, bool, erro
 
 // Resolve implements alert.Store.
 func (db *DB) Resolve(ctx context.Context, id string, at time.Time) error {
-	res, err := db.sql.ExecContext(ctx, `UPDATE alerts SET resolved_at = COALESCE(resolved_at, ?) WHERE id = ?`, formatTime(at), id)
-	if err != nil {
+	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		var kind, key, repoID string
+		err := tx.QueryRowContext(ctx, `UPDATE alerts SET resolved_at = ? WHERE id = ? AND resolved_at IS NULL RETURNING kind, key, repo_id`,
+			formatTime(at), id).Scan(&kind, &key, &repoID)
+		if errors.Is(err, sql.ErrNoRows) {
+			// Already resolved, or no such alert.
+			var n int
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM alerts WHERE id = ?`, id).Scan(&n); err != nil {
+				return err
+			}
+			if n == 0 {
+				return fmt.Errorf("%w: alert %s", change.ErrNotFound, id)
+			}
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		_, err = emit(events.Event{Type: events.AlertResolved, Time: at, RepoID: repoID,
+			Payload: events.AlertResolvedPayload{AlertID: id, Kind: kind, Key: key}})
 		return err
-	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return fmt.Errorf("%w: alert %s", change.ErrNotFound, id)
-	}
-	return nil
+	})
 }
 
 // ResolveKey implements alert.Store.
 func (db *DB) ResolveKey(ctx context.Context, kind alert.Kind, key string, at time.Time) error {
-	_, err := db.sql.ExecContext(ctx, `UPDATE alerts SET resolved_at = ? WHERE kind = ? AND key = ? AND resolved_at IS NULL`, formatTime(at), string(kind), key)
-	return err
+	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		rows, err := tx.QueryContext(ctx, `UPDATE alerts SET resolved_at = ? WHERE kind = ? AND key = ? AND resolved_at IS NULL RETURNING id, repo_id`,
+			formatTime(at), string(kind), key)
+		if err != nil {
+			return err
+		}
+		type resolved struct{ id, repo string }
+		var all []resolved
+		for rows.Next() {
+			var r resolved
+			if err := rows.Scan(&r.id, &r.repo); err != nil {
+				rows.Close()
+				return err
+			}
+			all = append(all, r)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for _, r := range all {
+			if _, err := emit(events.Event{Type: events.AlertResolved, Time: at, RepoID: r.repo,
+				Payload: events.AlertResolvedPayload{AlertID: r.id, Kind: string(kind), Key: key}}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // Get implements alert.Store.

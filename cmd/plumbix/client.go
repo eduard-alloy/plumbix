@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -55,17 +56,18 @@ func (c *clientCmd) parse(args []string) ([]string, bool) {
 	}
 }
 
-// call sends one request and prints the result. It returns the exit code.
-func (c *clientCmd) call(method, path string, body []byte) int {
+// connect loads config and the token and returns a client, or prints the
+// problem and returns false.
+func (c *clientCmd) connect() (*client.Client, bool) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintf(c.stderr, "plumbix: find home directory: %v\n", err)
-		return 1
+		return nil, false
 	}
 	cfg, err := config.Load(c.over, os.Getenv, home)
 	if err != nil {
 		fmt.Fprintf(c.stderr, "plumbix: %v\n", err)
-		return 1
+		return nil, false
 	}
 	addr := c.server
 	if addr == "" {
@@ -74,23 +76,36 @@ func (c *clientCmd) call(method, path string, body []byte) int {
 	token, err := auth.ReadToken(cfg.DataDir)
 	if err != nil {
 		fmt.Fprintf(c.stderr, "plumbix: %v\n", err)
+		return nil, false
+	}
+	return client.New(addr, token), true
+}
+
+// printAPIError prints an error response the way every command does.
+func (c *clientCmd) printAPIError(e client.APIError) {
+	fmt.Fprintf(c.stderr, "plumbix: %s: %s\n", e.Code, e.Message)
+	for _, p := range e.Problems {
+		fmt.Fprintf(c.stderr, "  %s: %s\n", p.Field, p.Message)
+	}
+}
+
+// call sends one request and prints the result. It returns the exit code.
+func (c *clientCmd) call(method, path string, body []byte) int {
+	cl, ok := c.connect()
+	if !ok {
 		return 1
 	}
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
 	}
-	resp, err := client.New(addr, token).Do(context.Background(), method, path, reader)
+	resp, err := cl.Do(context.Background(), method, path, reader)
 	if err != nil {
 		fmt.Fprintf(c.stderr, "plumbix: %v\n", err)
 		return 1
 	}
 	if !resp.OK() {
-		e := resp.Error()
-		fmt.Fprintf(c.stderr, "plumbix: %s: %s\n", e.Code, e.Message)
-		for _, p := range e.Problems {
-			fmt.Fprintf(c.stderr, "  %s: %s\n", p.Field, p.Message)
-		}
+		c.printAPIError(resp.Error())
 		return 1
 	}
 	var out bytes.Buffer
@@ -226,6 +241,60 @@ func runAlert(args []string, stdout, stderr io.Writer) int {
 		return c.call(http.MethodPost, "/api/v1/alerts/"+url.PathEscape(pos[1])+"/resolve", nil)
 	}
 	return usageError(stderr, "usage: plumbix alert list [--all] | plumbix alert resolve <alert-id>")
+}
+
+// errEnoughEvents stops the stream once --max events were printed.
+var errEnoughEvents = errors.New("enough events")
+
+// runEvents handles "plumbix events": one JSON event per line, from the
+// first recorded event or after --after, until interrupted or --max.
+func runEvents(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	c := newClientCmd("events", stdout, stderr)
+	repo := c.fs.String("repo", "", "only events of this repo")
+	changeID := c.fs.String("change", "", "only events of this change")
+	after := c.fs.Int64("after", 0, "resume after this event id")
+	limit := c.fs.Int("max", 0, "stop after this many events (default: until interrupted)")
+	pos, ok := c.parse(args)
+	if !ok {
+		return 2
+	}
+	if len(pos) != 0 || *after < 0 || *limit < 0 {
+		return usageError(stderr, "usage: plumbix events [--repo <id>] [--change <id>] [--after <event-id>] [--max <n>]")
+	}
+	q := url.Values{}
+	if *repo != "" {
+		q.Set("repo_id", *repo)
+	}
+	if *changeID != "" {
+		q.Set("change_id", *changeID)
+	}
+	path := "/api/v1/events"
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	cl, ok := c.connect()
+	if !ok {
+		return 1
+	}
+	printed := 0
+	err := cl.Stream(ctx, path, *after, func(f client.Frame) error {
+		fmt.Fprintf(stdout, "%s\n", f.Data)
+		printed++
+		if *limit > 0 && printed >= *limit {
+			return errEnoughEvents
+		}
+		return nil
+	})
+	var apiErr client.APIError
+	switch {
+	case err == nil || errors.Is(err, errEnoughEvents):
+		return 0
+	case errors.As(err, &apiErr):
+		c.printAPIError(apiErr)
+	default:
+		fmt.Fprintf(stderr, "plumbix: %v\n", err)
+	}
+	return 1
 }
 
 // runRun handles "plumbix run show|log".

@@ -14,6 +14,7 @@ import (
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/engine"
+	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/gitops/gittest"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/runner"
@@ -47,6 +48,7 @@ type runAPI struct {
 	repoID string
 	db     *store.DB
 	repo   *gittest.Repo
+	hub    *events.Hub
 }
 
 func newRunAPI(t *testing.T) *runAPI {
@@ -66,8 +68,11 @@ func newRunAPI(t *testing.T) *runAPI {
 	if err := db.CreateRepo(context.Background(), change.Repo{ID: repoID, Host: "github", URL: repo.Remote, ProtectedBranches: []string{"main"}, MergeStrategy: "squash", CreatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHandler(Deps{Version: "dev", Token: testToken, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db})
-	return &runAPI{testAPI: &testAPI{t: t, h: h}, repoID: repoID, db: db, repo: repo}
+	hub := events.NewHub(db)
+	db.OnEvent(hub.Publish)
+	t.Cleanup(hub.Close)
+	h := NewHandler(Deps{Version: "dev", Token: testToken, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub})
+	return &runAPI{testAPI: &testAPI{t: t, h: h}, repoID: repoID, db: db, repo: repo, hub: hub}
 }
 
 func (a *runAPI) waitRun(id string) run.Run {

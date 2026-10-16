@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eduard-alloy/plumbix/blob/main/contracts/events.schema.json",
+  "title": "Plumbix event",
+  "description": "One event from GET /api/v1/events. It is the data of a Server-Sent Events frame whose id is the event's id and whose event name is its type. Ids increase and are never reused, so a client resumes with Last-Event-ID. repo_id, change_id and run_id are the filter keys of the stream; the payload depends on the type. Events describe facts the API also exposes; the API is the source of truth.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "type", "time", "payload"],
+  "properties": {
+    "id": { "type": "integer", "minimum": 1 },
+    "type": { "type": "string" },
+    "time": { "type": "string", "format": "date-time" },
+    "repo_id": { "type": "string", "minLength": 1 },
+    "change_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "payload": { "type": "object" }
+  },
+  "oneOf": [
+    {
+      "description": "A change was created, in state open.",
+      "properties": { "type": { "const": "change.submitted" }, "payload": { "$ref": "#/$defs/changeSubmitted" } },
+      "required": ["repo_id", "change_id"]
+    },
+    {
+      "description": "A change moved from one state to another.",
+      "properties": { "type": { "const": "change.state_changed" }, "payload": { "$ref": "#/$defs/stateChanged" } },
+      "required": ["repo_id", "change_id"]
+    },
+    {
+      "description": "Plumbix landed the change on its target branch; run_id is the approved run that merged.",
+      "properties": { "type": { "const": "change.merged" }, "payload": { "$ref": "#/$defs/changeMerged" } },
+      "required": ["repo_id", "change_id", "run_id"]
+    },
+    {
+      "description": "A pipeline run began. change_id and iteration are set for a change's run, absent for a plain branch run.",
+      "properties": { "type": { "const": "run.started" }, "payload": { "$ref": "#/$defs/runStarted" } },
+      "required": ["repo_id", "run_id"]
+    },
+    {
+      "description": "One step of a run ended.",
+      "properties": { "type": { "const": "step.finished" }, "payload": { "$ref": "#/$defs/stepFinished" } },
+      "required": ["repo_id", "run_id"]
+    },
+    {
+      "description": "A run ended. outcome is set when a change's run finished with a verdict.",
+      "properties": { "type": { "const": "run.finished" }, "payload": { "$ref": "#/$defs/runFinished" } },
+      "required": ["repo_id", "run_id"]
+    },
+    {
+      "description": "The validators' combined judgment of an iteration. The change's state_changed event follows.",
+      "properties": { "type": { "const": "verdict.issued" }, "payload": { "$ref": "#/$defs/verdictIssued" } },
+      "required": ["repo_id", "change_id", "run_id"]
+    },
+    {
+      "description": "A new alert is open. repo_id is set when the alert concerns one repo.",
+      "properties": { "type": { "const": "alert.raised" }, "payload": { "$ref": "#/$defs/alertRaised" } }
+    },
+    {
+      "description": "An alert was closed, by a person or by Plumbix once its cause is gone.",
+      "properties": { "type": { "const": "alert.resolved" }, "payload": { "$ref": "#/$defs/alertResolved" } }
+    }
+  ],
+  "$defs": {
+    "changeState": {
+      "type": "string",
+      "enum": ["open", "running", "approved", "fix_requested", "rejected", "needs_human", "escalated", "merged", "closed"]
+    },
+    "changeSubmitted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_branch", "target_branch", "title"],
+      "properties": {
+        "source_branch": { "type": "string" },
+        "target_branch": { "type": "string" },
+        "title": { "type": "string" },
+        "submitted_by": { "type": "string" }
+      }
+    },
+    "stateChanged": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "$ref": "#/$defs/changeState" },
+        "to": { "$ref": "#/$defs/changeState" }
+      }
+    },
+    "changeMerged": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch", "commit", "previous", "strategy"],
+      "properties": {
+        "branch": { "description": "The target branch.", "type": "string" },
+        "commit": { "description": "The commit now at the target's head.", "type": "string" },
+        "previous": { "description": "The target's head before the merge.", "type": "string" },
+        "strategy": { "type": "string", "enum": ["squash", "merge", "rebase"] }
+      }
+    },
+    "runStarted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch"],
+      "properties": {
+        "branch": { "type": "string" },
+        "iteration": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "stepFinished": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["step", "validator", "status", "exit_code", "duration_ms"],
+      "properties": {
+        "step": { "type": "string" },
+        "validator": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["succeeded", "failed", "timed_out", "errored", "skipped", "cancelled"] },
+        "exit_code": { "type": "integer" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "error": { "type": "string" }
+      }
+    },
+    "runFinished": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch", "status", "head", "base"],
+      "properties": {
+        "branch": { "type": "string" },
+        "iteration": { "type": "integer", "minimum": 1 },
+        "status": { "type": "string", "enum": ["finished", "errored", "cancelled"] },
+        "outcome": { "$ref": "#/$defs/changeState" },
+        "error": { "type": "string" },
+        "head": { "description": "The commit that was run; empty if the run failed before fetching.", "type": "string" },
+        "base": { "description": "The merge base with the target; empty for a plain branch run.", "type": "string" }
+      }
+    },
+    "verdictIssued": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["iteration", "outcome", "criteria", "findings", "reasons"],
+      "properties": {
+        "iteration": { "type": "integer", "minimum": 1 },
+        "outcome": { "$ref": "#/$defs/changeState" },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "status"],
+            "properties": {
+              "id": { "type": "string" },
+              "status": { "type": "string", "enum": ["met", "unmet", "unknown"] }
+            }
+          }
+        },
+        "findings": { "description": "How many findings the validators reported.", "type": "integer", "minimum": 0 },
+        "reasons": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "alertRaised": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alert_id", "kind", "key", "message"],
+      "properties": {
+        "alert_id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["bypass_commit", "token_expiry"] },
+        "key": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "alertResolved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alert_id", "kind", "key"],
+      "properties": {
+        "alert_id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["bypass_commit", "token_expiry"] },
+        "key": { "type": "string" }
+      }
+    }
+  }
+}

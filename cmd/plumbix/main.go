@@ -23,6 +23,7 @@ commands:
                         read, close, revalidate or merge changes
   run show|log          read a run, or a step's log
   alert list|resolve    bypass commits and token warnings
+  events                follow the event stream as JSON lines
   version               print the version
 
 Client commands use the token in <data-dir>/api-token and accept
@@ -54,6 +55,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runRun(args[1:], stdout, stderr)
 	case "alert":
 		return runAlert(args[1:], stdout, stderr)
+	case "events":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return runEvents(ctx, args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintf(stdout, "plumbix %s\n", version)
 		return 0

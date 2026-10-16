@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/gitops"
 	"github.com/eduard-alloy/plumbix/internal/host"
 	"github.com/eduard-alloy/plumbix/internal/pipeline"
@@ -44,10 +45,13 @@ var (
 	runIDRe       = regexp.MustCompile(`^run_[a-z2-7]{12}$`)
 )
 
-// Store is what the engine persists.
+// Store is what the engine persists. Events for changes and runs are the
+// store's own; the engine appends only step.finished, which no other write
+// records.
 type Store interface {
 	change.Store
 	run.Store
+	events.Appender
 }
 
 // Config configures runs.
@@ -268,7 +272,7 @@ func (e *Engine) runBranch(ctx context.Context, r run.Run, repo change.Repo) ([]
 	plain := p.WithoutValidators()
 	logs := map[string]*os.File{}
 	defer closeLogs(logs)
-	res := scheduler.Execute(ctx, plain, e.runner, e.schedulerOptions(r.ID, workspace, logs))
+	res := scheduler.Execute(ctx, plain, e.runner, e.schedulerOptions(r, workspace, logs))
 	return toSteps(plain, res), nil, nil
 }
 
@@ -289,19 +293,34 @@ func (e *Engine) readPipeline(ctx context.Context, m *gitops.Mirror, commit, bra
 }
 
 // schedulerOptions returns the options shared by every run.
-func (e *Engine) schedulerOptions(runID, workspace string, logs map[string]*os.File) scheduler.Options {
+func (e *Engine) schedulerOptions(r run.Run, workspace string, logs map[string]*os.File) scheduler.Options {
 	return scheduler.Options{
 		MaxParallel: e.cfg.MaxParallel, DefaultTimeout: e.cfg.DefaultTimeout,
 		Workspace: workspace, CPUs: e.cfg.CPUs, MemoryMB: e.cfg.MemoryMB, Secrets: e.cfg.Secrets,
 		Log: func(step string) io.Writer {
-			f, err := e.openLog(runID, step)
+			f, err := e.openLog(r.ID, step)
 			if err != nil {
-				e.log.Error("open step log", "run", runID, "step", step, "err", err)
+				e.log.Error("open step log", "run", r.ID, "step", step, "err", err)
 				return nil
 			}
 			logs[step] = f
 			return f
 		},
+		Finished: func(st pipeline.Step, res scheduler.StepResult) { e.recordStep(r, st, res) },
+	}
+}
+
+// recordStep appends a step.finished event. It uses its own context so a
+// cancelled run still announces how its steps ended.
+func (e *Engine) recordStep(r run.Run, st pipeline.Step, res scheduler.StepResult) {
+	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+	defer cancel()
+	p := events.StepFinishedPayload{Step: st.Name, Validator: st.Validator, Status: string(res.Status), ExitCode: res.ExitCode, DurationMS: res.Duration.Milliseconds()}
+	if res.Err != nil {
+		p.Error = res.Err.Error()
+	}
+	if _, err := e.store.AppendEvent(ctx, events.Event{Type: events.StepFinished, Time: e.now().UTC(), RepoID: r.RepoID, ChangeID: r.ChangeID, RunID: r.ID, Payload: p}); err != nil {
+		e.log.Error("record step event", "run", r.ID, "step", st.Name, "err", err)
 	}
 }
 
@@ -374,7 +393,7 @@ func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([
 
 	logs := map[string]*os.File{}
 	defer closeLogs(logs)
-	opts := e.schedulerOptions(r.ID, prep.workspace, logs)
+	opts := e.schedulerOptions(r, prep.workspace, logs)
 	opts.Setup = func(st pipeline.Step, finished []scheduler.StepResult) (scheduler.StepSetup, error) {
 		if !st.Validator {
 			return scheduler.StepSetup{}, nil

@@ -172,6 +172,50 @@ func TestCLIFlow(t *testing.T) {
 	if got := c.mustRun(stdinChange, "submit", "-f", "-"); got["source_branch"] != "feat-2" {
 		t.Errorf("submit from stdin = %v", got)
 	}
+
+	// Events: one JSON object per line, resumable, filterable.
+	first := c.events("--max", "3")
+	if len(first) != 3 || first[0]["type"] != "change.submitted" || first[0]["change_id"] != id || first[1]["type"] != "run.started" {
+		t.Fatalf("events --max 3 = %v", first)
+	}
+	for i, e := range first {
+		if e["id"] != float64(i+1) {
+			t.Errorf("event %d has id %v", i, e["id"])
+		}
+	}
+	if resumed := c.events("--after", "2", "--max", "1"); len(resumed) != 1 || resumed[0]["id"] != float64(3) {
+		t.Errorf("events --after 2 = %v", resumed)
+	}
+	// After id 3 the first change produced exactly seven more events: the
+	// errored run's end and state, the revalidation's four, and the close.
+	closed := c.events("--change", id, "--after", "3", "--max", "7")
+	last := closed[len(closed)-1]
+	if len(closed) != 7 || last["type"] != "change.state_changed" || last["change_id"] != id || last["payload"].(map[string]any)["to"] != "closed" {
+		t.Errorf("events --change = %v; want the change's own events ending in its close", closed)
+	}
+	for _, e := range closed {
+		if e["change_id"] != id {
+			t.Errorf("filtered stream carried %v", e)
+		}
+	}
+}
+
+// events runs "plumbix events" with args and decodes its output lines.
+func (c cli) events(args ...string) []map[string]any {
+	c.t.Helper()
+	code, out, errOut := c.run("", append([]string{"events"}, args...)...)
+	if code != 0 {
+		c.t.Fatalf("plumbix events %v: exit %d, stderr %s", args, code, errOut)
+	}
+	var evs []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		var e map[string]any
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			c.t.Fatalf("plumbix events: line %q is not JSON", line)
+		}
+		evs = append(evs, e)
+	}
+	return evs
 }
 
 func TestCLIWithoutServerToken(t *testing.T) {
@@ -193,6 +237,8 @@ func TestCLIUsageErrors(t *testing.T) {
 		{"change", "close"},
 		{"submit"},
 		{"change", "nope"},
+		{"events", "extra"},
+		{"events", "--max", "-1"},
 	} {
 		if code, _, _ := c.run("", args...); code != 2 {
 			t.Errorf("plumbix %v: exit %d, want 2", args, code)

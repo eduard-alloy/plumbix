@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"maps"
 	"strings"
 	"sync"
 	"testing"
@@ -306,5 +307,70 @@ func TestValidatorRunsAfterFailedNeed(t *testing.T) {
 	}
 	if fake.start["v"].Before(fake.end["test"]) {
 		t.Error("validator started before its need finished")
+	}
+}
+
+// TestFinishedHookSeesEveryStepOnce: the hook fires exactly once per step
+// with its final status, whether the step ran, was skipped or never built.
+func TestFinishedHookSeesEveryStepOnce(t *testing.T) {
+	p := mustParse(t, `  - {name: a, image: x, run: x}
+  - {name: b, image: x, run: x, needs: [a]}
+  - {name: c, image: x, run: x, needs: [b]}
+  - {name: v, image: x, validator: true, needs: [a]}
+  - {name: s, image: x, run: x, secrets: [TOKEN]}
+`)
+	fake := newFake(func(_ context.Context, job runner.Job) (runner.Result, error) {
+		if job.Name == "a" {
+			return runner.Result{ExitCode: 1}, nil
+		}
+		return runner.Result{}, nil
+	})
+	var mu sync.Mutex
+	seen := map[string][]Status{}
+	o := opts(2)
+	o.Finished = func(st pipeline.Step, res StepResult) {
+		mu.Lock()
+		defer mu.Unlock()
+		if st.Name != res.Name {
+			t.Errorf("hook got step %s with the result of %s", st.Name, res.Name)
+		}
+		seen[st.Name] = append(seen[st.Name], res.Status)
+	}
+	res := Execute(context.Background(), p, fake, o)
+	want := map[string]Status{"a": Failed, "b": Skipped, "c": Skipped, "v": Succeeded, "s": Errored}
+	if got := statusOf(t, res); !maps.Equal(got, want) {
+		t.Fatalf("statuses = %v, want %v", got, want)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for name, st := range want {
+		if got := seen[name]; len(got) != 1 || got[0] != st {
+			t.Errorf("hook calls for %s = %v, want exactly [%s]", name, got, st)
+		}
+	}
+}
+
+// TestFinishedHookOnCancel: cancelled and never-started steps reach the hook too.
+func TestFinishedHookOnCancel(t *testing.T) {
+	p := mustParse(t, "  - {name: a, image: x, run: x}\n  - {name: b, image: x, run: x, needs: [a]}\n")
+	ctx, cancel := context.WithCancel(context.Background())
+	fake := newFake(func(ctx context.Context, job runner.Job) (runner.Result, error) {
+		cancel()
+		<-ctx.Done()
+		return runner.Result{}, ctx.Err()
+	})
+	var mu sync.Mutex
+	seen := map[string]Status{}
+	o := opts(1)
+	o.Finished = func(st pipeline.Step, res StepResult) {
+		mu.Lock()
+		defer mu.Unlock()
+		seen[st.Name] = res.Status
+	}
+	Execute(ctx, p, fake, o)
+	mu.Lock()
+	defer mu.Unlock()
+	if !maps.Equal(seen, map[string]Status{"a": Cancelled, "b": Cancelled}) {
+		t.Fatalf("hook saw %v, want both steps cancelled", seen)
 	}
 }

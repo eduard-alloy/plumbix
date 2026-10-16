@@ -13,12 +13,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/events"
 )
 
 //go:embed migrations/*.sql
@@ -27,9 +29,13 @@ var migrationFiles embed.FS
 // busyTimeoutMS is how long a connection waits for a lock before failing.
 const busyTimeoutMS = 5000
 
-// DB is a SQLite-backed change.Store.
+// DB is a SQLite-backed change.Store. It is also the event source: writes
+// that change what a client sees append an event in the same transaction
+// (see events.go).
 type DB struct {
-	sql *sql.DB
+	sql    *sql.DB
+	emitMu sync.Mutex         // one emitting write at a time, so events publish in id order
+	notify func(events.Event) // called after commit for each event; nil discards
 }
 
 var _ change.Store = (*DB)(nil)
@@ -196,12 +202,18 @@ func (db *DB) CreateChange(ctx context.Context, c change.Change) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.sql.ExecContext(ctx,
-		`INSERT INTO changes (id, repo_id, source_branch, target_branch, title, intent, acceptance_criteria, constraints, submitted_by, state, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.ID, c.RepoID, c.SourceBranch, c.TargetBranch, c.Title, c.Intent, string(criteria), string(constraints),
-		c.SubmittedBy, string(c.State), formatTime(c.CreatedAt), formatTime(c.UpdatedAt))
-	return mapErr(err)
+	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO changes (id, repo_id, source_branch, target_branch, title, intent, acceptance_criteria, constraints, submitted_by, state, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			c.ID, c.RepoID, c.SourceBranch, c.TargetBranch, c.Title, c.Intent, string(criteria), string(constraints),
+			c.SubmittedBy, string(c.State), formatTime(c.CreatedAt), formatTime(c.UpdatedAt)); err != nil {
+			return mapErr(err)
+		}
+		_, err := emit(events.Event{Type: events.ChangeSubmitted, Time: c.CreatedAt, RepoID: c.RepoID, ChangeID: c.ID,
+			Payload: events.ChangeSubmittedPayload{SourceBranch: c.SourceBranch, TargetBranch: c.TargetBranch, Title: c.Title, SubmittedBy: c.SubmittedBy}})
+		return err
+	})
 }
 
 const changeColumns = `c.id, c.repo_id, c.source_branch, c.target_branch, c.title, c.intent, c.acceptance_criteria, c.constraints, c.submitted_by, c.state, c.created_at, c.updated_at,
@@ -245,12 +257,17 @@ func (db *DB) ListChanges(ctx context.Context, f change.Filter) ([]change.Change
 
 // SetChangeState moves a change from one state to another.
 func (db *DB) SetChangeState(ctx context.Context, id string, from, to change.State, at time.Time) error {
-	res, err := db.sql.ExecContext(ctx, `UPDATE changes SET state = ?, updated_at = ? WHERE id = ? AND state = ?`,
-		string(to), formatTime(at), id, string(from))
-	if err != nil {
-		return mapErr(err)
-	}
-	if n, err := res.RowsAffected(); err != nil || n == 1 {
+	err := db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		var repoID string
+		if err := tx.QueryRowContext(ctx, `UPDATE changes SET state = ?, updated_at = ? WHERE id = ? AND state = ? RETURNING repo_id`,
+			string(to), formatTime(at), id, string(from)).Scan(&repoID); err != nil {
+			return mapErr(err) // ErrNotFound: no row in state from
+		}
+		_, err := emit(events.Event{Type: events.StateChanged, Time: at, RepoID: repoID, ChangeID: id,
+			Payload: events.StateChangedPayload{From: string(from), To: string(to)}})
+		return err
+	})
+	if !errors.Is(err, change.ErrNotFound) {
 		return err
 	}
 	if _, err := db.GetChange(ctx, id); err != nil {
