@@ -1,6 +1,6 @@
 // The API client. Every call goes to the same origin with the session
 // cookie; a 401 anywhere means the browser is not signed in.
-import type { Alert, Change, Diff, Repo, Run } from './model'
+import type { Alert, Change, Diff, Repo, Run, SecretCheck, SettingsView } from './model'
 
 export class ApiError extends Error {
   constructor(
@@ -83,6 +83,13 @@ export const api = {
   alerts: (all = false) => request<{ alerts: Alert[] }>('GET', `/api/v1/alerts${all ? '?include_resolved=true' : ''}`).then((r) => r.alerts),
   resolveAlert: (id: string) => request<Alert>('POST', `/api/v1/alerts/${encodeURIComponent(id)}/resolve`),
   stepLog: (runId: string, step: string) => requestText(stepLogUrl(runId, step)),
+  settings: () => request<SettingsView>('GET', '/api/v1/settings'),
+  updateSettings: (body: { ai_model?: string; guidance?: string }) => request<SettingsView>('PUT', '/api/v1/settings', body),
+  setSecret: (key: string, value: string) => request<void>('PUT', `/api/v1/settings/secrets/${encodeURIComponent(key)}`, { value }),
+  removeSecret: (key: string) => request<void>('DELETE', `/api/v1/settings/secrets/${encodeURIComponent(key)}`),
+  checkSecret: (key: string) => request<SecretCheck>('POST', `/api/v1/settings/secrets/${encodeURIComponent(key)}/check`),
+  repoSettings: (id: string) => request<{ guidance: string }>('GET', `/api/v1/repos/${encodeURIComponent(id)}/settings`),
+  updateRepoSettings: (id: string, guidance: string) => request<{ guidance: string }>('PUT', `/api/v1/repos/${encodeURIComponent(id)}/settings`, { guidance }),
 }
 
 /** stepLogUrl is where a step's raw log can be opened. */

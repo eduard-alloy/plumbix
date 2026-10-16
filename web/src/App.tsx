@@ -7,6 +7,7 @@ import { SignInPage } from './pages/SignInPage'
 import { AlertsPage } from './pages/AlertsPage'
 import { ReposPage } from './pages/ReposPage'
 import { DesignPage } from './pages/DesignPage'
+import { SettingsPage } from './pages/SettingsPage'
 
 export function App() {
   return (
@@ -27,6 +28,7 @@ function Routed() {
       {route.screen === 'alerts' && <AlertsPage />}
       {route.screen === 'repos' && <ReposPage />}
       {route.screen === 'design' && <DesignPage />}
+      {route.screen === 'settings' && <SettingsPage />}
     </Shell>
   )
 }

@@ -347,3 +347,13 @@ Initial discovery is complete. Results are consolidated in `PROJECT.md` and `CON
 **Answer**: A.
 
 **Decision**: the interface is a quiet instrument for one developer supervising agents. Intent and verdict first, evidence linked everywhere, the diff on demand, density over decoration, one accent colour. The full brief handed to Claude Design is `web/DESIGN_BRIEF.md`.
+
+## Q19: Configuration from the browser (2026-10-16)
+
+**User**: "this is something I want to have in the webapp, a settings page where I can provide tokens and also tune the prompts for AI. also the pipelines need an editor."
+
+**Options given**: secrets in a server-owned file, write-only (recommended) vs encrypted in the database; AI tuning as review guidance (recommended), guidance plus model and effort, or the full prompt.
+
+**Answer**: server-owned file; guidance plus the model, no effort knob.
+
+**Decisions**: A18 and A19. The pipeline editor is WU-019: edit in the browser, propose as a change, merge like any other, so A9 still holds.

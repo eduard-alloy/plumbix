@@ -5,71 +5,187 @@
   "description": "What Plumbix mounts read-only at /plumbix/in for a validator step: change.json (this schema) evidence/<step>/status.json ($defs/stepStatus) plus evidence/<step>/log.txt for every earlier step, and optionally diff.patch, the unified diff from commits.base to commits.head. The checked-out commit is at /workspace, read-only. The validator writes /plumbix/out/verdict.json (verdict.schema.json).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["plumbix", "change", "commits", "changed_files", "iteration", "previous_findings"],
+  "required": [
+    "plumbix",
+    "change",
+    "commits",
+    "changed_files",
+    "iteration",
+    "previous_findings"
+  ],
   "properties": {
-    "plumbix": { "const": "validator-input/v1" },
+    "plumbix": {
+      "const": "validator-input/v1"
+    },
     "change": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "intent", "source_branch", "target_branch", "acceptance_criteria", "constraints"],
+      "required": [
+        "id",
+        "title",
+        "intent",
+        "source_branch",
+        "target_branch",
+        "acceptance_criteria",
+        "constraints"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "title": { "type": "string" },
-        "intent": { "type": "string" },
-        "source_branch": { "type": "string" },
-        "target_branch": { "type": "string" },
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "source_branch": {
+          "type": "string"
+        },
+        "target_branch": {
+          "type": "string"
+        },
         "acceptance_criteria": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["id", "text"],
+            "required": [
+              "id",
+              "text"
+            ],
             "properties": {
-              "id": { "type": "string", "pattern": "^AC-[1-9][0-9]*$" },
-              "text": { "type": "string" },
+              "id": {
+                "type": "string",
+                "pattern": "^AC-[1-9][0-9]*$"
+              },
+              "text": {
+                "type": "string"
+              },
               "check": {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                  "steps": { "type": "array", "items": { "type": "string" } },
-                  "command": { "type": "string" }
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "command": {
+                    "type": "string"
+                  }
                 },
-                "oneOf": [{ "required": ["steps"] }, { "required": ["command"] }]
+                "oneOf": [
+                  {
+                    "required": [
+                      "steps"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "command"
+                    ]
+                  }
+                ]
               }
             }
           }
         },
-        "constraints": { "type": "array", "items": { "type": "string" } }
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "commits": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["base", "head"],
+      "required": [
+        "base",
+        "head"
+      ],
       "properties": {
-        "base": { "type": "string", "description": "Target branch commit the change is compared with." },
-        "head": { "type": "string", "description": "Commit being validated." }
+        "base": {
+          "type": "string",
+          "description": "Target branch commit the change is compared with."
+        },
+        "head": {
+          "type": "string",
+          "description": "Commit being validated."
+        }
       }
     },
-    "changed_files": { "type": "array", "items": { "type": "string" } },
-    "iteration": { "type": "integer", "minimum": 1 },
+    "changed_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 1
+    },
     "previous_findings": {
       "description": "Findings from the previous iteration, so a validator can check they were addressed.",
       "type": "array",
-      "items": { "$ref": "verdict.schema.json#/properties/findings/items" }
+      "items": {
+        "$ref": "verdict.schema.json#/properties/findings/items"
+      }
+    },
+    "guidance": {
+      "description": "Instructions from the Plumbix operator, set in Plumbix's settings and never taken from the repository. Validators may follow them. Absent when none are set.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "global": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "repository": {
+          "type": "string",
+          "maxLength": 4000
+        }
+      }
     }
   },
   "$defs": {
     "stepStatus": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["plumbix", "step", "status", "exit_code", "duration_ms"],
+      "required": [
+        "plumbix",
+        "step",
+        "status",
+        "exit_code",
+        "duration_ms"
+      ],
       "properties": {
-        "plumbix": { "const": "step-status/v1" },
-        "step": { "type": "string" },
-        "status": { "enum": ["succeeded", "failed", "timed_out", "errored", "skipped", "cancelled"] },
-        "exit_code": { "type": "integer" },
-        "duration_ms": { "type": "integer", "minimum": 0 }
+        "plumbix": {
+          "const": "step-status/v1"
+        },
+        "step": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "succeeded",
+            "failed",
+            "timed_out",
+            "errored",
+            "skipped",
+            "cancelled"
+          ]
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     }
   }
