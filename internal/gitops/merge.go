@@ -18,7 +18,36 @@ var (
 	// ErrPushRejected means the remote branch no longer points at the
 	// expected commit. Nothing was changed.
 	ErrPushRejected = errors.New("push rejected: the remote branch moved")
+	// ErrPushDenied means the host refused Plumbix's credentials, or there
+	// were none to offer. Nothing was changed.
+	ErrPushDenied = errors.New("push denied: the host did not accept Plumbix's credentials")
 )
+
+// deniedMarkers are the phrases git prints when a remote refuses the
+// credentials: no token to offer, a bad token, a token without push rights,
+// or an SSH key the host does not know.
+var deniedMarkers = []string{
+	"could not read Username",
+	"Authentication failed",
+	"denied to",
+	"returned error: 403",
+	"Permission denied (publickey)",
+}
+
+// pushError turns git's push failure into one of the push errors. The denied
+// error does not repeat git's output, which names the remote.
+func pushError(err error, branch string) error {
+	msg := err.Error()
+	for _, m := range deniedMarkers {
+		if strings.Contains(msg, m) {
+			return fmt.Errorf("%w: %s", ErrPushDenied, branch)
+		}
+	}
+	if strings.Contains(msg, "rejected") || strings.Contains(msg, "stale info") {
+		return fmt.Errorf("%w: %s", ErrPushRejected, branch)
+	}
+	return err
+}
 
 // Committer identity for the commits Plumbix creates.
 const (
@@ -127,10 +156,7 @@ func (m *Mirror) Push(ctx context.Context, branch, sha, old string) error {
 	ref := "refs/heads/" + branch
 	_, err := m.git(ctx, "push", "-q", m.url, sha+":"+ref, "--force-with-lease="+ref+":"+old)
 	if err != nil {
-		if strings.Contains(err.Error(), "rejected") || strings.Contains(err.Error(), "stale info") {
-			return fmt.Errorf("%w: %s", ErrPushRejected, branch)
-		}
-		return err
+		return pushError(err, branch)
 	}
 	_, err = m.git(ctx, "update-ref", ref, sha, old)
 	return err

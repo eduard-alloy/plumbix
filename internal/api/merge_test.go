@@ -1,7 +1,11 @@
 package api
 
 import (
+	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"os/exec"
 	"strings"
 	"testing"
@@ -9,6 +13,7 @@ import (
 
 	"github.com/eduard-alloy/plumbix/internal/alert"
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/gitops"
 	"github.com/eduard-alloy/plumbix/internal/run"
 )
 
@@ -102,5 +107,20 @@ func TestAlertEndpoints(t *testing.T) {
 	o.check("Error", missing)
 	if missing.Code != http.StatusNotFound {
 		t.Errorf("resolve unknown: %d", missing.Code)
+	}
+}
+
+func TestMergeDeniedByHostIsAClearRefusal(t *testing.T) {
+	o := loadOpenAPI(t)
+	h := &changeHandlers{log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	rec := httptest.NewRecorder()
+	h.fail(rec, fmt.Errorf("merge: %w; set a token for repository r_1 in Settings", gitops.ErrPushDenied))
+	o.check("Error", rec)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d %s", rec.Code, rec.Body.String())
+	}
+	e := decode[apiError](t, rec).Error
+	if e.Code != "push_denied" || !strings.Contains(e.Message, "set a token for repository r_1 in Settings") {
+		t.Errorf("error = %+v", e)
 	}
 }

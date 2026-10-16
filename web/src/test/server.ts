@@ -11,7 +11,7 @@ export interface FakeDB {
   alerts: Alert[]
   signedIn: boolean
   /** mergeResult decides what POST /merge answers: 'ok' or an error code. */
-  mergeResult: 'ok' | 'source_moved' | 'target_moved' | 'push_rejected' | 'invalid_state'
+  mergeResult: 'ok' | 'source_moved' | 'target_moved' | 'push_rejected' | 'push_denied' | 'invalid_state'
   requests: string[]
   secrets: Record<string, string>
   secretUpdated: Record<string, string>
