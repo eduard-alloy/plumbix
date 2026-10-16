@@ -1,13 +1,17 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/events"
+	"github.com/eduard-alloy/plumbix/internal/host"
 	"github.com/eduard-alloy/plumbix/internal/run"
+	"github.com/eduard-alloy/plumbix/internal/settings"
 )
 
 func typesOf(evs []events.Event) []events.Type {
@@ -184,5 +188,95 @@ func TestStepsAreRecordedAsTheyFinish(t *testing.T) {
 	}
 	if old := h.wait(r.ID); old.Status != run.Cancelled || len(old.Steps) != 2 {
 		t.Fatalf("cancelled run = %+v; want its two steps (test succeeded, validate cancelled) once each", old)
+	}
+}
+
+// fakeSettings stands in for the operator's settings.
+type fakeSettings struct {
+	global, repo, model string
+}
+
+func (f fakeSettings) Guidance(context.Context, string) (settings.Guidance, error) {
+	return settings.Guidance{Global: f.global, Repository: f.repo}, nil
+}
+func (f fakeSettings) AIModel(context.Context) (string, error) { return f.model, nil }
+
+// TestValidatorsGetGuidanceAndModel: validator steps see the operator's
+// guidance in change.json and the model as PLUMBIX_AI_MODEL, unless the
+// pipeline step sets its own; normal steps see neither.
+func TestValidatorsGetGuidanceAndModel(t *testing.T) {
+	h := newHarness(t, Config{Settings: fakeSettings{global: "Prefer small diffs.", repo: "Go needs tests.", model: "claude-sonnet-5-5"}})
+	h.repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
+	c := h.submit("feat")
+	h.wait(h.validate(c.ID).ID)
+	h.fake.mu.Lock()
+	defer h.fake.mu.Unlock()
+	if len(h.fake.inputs) != 1 {
+		t.Fatalf("validator inputs = %d", len(h.fake.inputs))
+	}
+	g := h.fake.inputs[0].Guidance
+	if g == nil || g.Global != "Prefer small diffs." || g.Repository != "Go needs tests." {
+		t.Errorf("guidance = %+v", g)
+	}
+	for _, j := range h.fake.jobs {
+		got := j.Env["PLUMBIX_AI_MODEL"]
+		if j.Name == "validate" && got != "claude-sonnet-5-5" {
+			t.Errorf("validator env = %v", j.Env)
+		}
+		if j.Name == "test" && got != "" {
+			t.Errorf("normal step got the model: %v", j.Env)
+		}
+	}
+}
+
+func TestNoGuidanceMeansNoField(t *testing.T) {
+	h := newHarness(t, Config{Settings: fakeSettings{}})
+	h.repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
+	c := h.submit("feat")
+	h.wait(h.validate(c.ID).ID)
+	h.fake.mu.Lock()
+	defer h.fake.mu.Unlock()
+	if h.fake.inputs[0].Guidance != nil {
+		t.Errorf("guidance = %+v, want absent", h.fake.inputs[0].Guidance)
+	}
+	for _, j := range h.fake.jobs {
+		if _, ok := j.Env["PLUMBIX_AI_MODEL"]; ok {
+			t.Errorf("%s got a model with none set", j.Name)
+		}
+	}
+}
+
+// TestCredentialsAreReadLive: a token that appears after the engine started
+// is used by the next fetch, with no restart.
+func TestCredentialsAreReadLive(t *testing.T) {
+	const token = "late_token_42"
+	values := map[string]string{}
+	var mu sync.Mutex
+	src := host.Live(func() map[string]string {
+		mu.Lock()
+		defer mu.Unlock()
+		out := map[string]string{}
+		for k, v := range values {
+			out[k] = v
+		}
+		return out
+	})
+	h := newHarness(t, Config{Hosts: src})
+	h.repo.Commit("feat", map[string]string{"a.go": "a\n"}, "a")
+	repo := change.Repo{ID: "r_liverepo0001", Host: change.HostGitHub, ProtectedBranches: []string{"main"}, MergeStrategy: "squash", CreatedAt: time.Now()}
+	repo.URL = h.repo.ServeHTTP("x-access-token", token)
+	if err := h.db.CreateRepo(ctx, repo); err != nil {
+		t.Fatal(err)
+	}
+	h.repoID = repo.ID
+	c := h.submit("feat")
+	if r := h.validate(c.ID); r.Outcome != change.NeedsHuman {
+		t.Fatalf("without a token the fetch must fail: %s", r.Outcome)
+	}
+	mu.Lock()
+	values[host.GitHubTokenKey] = token
+	mu.Unlock()
+	if r := h.validate(c.ID); r.Outcome != change.Approved {
+		t.Fatalf("with the token set later: %s (%s)", r.Outcome, r.Error)
 	}
 }

@@ -178,6 +178,27 @@ export interface Diff {
   files: DiffFile[]
 }
 
+export interface SecretStatus {
+  key: string
+  set: boolean
+  known: boolean
+  purpose: string
+  host?: string
+  updated_at?: string
+}
+
+export interface SettingsView {
+  ai_model: string
+  guidance: string
+  secrets: SecretStatus[]
+}
+
+export interface SecretCheck {
+  ok: boolean
+  expires_at?: string
+  message: string
+}
+
 export type EventType =
   | 'change.submitted'
   | 'change.state_changed'

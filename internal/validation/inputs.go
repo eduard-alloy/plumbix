@@ -43,6 +43,15 @@ type Input struct {
 	ChangedFiles     []string    `json:"changed_files"`
 	Iteration        int         `json:"iteration"`
 	PreviousFindings []Finding   `json:"previous_findings"`
+	Guidance         *Guidance   `json:"guidance,omitempty"` // operator instructions, set by Plumbix
+}
+
+// Guidance is what the Plumbix operator asks validators to pay attention
+// to, globally and for this repository. It comes from settings, never from
+// the repository, so validators may follow it.
+type Guidance struct {
+	Global     string `json:"global,omitempty"`
+	Repository string `json:"repository,omitempty"`
 }
 
 // InputChange is the part of a change a validator needs.

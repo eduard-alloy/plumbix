@@ -15,6 +15,147 @@ security:
   - bearerToken: []
   - cookieSession: []
 paths:
+  /settings:
+    get:
+      operationId: getSettings
+      summary: Operator settings and which secrets are set.
+      description: Secret values are never returned, only whether a key is set and when it was last set through Plumbix.
+      responses:
+        "200":
+          description: The settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      operationId: updateSettings
+      summary: Set the AI model and the global review guidance.
+      description: Fields left out are unchanged; an empty string clears a field. Guidance is handed to every validator as operator instructions; the model reaches validator steps as PLUMBIX_AI_MODEL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                ai_model:
+                  type: string
+                  maxLength: 81
+                guidance:
+                  type: string
+                  maxLength: 4000
+      responses:
+        "200":
+          description: The settings after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /settings/secrets/{key}:
+    put:
+      operationId: setSecret
+      summary: Set a secret.
+      description: >
+        Writes the value into the server's secrets file (mode 0600) and uses it from now on: the next fetch,
+        push and token check see it. The value is never logged or returned. Any key a pipeline step may name is
+        accepted, not only the well-known ones.
+      parameters:
+        - $ref: "#/components/parameters/SecretKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [value]
+              properties:
+                value:
+                  type: string
+                  minLength: 1
+      responses:
+        "204":
+          description: Set.
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      operationId: removeSecret
+      summary: Remove a secret from the secrets file.
+      parameters:
+        - $ref: "#/components/parameters/SecretKey"
+      responses:
+        "204":
+          description: Removed, or was not set.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /settings/secrets/{key}/check:
+    post:
+      operationId: checkSecret
+      summary: Check a git host token now.
+      description: Runs the host's token check with the current value. Only for the host token keys.
+      parameters:
+        - $ref: "#/components/parameters/SecretKey"
+      responses:
+        "200":
+          description: The check's result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretCheck"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /repos/{id}/settings:
+    get:
+      operationId: getRepoSettings
+      summary: One repository's review guidance.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+      responses:
+        "200":
+          description: The repository's settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoSettings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateRepoSettings
+      summary: Set one repository's review guidance; empty clears it.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RepoSettings"
+      responses:
+        "200":
+          description: The repository's settings after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoSettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /login-links:
     post:
       operationId: createLoginLink
@@ -575,6 +716,19 @@ components:
       required: true
       schema:
         type: string
+    RepoID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    SecretKey:
+      name: key
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
   responses:
     InvalidRequest:
       description: The body is not valid JSON, has unknown fields, or breaks field rules. details.problems lists every problem.
@@ -956,6 +1110,62 @@ components:
                 minimum: 1
               text:
                 type: string
+    Settings:
+      type: object
+      additionalProperties: false
+      required: [ai_model, guidance, secrets]
+      properties:
+        ai_model:
+          description: Model handed to validator steps as PLUMBIX_AI_MODEL; empty leaves the validator's default.
+          type: string
+        guidance:
+          description: Global operator guidance for validators.
+          type: string
+        secrets:
+          type: array
+          items:
+            $ref: "#/components/schemas/SecretStatus"
+    SecretStatus:
+      type: object
+      additionalProperties: false
+      required: [key, set, known, purpose]
+      properties:
+        key:
+          type: string
+        set:
+          type: boolean
+        known:
+          description: True for the keys Plumbix itself reads.
+          type: boolean
+        purpose:
+          type: string
+        host:
+          description: The git host whose token this is, when it is one.
+          type: string
+        updated_at:
+          description: When the secret was last set through Plumbix; absent if never, or set by hand.
+          type: string
+          format: date-time
+    SecretCheck:
+      type: object
+      additionalProperties: false
+      required: [ok, message]
+      properties:
+        ok:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+        message:
+          type: string
+    RepoSettings:
+      type: object
+      additionalProperties: false
+      required: [guidance]
+      properties:
+        guidance:
+          type: string
+          maxLength: 4000
     LoginLink:
       type: object
       additionalProperties: false

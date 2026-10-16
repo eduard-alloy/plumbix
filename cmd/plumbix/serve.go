@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -21,6 +20,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/poller"
 	"github.com/eduard-alloy/plumbix/internal/runner"
 	"github.com/eduard-alloy/plumbix/internal/secrets"
+	"github.com/eduard-alloy/plumbix/internal/settings"
 	"github.com/eduard-alloy/plumbix/internal/store"
 	"github.com/eduard-alloy/plumbix/web"
 )
@@ -74,22 +74,25 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	db.OnEvent(hub.Publish)
 	go func() { <-ctx.Done(); hub.Close() }()
 
-	secretValues, err := loadSecrets(cfg.SecretsFile)
+	// Secrets are read through the manager on every use, so a token set in
+	// the browser needs no restart.
+	secretStore, err := secrets.Open(cfg.SecretsFile)
 	if err != nil {
 		logger.Error("load secrets failed", "err", err)
 		return 1
 	}
+	prefs := settings.New(db)
 	docker, err := runner.NewDocker()
 	if err != nil {
 		logger.Error("docker client failed", "err", err)
 		return 1
 	}
 	defer docker.Close()
-	hosts := host.FromSecrets(secretValues)
+	hosts := host.Live(secretStore.Values)
 	eng := engine.New(db, docker, engine.Config{
 		DataDir: cfg.DataDir, MaxParallel: cfg.Runner.MaxParallel, DefaultTimeout: cfg.Runner.DefaultTimeout,
 		CPUs: cfg.Runner.StepCPUs, MemoryMB: cfg.Runner.StepMemoryMB, MaxFixRounds: cfg.FixRounds.Max,
-		Secrets: secretValues, Hosts: hosts,
+		SecretSource: secretStore.Values, Hosts: hosts, Settings: prefs,
 	}, logger)
 	if err := eng.Recover(ctx); err != nil {
 		logger.Error("recover interrupted runs failed", "err", err)
@@ -116,20 +119,12 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	deps := api.Deps{
 		Version: version, Token: token, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub, Logger: logger,
 		Sessions: auth.NewSessions(db), Origin: "http://" + ln.Addr().String(),
-		Web: web.Handler(web.Dist()),
+		Web:      web.Handler(web.Dist()),
+		Settings: prefs, Secrets: secretStore, Hosts: hosts,
 	}
 	if err := api.Run(ctx, ln, api.NewHandler(deps), logger, config.DefaultShutdownTimeout); err != nil {
 		logger.Error("server stopped with error", "err", err)
 		return 1
 	}
 	return 0
-}
-
-// loadSecrets reads the secrets file. A missing file means no secrets.
-func loadSecrets(path string) (map[string]string, error) {
-	values, err := secrets.Load(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return map[string]string{}, nil
-	}
-	return values, err
 }
