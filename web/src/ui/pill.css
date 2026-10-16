@@ -21,6 +21,8 @@
 .pill[data-tone='red'] { color: var(--s-red); background: var(--s-red-bg); }
 .pill[data-tone='violet'] { color: var(--s-violet); background: var(--s-violet-bg); }
 .pill[data-tone='ink'] { color: var(--text); background: var(--surface-2); }
+.pill[data-tone='teal'] { color: var(--s-teal); background: var(--s-teal-bg); }
+.pill[data-tone='plum'] { color: var(--s-plum); background: var(--s-plum-bg); }
 .pill[data-mode='icon'], .pill[data-mode='plain'], .pill[data-mode='text'] { background: transparent !important; }
 
 .sr-only {
