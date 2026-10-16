@@ -107,7 +107,7 @@ func TestFailures(t *testing.T) {
 		"max tokens":   {stopReason: "max_tokens", text: `{"outcome": "fix", "summ`},
 		"server error": {status: http.StatusInternalServerError},
 		"unauthorized": {status: http.StatusUnauthorized},
-		"bad output":   {stopReason: "end_turn", text: `{"outcome": "approve", "summary": "s", "criteria": [{"id": "AC-7", "status": "met", "reason": "r", "evidence": ["x"]}], "findings": [], "risks": []}`},
+		"bad output":   {stopReason: "end_turn", text: `{"outcome": "shrug", "summary": "s", "criteria": [], "findings": [], "risks": []}`},
 	}
 	for name, f := range cases {
 		t.Run(name, func(t *testing.T) {

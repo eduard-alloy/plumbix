@@ -53,9 +53,8 @@ func TestApproveWithUnmetBecomesFix(t *testing.T) {
 
 func TestToVerdictErrors(t *testing.T) {
 	for name, raw := range map[string]string{
-		"not json":          `{"outcome":`,
-		"unknown criterion": `{"outcome": "fix", "summary": "s", "criteria": [{"id": "AC-9", "status": "unmet", "reason": "r", "evidence": []}], "findings": [], "risks": []}`,
-		"bad outcome":       `{"outcome": "shrug", "summary": "s", "criteria": [], "findings": [], "risks": []}`,
+		"not json":    `{"outcome":`,
+		"bad outcome": `{"outcome": "shrug", "summary": "s", "criteria": [], "findings": [], "risks": []}`,
 	} {
 		if _, err := ToVerdict([]byte(raw), testCriteria, usage); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -94,7 +93,43 @@ func TestSchemaFitsStructuredOutputs(t *testing.T) {
 			walk(path+"."+k, x)
 		}
 	}
-	walk("schema", OutputSchema())
+	walk("schema", OutputSchema([]string{"AC-1", "AC-2"}))
+	walk("schema-no-ids", OutputSchema(nil))
+}
+
+// TestSchemaRestrictsCriterionIDs: the model can only name the change's
+// own criteria, so it cannot invent one for a constraint.
+func TestSchemaRestrictsCriterionIDs(t *testing.T) {
+	s := OutputSchema([]string{"AC-1", "AC-2"})
+	crit := s["properties"].(map[string]any)["criteria"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+	id := crit["id"].(map[string]any)
+	if got, _ := id["enum"].([]string); len(got) != 2 || got[0] != "AC-1" || got[1] != "AC-2" {
+		t.Errorf("id schema = %v, want an enum of the criterion ids", id)
+	}
+	if _, has := OutputSchema(nil)["properties"].(map[string]any)["criteria"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)["id"].(map[string]any)["enum"]; has {
+		t.Error("with no criteria the id must stay a plain string")
+	}
+}
+
+// TestInventedCriteriaAreDropped: a criterion the change does not have is
+// dropped with a note, and a repeated id keeps its first entry, instead of
+// the whole review failing.
+func TestInventedCriteriaAreDropped(t *testing.T) {
+	raw := `{"outcome": "fix", "summary": "s", "criteria": [
+	  {"id": "AC-1", "status": "met", "reason": "r", "evidence": ["x"]},
+	  {"id": "constraint-states", "status": "met", "reason": "r", "evidence": ["x"]},
+	  {"id": "AC-1", "status": "unmet", "reason": "again", "evidence": []},
+	  {"id": "AC-2", "status": "unmet", "reason": "r", "evidence": []}], "findings": [], "risks": []}`
+	v, err := ToVerdict([]byte(raw), testCriteria, usage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Criteria) != 2 || v.Criteria[0].ID != "AC-1" || v.Criteria[0].Status != "met" || v.Criteria[1].ID != "AC-2" {
+		t.Errorf("criteria = %+v", v.Criteria)
+	}
+	if !strings.Contains(v.Summary, "constraint-states") {
+		t.Errorf("summary does not note the dropped criterion: %q", v.Summary)
+	}
 }
 
 func TestEmptyTextIsNormalizedConservatively(t *testing.T) {

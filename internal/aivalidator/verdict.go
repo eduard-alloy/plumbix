@@ -43,12 +43,18 @@ func list(item any) map[string]any         { return map[string]any{"type": "arra
 
 // OutputSchema is the JSON schema sent as the structured output format. It
 // avoids keywords structured outputs don't support; Plumbix checks the rest.
-func OutputSchema() map[string]any {
+// criterionIDs, when given, is the only set of ids the model may use, so it
+// cannot invent a criterion for a constraint or a risk.
+func OutputSchema(criterionIDs []string) map[string]any {
+	id := str()
+	if len(criterionIDs) > 0 {
+		id = enum(criterionIDs...)
+	}
 	return object(map[string]any{
 		"outcome": enum("approve", "fix", "reject"),
 		"summary": str(),
 		"criteria": list(object(map[string]any{
-			"id": str(), "status": enum("met", "unmet", "unknown"), "reason": str(), "evidence": list(str()),
+			"id": id, "status": enum("met", "unmet", "unknown"), "reason": str(), "evidence": list(str()),
 		})),
 		"findings": list(object(map[string]any{
 			"severity": enum("blocker", "major", "minor"), "message": str(), "criterion": str(),
@@ -79,7 +85,21 @@ func ToVerdict(raw []byte, criteria []change.Criterion, usage validation.Usage) 
 	v := validation.Verdict{Plumbix: validation.VerdictVersion, Outcome: out.Outcome, Summary: out.Summary, Usage: &usage}
 	unmet := false
 	counts := map[validation.Status]int{}
+	known := map[string]bool{}
+	for _, c := range criteria {
+		known[c.ID] = true
+	}
+	seen := map[string]bool{}
+	var dropped []string
 	for _, c := range out.Criteria {
+		// A criterion the change does not have, or one judged twice, must
+		// not fail the whole review: keep the first judgment of each real
+		// criterion and say what was left out.
+		if !known[c.ID] || seen[c.ID] {
+			dropped = append(dropped, c.ID)
+			continue
+		}
+		seen[c.ID] = true
 		cv := validation.CriterionVerdict{ID: c.ID, Status: c.Status, Reason: c.Reason, Evidence: c.Evidence}
 		if strings.TrimSpace(cv.Reason) == "" {
 			// A status the model didn't explain can't be trusted.
@@ -102,6 +122,9 @@ func ToVerdict(raw []byte, criteria []change.Criterion, usage validation.Usage) 
 	if v.Outcome == validation.Approve && unmet {
 		v.Outcome = validation.Fix
 	}
+	if len(dropped) > 0 {
+		v.Summary += fmt.Sprintf(" (Plumbix dropped %d criterion entr%s the model added or repeated: %s)", len(dropped), map[bool]string{true: "y", false: "ies"}[len(dropped) == 1], strings.Join(dropped, ", "))
+	}
 	for _, f := range out.Findings {
 		fd := validation.Finding{Severity: f.Severity, Message: f.Message, Criterion: f.Criterion, File: f.File}
 		if f.Line > 0 {
@@ -119,4 +142,13 @@ func ToVerdict(raw []byte, criteria []change.Criterion, usage validation.Usage) 
 		return validation.Verdict{}, fmt.Errorf("model output breaks the verdict contract: %w; output was: %s", err, excerpt(raw))
 	}
 	return v, nil
+}
+
+// criterionIDs lists the ids of a change's criteria, in order.
+func criterionIDs(criteria []change.Criterion) []string {
+	ids := make([]string, 0, len(criteria))
+	for _, c := range criteria {
+		ids = append(ids, c.ID)
+	}
+	return ids
 }

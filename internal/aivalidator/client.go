@@ -58,7 +58,7 @@ func Validate(ctx context.Context, cfg Config, inDir, workspace string, opts ...
 		Messages:  []anthropic.BetaMessageParam{anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(prompt.User))},
 		OutputConfig: anthropic.BetaOutputConfigParam{
 			Effort: anthropic.BetaOutputConfigEffort(cfg.Effort),
-			Format: anthropic.BetaJSONOutputFormatParam{Schema: OutputSchema()},
+			Format: anthropic.BetaJSONOutputFormatParam{Schema: OutputSchema(criterionIDs(in.Change.AcceptanceCriteria))},
 		},
 		Fallbacks: anthropic.BetaFallbacksParamOfDefault(),
 		Betas:     []anthropic.AnthropicBeta{fallbackBeta},
