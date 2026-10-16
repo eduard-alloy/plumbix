@@ -2,7 +2,7 @@
 
 Self-hosted, open-source pipelines and change review for the age of coding agents.
 
-Plumbix runs pipelines in containers on your own machine with free parallelism. It validates each change against its intent and acceptance criteria instead of line-by-line review. It works with your existing git host, starting with GitHub and Azure DevOps.
+Plumbix runs pipelines in containers on your own machine with free parallelism. It validates each change against its intent and acceptance criteria instead of line-by-line review. It works with plain git repositories on your machine or over SSH, and with GitHub, with Azure DevOps next.
 
 **Status**: early development. Nothing is usable yet. See [PROJECT.md](PROJECT.md) for the plan and [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
@@ -25,6 +25,20 @@ curl -H "Authorization: Bearer $(cat ~/.plumbix/api-token)" \
 ```
 
 To rotate the token, delete the file and restart the server. Plumbix refuses to start if the file is readable by other users.
+
+## Try it locally, no account needed
+
+Plumbix works with a plain git repository on your machine. Use a bare repository as the shared remote; you and your agents push branches to it.
+
+```sh
+git init --bare ~/git/myapp.git           # or point at an existing bare repo
+./bin/plumbix serve &                      # needs Docker for pipeline steps
+./bin/plumbix repo add --host git --url ~/git/myapp.git
+./bin/plumbix submit -f change.json        # intent, criteria, source and target branch
+./bin/plumbix change runs <change-id>
+```
+
+Plumbix also accepts `file://` paths and SSH remotes (`ssh://host/path` or `user@host:path`), which use your own SSH keys. Your repository needs a `.plumbix/pipeline.yaml`; see [ARCHITECTURE.md](ARCHITECTURE.md) section 4.2.
 
 ## License
 

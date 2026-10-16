@@ -2,6 +2,8 @@ package change
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,6 +27,7 @@ const (
 const (
 	HostGitHub      = "github"
 	HostAzureDevOps = "azuredevops"
+	HostGit         = "git" // plain git: local path, file:// or SSH
 	DefaultBranch   = "main"
 	DefaultStrategy = "squash"
 )
@@ -104,10 +107,14 @@ func normalizeRepo(in RepoInput) (RepoInput, error) {
 		if !azureURLs[0].MatchString(in.URL) && !azureURLs[1].MatchString(in.URL) {
 			ps.add("url", "must look like https://dev.azure.com/<org>/<project>/_git/<repo> or https://<org>.visualstudio.com/<project>/_git/<repo>")
 		}
+	case HostGit:
+		if msg := plainRemoteProblem(in.URL); msg != "" {
+			ps.add("url", "%s", msg)
+		}
 	case "":
 		ps.add("host", "is required")
 	default:
-		ps.add("host", "must be %q or %q", HostGitHub, HostAzureDevOps)
+		ps.add("host", "must be %q, %q or %q", HostGitHub, HostAzureDevOps, HostGit)
 	}
 	if in.MergeStrategy == "" {
 		in.MergeStrategy = DefaultStrategy
@@ -232,6 +239,45 @@ func checkProblems(ps *problems, field string, c *Check) {
 			ps.add(fmt.Sprintf("%s.steps[%d]", field, j), "is not a valid step name")
 		}
 	}
+}
+
+var (
+	sshURL = regexp.MustCompile(`^ssh://([A-Za-z0-9._-]+@)?[A-Za-z0-9.-]+(:[0-9]+)?/.+$`)
+	scpURL = regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^/\s].*$`)
+)
+
+// plainRemoteProblem explains what is wrong with a plain git remote, or
+// returns "" when it is acceptable. Local paths must be git repositories.
+func plainRemoteProblem(remote string) string {
+	switch {
+	case remote == "":
+		return "is required"
+	case strings.HasPrefix(remote, "http://") || strings.HasPrefix(remote, "https://"):
+		return `HTTP remotes use host "github" or "azuredevops"; plain git accepts an absolute path, file://, ssh:// or user@host:path`
+	case sshURL.MatchString(remote) || scpURL.MatchString(remote):
+		return ""
+	}
+	path := remote
+	if p, ok := strings.CutPrefix(remote, "file://"); ok {
+		path = p
+	}
+	if !filepath.IsAbs(path) {
+		return "must be an absolute path, file:///absolute/path, ssh:// or user@host:path"
+	}
+	if !isGitRepo(path) {
+		return path + " is not a git repository"
+	}
+	return ""
+}
+
+// isGitRepo reports whether path is a bare repository or a working tree.
+func isGitRepo(path string) bool {
+	for _, marker := range []string{"HEAD", filepath.Join(".git", "HEAD")} {
+		if info, err := os.Stat(filepath.Join(path, marker)); err == nil && !info.IsDir() {
+			return true
+		}
+	}
+	return false
 }
 
 // ValidBranch applies git's rules for branch names (git check-ref-format).

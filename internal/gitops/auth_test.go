@@ -92,3 +92,18 @@ func TestTokenNeverInArguments(t *testing.T) {
 		t.Error("personal credential helpers are not disabled")
 	}
 }
+
+func TestSSHRunsInBatchMode(t *testing.T) {
+	t.Setenv("GIT_SSH_COMMAND", "")
+	t.Setenv("GIT_SSH", "")
+	cmd := Open("/tmp/m.git", "git@example.com:a/b.git").command(ctx, "fetch")
+	if !strings.Contains(strings.Join(cmd.Env, "\n"), "GIT_SSH_COMMAND=ssh -o BatchMode=yes") {
+		t.Error("SSH can prompt for a password and hang")
+	}
+	t.Setenv("GIT_SSH_COMMAND", "my-ssh -i key")
+	cmd = Open("/tmp/m.git", "git@example.com:a/b.git").command(ctx, "fetch")
+	env := strings.Join(cmd.Env, "\n")
+	if strings.Contains(env, "BatchMode") || !strings.Contains(env, "GIT_SSH_COMMAND=my-ssh -i key") {
+		t.Error("the user's own SSH command was overridden")
+	}
+}

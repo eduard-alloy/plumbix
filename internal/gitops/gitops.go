@@ -79,6 +79,10 @@ func (m *Mirror) command(ctx context.Context, args ...string) *exec.Cmd {
 	}
 	cmd := exec.CommandContext(ctx, "git", append(full, args...)...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1")
+	if os.Getenv("GIT_SSH_COMMAND") == "" && os.Getenv("GIT_SSH") == "" {
+		// Never let SSH wait for a password or a host key prompt.
+		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
+	}
 	if m.auth != nil {
 		cmd.Env = append(cmd.Env, "GIT_ASKPASS="+m.askpass, "PLUMBIX_GIT_USER="+m.auth.User, "PLUMBIX_GIT_TOKEN="+m.auth.Token)
 	}

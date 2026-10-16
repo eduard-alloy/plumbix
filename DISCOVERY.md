@@ -327,3 +327,15 @@ Initial discovery is complete. Results are consolidated in `PROJECT.md` and `CON
 **Answer**: "go with A for the answer...generated token"
 
 **Decision**: Plumbix generates a random token on first start in `<data_dir>/api-token` (mode `0600`). Every API route except health needs it. The CLI reads it automatically, and the browser gets a one-time login link with the web interface. Built in WU-013.
+
+## Q17: Plain local git (2026-10-16)
+
+**Question (user)**: "how would it work in a local git environment...no github/devops just plain git"
+
+**Assessment given**: the core already uses plain git; only registration rules and the host lookup block it. Local remotes should be bare repos.
+
+**Answer**: "yes add it before the devops adapter. i think it is more urgent to have it work locally ... plumbix might even be placed in between the user env and the git host CI"
+
+**Decision**: host kind `git` for local paths, `file://` and SSH remotes, built as WU-015 before the Azure DevOps adapter.
+
+**Idea raised, not decided**: Plumbix as a local gate between the developer's environment and the git host's CI. See the assessment recorded under "Open ideas" in PROJECT.md.

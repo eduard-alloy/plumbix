@@ -15,6 +15,7 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Plain shell execution without container isolation is not allowed. Agent-written code is untrusted. (Q04)
 
 ## Integration
+- Plain git remotes (host `git`): absolute paths, `file://`, `ssh://`, scp-style. No credentials; SSH runs in batch mode unless the user set their own SSH command. Local remotes should be bare repositories. (WU-015)
 - GitHub and Azure DevOps are the v1 hosts. Both sit behind one narrow host boundary designed from these two real implementations. (Q03, revised)
 - Pushes are detected by polling in v1, because a local-only Plumbix is unreachable for service hooks. (Q12)
 - Neither host can enforce merges in v1 because the PAT acts as the user. Plumbix flags bypass commits instead. (Q13)

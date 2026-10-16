@@ -39,8 +39,22 @@ func (r Registry) For(repo change.Repo) (Host, error) {
 func FromSecrets(secrets map[string]string) Registry {
 	return Registry{
 		change.HostGitHub: &GitHub{Token: secrets[GitHubTokenKey]},
+		change.HostGit:    Plain{},
 	}
 }
+
+// Plain is a git remote reached without host credentials: a local path, or
+// SSH with the user's own keys.
+type Plain struct{}
+
+// Kind implements Host.
+func (Plain) Kind() string { return change.HostGit }
+
+// Auth implements Host. Plain git never sends credentials.
+func (Plain) Auth(change.Repo) (gitops.Auth, bool) { return gitops.Auth{}, false }
+
+// TokenExpiry implements Host. There is no token.
+func (Plain) TokenExpiry(context.Context) (time.Time, bool, error) { return time.Time{}, false, nil }
 
 // apiTimeout bounds calls to host APIs.
 const apiTimeout = 15 * time.Second

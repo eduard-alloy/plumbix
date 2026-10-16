@@ -41,7 +41,7 @@ The fix loop runs across the contract. A "fix" verdict goes back to the client, 
 - One Go binary holds the engine, runner and API.
 - A TypeScript web interface is served by the binary.
 - Each pipeline step runs in its own container (Docker or compatible) on one machine.
-- GitHub and Azure DevOps are the first git hosts, each accessed with a personal access token.
+- GitHub and Azure DevOps are the first git hosts, each accessed with a personal access token. Plain git repos (local paths or SSH) work without any host account.
 
 ## Milestone 1 success criteria
 
@@ -63,6 +63,7 @@ The fix loop runs across the contract. A "fix" verdict goes back to the client, 
 | F-005 | Git host adapters for GitHub and Azure DevOps: fetch, poll for pushes, push merges | M1 |
 | F-006 | Verdict contract and deterministic reference validator | M1 |
 | F-015 | AI validator using Claude, key from `.env` | M1 |
+| F-016 | Plain git repos (local or SSH), no host account | M1 |
 | F-007 | Bypass detection on protected branches | M1 |
 | F-008 | Authentication. M1: a local API token (WU-013). Later: browser login (WU-011), accounts and per-client tokens | M1 / Later |
 | F-009 | Push notifications from git hosts, such as Azure DevOps service hooks, instead of polling | Later |
@@ -87,6 +88,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-006 | AI validator: Claude judges the change against intent and criteria, same verdict contract | F-015 | ✅ |
 | WU-007 | Validation loop end to end: change, run, verdicts (events split to WU-014) | F-001, F-006, F-015 | ✅ |
 | WU-008 | GitHub adapter and the host boundary: PAT config, fetch branches, poll for pushes | F-005 | ✅ |
+| WU-015 | Plain git host: local paths, file:// and SSH remotes, no account needed (runs before WU-009) | F-016 | ✅ |
 | WU-009 | Azure DevOps adapter behind the same boundary | F-005 | ⚪ |
 | WU-010 | Merge on approval and bypass detection, for both hosts | F-001, F-007 | ⚪ |
 | WU-011 | Web interface: change list, change view, evidence, logs, diff on demand, merge action, one-time login link with Host and Origin checks | F-004, F-008 | ⚪ |
@@ -98,6 +100,14 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 - Move one of the user's real Azure DevOps projects onto Plumbix pipelines.
 - Kai as the first external client.
 - Authentication, then service hooks.
+
+## Open ideas
+
+**Plumbix as a local gate in front of the git host (raised 2026-10-16, not decided).** Developers and agents push to a Plumbix-managed local repo. Only changes Plumbix approves and merges are forwarded to the upstream host (GitHub or Azure DevOps), where the host's CI runs on code that was already validated.
+- Builds on: the plain git host (WU-015) and merge (WU-010). Forwarding is a merge that pushes to a second remote.
+- Gains: agents never touch the shared host directly, only validated code leaves the machine, and host CI minutes go only to validated changes.
+- Costs: two copies of the repo can drift if anyone pushes to the host directly, so Plumbix would need to sync from upstream and handle conflicts. Host features that key off branches (PR checks, branch protection) see only the forwarded result.
+- Assessment: a strong fit for the agent use case and cheap once merge exists. Candidate for milestone 2, right after merge.
 
 ## Open items
 

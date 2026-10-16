@@ -373,12 +373,15 @@ components:
       properties:
         host:
           type: string
-          enum: [github, azuredevops]
+          enum: [github, azuredevops, git]
         url:
           description: >
-            HTTPS clone URL. GitHub: https://github.com/<owner>/<repo>.
+            GitHub: https://github.com/<owner>/<repo>.
             Azure DevOps: https://dev.azure.com/<org>/<project>/_git/<repo>
             or https://<org>.visualstudio.com/<project>/_git/<repo>.
+            Plain git: an absolute path to a repository on this machine
+            (preferably bare), file:///path, ssh://[user@]host[:port]/path or
+            user@host:path. SSH uses the server user's own keys.
           type: string
         protected_branches:
           description: Defaults to ["main"].
@@ -399,7 +402,7 @@ components:
           pattern: "^r_[a-z2-7]{12}$"
         host:
           type: string
-          enum: [github, azuredevops]
+          enum: [github, azuredevops, git]
         url:
           type: string
         protected_branches:

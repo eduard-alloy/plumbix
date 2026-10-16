@@ -211,3 +211,31 @@ func TestPushTriggersRun(t *testing.T) {
 	}
 	t.Fatal("no run appeared after the push")
 }
+
+// TestLocalGitRepo runs a plain local bare repo through the real server:
+// no host account, no URL redirection.
+func TestLocalGitRepo(t *testing.T) {
+	repo := gittest.New(t)
+	repo.Commit("feat", map[string]string{"a.txt": "a\n"}, "feature")
+	addr, dataDir := startServer(t, "poller:\n  interval: 5s\n")
+	c := cli{t: t, server: addr, dataDir: dataDir}
+	repoID := c.mustRun("", "repo", "add", "--host", "git", "--url", repo.Remote)["id"].(string)
+
+	changeJSON := `{"repo_id": "` + repoID + `", "source_branch": "feat", "target_branch": "main", "title": "T", "intent": "I", "acceptance_criteria": [{"text": "works"}]}`
+	id := c.mustRun(changeJSON, "submit", "-f", "-")["id"].(string)
+	c.waitState(id)
+	runs := c.mustRun("", "change", "runs", id)["runs"].([]any)
+	r := runs[0].(map[string]any)
+	if r["head"] == "" || !strings.Contains(r["error"].(string), "pipeline.yaml") {
+		t.Fatalf("run = %v; the local repo should be fetched and fail only for its missing pipeline file", r)
+	}
+
+	time.Sleep(6 * time.Second) // first poll records the existing heads
+	repo.Commit("ci", map[string]string{"b.txt": "b\n"}, "push")
+	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(250 * time.Millisecond) {
+		if len(c.mustRun("", "repo", "runs", repoID, "--branch", "ci")["runs"].([]any)) == 1 {
+			return
+		}
+	}
+	t.Fatal("a push to the local repo started no run")
+}

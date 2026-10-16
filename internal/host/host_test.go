@@ -75,3 +75,17 @@ func TestRegistry(t *testing.T) {
 		t.Error("unknown host accepted")
 	}
 }
+
+func TestPlainGit(t *testing.T) {
+	r := FromSecrets(map[string]string{GitHubTokenKey: "tok"})
+	h, err := r.For(change.Repo{Host: change.HostGit, URL: "/srv/app.git"})
+	if err != nil || h.Kind() != change.HostGit {
+		t.Fatalf("host = %v, %v", h, err)
+	}
+	if _, ok := h.Auth(change.Repo{Host: change.HostGit}); ok {
+		t.Error("plain git should never send credentials")
+	}
+	if _, ok, err := h.TokenExpiry(context.Background()); ok || err != nil {
+		t.Errorf("expiry: ok=%v err=%v", ok, err)
+	}
+}
