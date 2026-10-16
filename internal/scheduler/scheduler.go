@@ -51,6 +51,7 @@ type Options struct {
 type StepSetup struct {
 	Mounts            []runner.Mount
 	WorkspaceReadOnly bool
+	Env               map[string]string // added to the step's env; values the step or its secrets set win
 }
 
 // StepResult is one step's outcome.
@@ -225,6 +226,11 @@ func buildJob(st pipeline.Step, o Options, finished []StepResult) (runner.Job, e
 		var err error
 		if setup, err = o.Setup(st, finished); err != nil {
 			return runner.Job{}, fmt.Errorf("prepare step %s: %w", st.Name, err)
+		}
+	}
+	for k, v := range setup.Env {
+		if _, present := env[k]; !present {
+			env[k] = v
 		}
 	}
 	return runner.Job{

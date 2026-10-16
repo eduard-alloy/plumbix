@@ -13,6 +13,31 @@ export interface FakeDB {
   /** mergeResult decides what POST /merge answers: 'ok' or an error code. */
   mergeResult: 'ok' | 'source_moved' | 'target_moved' | 'push_rejected' | 'invalid_state'
   requests: string[]
+  secrets: Record<string, string>
+  secretUpdated: Record<string, string>
+  secretChecks: Record<string, { ok: boolean; expires_at?: string; message: string }>
+  settings: { ai_model: string; guidance: string }
+  repoGuidance: Record<string, string>
+}
+
+const KNOWN_SECRETS = [
+  { key: 'PLUMBIX_GITHUB_TOKEN', purpose: 'GitHub fine-grained token with contents read and write; fetches, pushes merges, checks expiry', host: 'github' },
+  { key: 'PLUMBIX_AZURE_DEVOPS_TOKEN', purpose: 'Azure DevOps personal access token with code read and write', host: 'azuredevops' },
+  { key: 'PLUMBIX_AZURE_DEVOPS_TOKEN_EXPIRES', purpose: 'Expiry date of the Azure DevOps token, YYYY-MM-DD, for the warning a week before' },
+  { key: 'ANTHROPIC_API_KEY', purpose: 'Used by the AI validator step through the pipeline secrets list' },
+]
+
+function settingsView(db: FakeDB) {
+  const listed = new Set<string>()
+  const secrets = KNOWN_SECRETS.map((k) => {
+    listed.add(k.key)
+    const set = k.key in db.secrets
+    return { key: k.key, set, known: true, purpose: k.purpose, host: k.host, updated_at: set ? db.secretUpdated[k.key] : undefined }
+  })
+  for (const key of Object.keys(db.secrets).sort()) {
+    if (!listed.has(key)) secrets.push({ key, set: true, known: false, purpose: 'Named by a pipeline step\'s secrets list', host: undefined, updated_at: db.secretUpdated[key] })
+  }
+  return { ai_model: db.settings.ai_model, guidance: db.settings.guidance, secrets }
 }
 
 export function freshDB(): FakeDB {
@@ -24,6 +49,11 @@ export function freshDB(): FakeDB {
     signedIn: true,
     mergeResult: 'ok',
     requests: [],
+    secrets: {},
+    secretUpdated: {},
+    secretChecks: {},
+    settings: { ai_model: '', guidance: '' },
+    repoGuidance: {},
   }
 }
 
@@ -103,6 +133,43 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       return new Response(null, { status: 204 })
     }
     if (path === '/api/v1/repos') return json(200, { repos: db.repos })
+    if (path === '/api/v1/settings' && method === 'GET') return json(200, settingsView(db))
+    if (path === '/api/v1/settings' && method === 'PUT') {
+      const body = JSON.parse(String(init?.body)) as { ai_model?: string; guidance?: string }
+      if (body.ai_model !== undefined) {
+        if (body.ai_model && !/^[a-z0-9][a-z0-9.-]{0,80}$/.test(body.ai_model)) return error(400, 'invalid_request', `model name "${body.ai_model}": lowercase letters, digits, dots and dashes only`)
+        db.settings.ai_model = body.ai_model
+      }
+      if (body.guidance !== undefined) db.settings.guidance = body.guidance.trim()
+      return json(200, settingsView(db))
+    }
+    const secret = path.match(/^\/api\/v1\/settings\/secrets\/([A-Za-z_][A-Za-z0-9_]*)(\/check)?$/)
+    if (secret) {
+      const [, key, check] = secret
+      if (check && method === 'POST') {
+        if (!(key in db.secrets)) return json(200, { ok: false, message: `${key} is not set` })
+        return json(200, db.secretChecks[key] ?? { ok: false, message: 'check failed: no network in tests' })
+      }
+      if (method === 'PUT') {
+        const body = JSON.parse(String(init?.body)) as { value: string }
+        if (!body.value) return error(400, 'invalid_request', 'a value is required')
+        db.secrets[key] = body.value
+        db.secretUpdated[key] = new Date().toISOString()
+        return new Response(null, { status: 204 })
+      }
+      if (method === 'DELETE') {
+        delete db.secrets[key]
+        delete db.secretUpdated[key]
+        return new Response(null, { status: 204 })
+      }
+    }
+    const repoSettings = path.match(/^\/api\/v1\/repos\/([^/]+)\/settings$/)
+    if (repoSettings) {
+      const id = repoSettings[1]
+      if (!db.repos.some((r) => r.id === id)) return error(404, 'not_found', `repo ${id}`)
+      if (method === 'PUT') db.repoGuidance[id] = (JSON.parse(String(init?.body)) as { guidance: string }).guidance.trim()
+      return json(200, { guidance: db.repoGuidance[id] ?? '' })
+    }
     if (path === '/api/v1/changes') return json(200, { changes: db.changes })
     const resolve = path.match(/^\/api\/v1\/alerts\/([^/]+)\/resolve$/)
     if (resolve && method === 'POST') {

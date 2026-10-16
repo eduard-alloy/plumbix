@@ -130,6 +130,10 @@ The base address comes from config `server.listen`, default `127.0.0.1:6400`. Ev
 | DELETE | `/api/v1/sessions` | Token only. Signs every browser out (`plumbix logout`). |
 | DELETE | `/api/v1/sessions/current` | Cookie only. Signs this browser out. |
 | GET | `/api/v1/session` | How the caller is signed in, with the cookie's expiry. |
+| GET, PUT | `/api/v1/settings` | AI model, global review guidance, and which secrets are set (never their values). |
+| PUT, DELETE | `/api/v1/settings/secrets/{key}` | Set or remove a secret in the server's secrets file; used from the next fetch on. |
+| POST | `/api/v1/settings/secrets/{key}/check` | Run a git host's token check now. |
+| GET, PUT | `/api/v1/repos/{id}/settings` | One repository's review guidance. |
 
 ### 4.2 Pipeline file, version 1
 
@@ -206,6 +210,7 @@ Plumbix mounts these paths into a validator step's container:
 - `outcome` is `approve`, `fix` or `reject`. Criterion `status` is `met`, `unmet` or `unknown`. Finding `severity` is `blocker`, `major` or `minor`.
 - A validator that exits non-zero or writes an invalid file produces no verdict. That counts as a validator error, never as approval.
 - Only steps marked `validator: true` get `/plumbix/out/`. Verdict files from other steps are ignored.
+- `change.json` may carry `guidance: {global, repository}`: instructions from the Plumbix operator, set in the settings, never taken from the repository. Validators may follow them; the AI validator renders them as "Operator guidance" outside the untrusted block. Validator steps also receive `PLUMBIX_AI_MODEL` when the operator set a model, unless a secret of that name already supplies one.
 
 ### 4.4 Events
 
@@ -321,6 +326,8 @@ These are implementation calls made in this architecture step, with the reasons 
 | A14 | The API needs a local bearer token, generated on first start in `<data_dir>/api-token` (mode `0600`). The browser gets a one-time login link with the web interface (WU-011) | Owner's choice (option A) after WU-003 showed Docker Desktop containers reach host loopback. Containers never see the data directory, so they can't authenticate. | No network for steps by default (partial fix, breaks dependency downloads), accepting the exposure |
 | A15 | A change merges only when its source branch already contains the target's head, and the target lands the validated tree byte for byte | The verdict decides what merges, so what merges must be what was judged. A merge Plumbix computed after validation would be untested code. The client brings the target into the source and gets a fresh verdict instead. | Merging as long as the target did not move (lands an untested tree when the source was behind), letting Plumbix resolve merges |
 | A17 | Browser sign-in is a one-time link minted by the token holder and exchanged once for an HttpOnly, SameSite=Strict cookie; cookie requests must carry the server's own Host and, on state changes, Origin | A browser cannot hold the file token. The link keeps the token out of the browser, the cookie keeps it out of page scripts, and the Host and Origin checks stop a rebinding or cross-site page from using it. | Pasting the token into the page (lands in browser storage), token in the URL on every request, no browser at all |
+| A18 | Tokens and other secrets are set from the browser into the server-owned secrets file, write-only, and reloaded live | After install everything is configured in one place; the server rewrites the dotenv file with mode 0600, never returns a value, and reads secrets and host adapters through a manager on every use, so no restart is needed. A browser session can already merge code, so this widens nothing. | Encrypted storage in SQLite (more code, little extra safety on one machine), restart after editing the file by hand |
+| A19 | AI tuning from the web is review guidance (global and per repository) plus the model; the effort knob and the full prompt stay out | Guidance is operator instruction to any validator and travels in the validator input, separate from repository content, so the core still holds no AI (Q07). The model is one environment variable the AI validator already reads. Editing the whole prompt would break the verdict format silently. | Full prompt editing, an effort setting (not wanted) |
 | A16 | The store appends each event inside the transaction of the write it describes; services and the engine never emit events themselves, except `step.finished`, which has no write of its own | Every write path is covered by construction, data and event cannot disagree, and a client resuming from its last id misses nothing. | Emitting from services (easy to forget, lost on a crash between write and emit), a separate message broker |
 
 ## 9. Risks and open items

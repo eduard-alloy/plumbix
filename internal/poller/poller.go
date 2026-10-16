@@ -56,14 +56,14 @@ type Config struct {
 type Poller struct {
 	store  Store
 	engine Engine
-	hosts  host.Registry
+	hosts  host.Source
 	cfg    Config
 	log    *slog.Logger
 	now    func() time.Time
 }
 
 // New returns a poller. hosts may be nil, which skips token expiry checks.
-func New(store Store, engine Engine, hosts host.Registry, cfg Config, log *slog.Logger) *Poller {
+func New(store Store, engine Engine, hosts host.Source, cfg Config, log *slog.Logger) *Poller {
 	return &Poller{store: store, engine: engine, hosts: hosts, cfg: cfg, log: log, now: time.Now}
 }
 
@@ -256,7 +256,10 @@ func (p *Poller) raiseBypass(ctx context.Context, repo change.Repo, branch, sha 
 // checkTokens raises an alert for tokens that expire soon or whose check
 // failed, and resolves it once the token is healthy again.
 func (p *Poller) checkTokens(ctx context.Context) {
-	for kind, h := range p.hosts {
+	if p.hosts == nil {
+		return
+	}
+	for kind, h := range p.hosts.Hosts() {
 		cctx, cancel := context.WithTimeout(ctx, tokenCheckTimeout)
 		exp, ok, err := h.TokenExpiry(cctx)
 		cancel()
