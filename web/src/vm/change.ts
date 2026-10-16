@@ -1,6 +1,6 @@
 // The change screen's view model: everything the page shows, computed from
 // the change, its runs and its repo. Pure, so it is tested without the DOM.
-import type { Change, ChangeState, CriterionStatus, Repo, Run, Severity, Step } from '../model'
+import type { Change, ChangeState, CriterionStatus, Repo, Run, Severity, Step, ValidatorDecision, ValidatorOutcome } from '../model'
 import { ago, agoLong, clock, dateTime, duration, elapsedSeconds, minutesBetween, plural, shortSha } from '../format'
 import { latestJudged, latestRun, repoName } from './changes'
 
@@ -33,6 +33,9 @@ export interface StepVM {
   exit: string
   dur: string
   hasLog: boolean
+  /** What a validator decided: approve, fix, reject, or 'none' when it produced no verdict. Absent for normal steps. */
+  outcome?: ValidatorDecision | 'none'
+  summary?: string
 }
 
 export interface FindingVM {
@@ -113,8 +116,16 @@ function checkLabel(c: Change['acceptance_criteria'][number]): string {
   return 'no check'
 }
 
-function stepVM(s: Step): StepVM {
-  return { name: s.name, validator: s.validator, status: s.status, exit: `exit ${s.exit_code}`, dur: duration(s.duration_ms / 1000), hasLog: s.status !== 'skipped' }
+function stepVM(s: Step, outcomes?: ValidatorOutcome[]): StepVM {
+  const vm: StepVM = { name: s.name, validator: s.validator, status: s.status, exit: `exit ${s.exit_code}`, dur: duration(s.duration_ms / 1000), hasLog: s.status !== 'skipped' }
+  if (s.validator && outcomes) {
+    const o = outcomes.find((x) => x.name === s.name)
+    if (o) {
+      vm.outcome = o.outcome ?? 'none'
+      vm.summary = o.summary ?? o.error
+    }
+  }
+  return vm
 }
 
 function runDuration(r: Run, now: Date): string {
@@ -233,7 +244,7 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       counts: judged && result && c.state !== 'needs_human' ? `${met}/${tot} met · ${plural(blockers, 'blocker')} · ${plural(findingsAll.length, 'finding')} · ${plural(risksAll.length, 'risk')}` : '',
       reasons: ['rejected', 'needs_human', 'escalated'].includes(c.state) ? reasons : [],
       stepsLabel: showPipeline ? 'Pipeline' : 'Validators',
-      steps: verdictSteps.map(stepVM),
+      steps: verdictSteps.map((s) => stepVM(s, cur?.result?.validators)),
       mergeNote: c.state === 'approved' && cur ? `${mergeVerb}${shortSha(cur.head)} onto ${c.target_branch} (${strategy}, set per repository).` : '',
       record: c.state === 'merged' && c.merge ? { commit: c.merge.commit.slice(0, 12), previous: c.merge.previous.slice(0, 12), strategy: c.merge.strategy, mergedAt: dateTime(c.merge.merged_at) } : undefined,
     },
@@ -256,7 +267,7 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       label: run ? `iteration ${run.iteration ?? sel + 1} · ${run.id} · ${shortSha(run.head) || '—'}` : 'none yet',
       runId: run?.id ?? '',
       error: run?.error ?? '',
-      steps: run ? run.steps.map(stepVM) : [],
+      steps: run ? run.steps.map((s) => stepVM(s, run.result?.validators)) : [],
     },
     actions: {
       primary: c.state === 'approved' ? 'merge' : c.state === 'needs_human' || c.state === 'escalated' ? 'validate' : null,
