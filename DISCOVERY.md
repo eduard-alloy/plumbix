@@ -339,3 +339,11 @@ Initial discovery is complete. Results are consolidated in `PROJECT.md` and `CON
 **Decision**: host kind `git` for local paths, `file://` and SSH remotes, built as WU-015 before the Azure DevOps adapter.
 
 **Idea raised, not decided**: Plumbix as a local gate between the developer's environment and the git host's CI. See the assessment recorded under "Open ideas" in PROJECT.md.
+
+## Q18: Visual direction of the web interface (2026-10-16)
+
+**Options**: A) Quiet instrument: calm, dense, near-monochrome, colour only for verdicts and states (Linear, Vercel, Raycast) · B) Editorial: whitespace and typography, intent and verdict read like a document · C) Terminal-native: monospace-led, dark by default · D) Let Claude Design propose directions
+
+**Answer**: A.
+
+**Decision**: the interface is a quiet instrument for one developer supervising agents. Intent and verdict first, evidence linked everywhere, the diff on demand, density over decoration, one accent colour. The full brief handed to Claude Design is `web/DESIGN_BRIEF.md`.
