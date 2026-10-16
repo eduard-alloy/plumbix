@@ -148,6 +148,9 @@ func TestValidatorsAreRecorded(t *testing.T) {
 		{Name: "ai-review", Outcome: Approve, Summary: "s"},
 		{Name: "broken", Error: "validator step errored"},
 	}
+	if silent := combine([]ValidatorResult{{Name: "silent"}}, []string{"silent"}); silent.Validators[0].Error != "no verdict file" {
+		t.Errorf("validator with neither verdict nor error = %+v", silent.Validators[0])
+	}
 	for i, w := range want {
 		if r.Validators[i] != w {
 			t.Errorf("validator %d = %+v, want %+v", i, r.Validators[i], w)

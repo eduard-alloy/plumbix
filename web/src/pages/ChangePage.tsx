@@ -6,7 +6,6 @@ import type { Diff } from '../model'
 import { useRoute } from '../router'
 import { useNow, useStore } from '../store'
 import { StatePill, type PillStatus } from '../ui/StatePill'
-import type { StepVM as StepView } from '../vm/change'
 import { LogPanel, type LogTarget } from '../ui/LogPanel'
 import { DiffView, type Highlight } from '../ui/DiffView'
 import { changeView, refusalNotice, type NoticeVM, type StepVM } from '../vm/change'
@@ -559,7 +558,7 @@ export function ChangePage({ id }: { id: string }) {
 }
 
 /** Decision shows what a validator decided, apart from how its step ran. */
-function Decision({ step }: { step: StepView }) {
+function Decision({ step }: { step: StepVM }) {
   if (!step.outcome) return null
   const status: PillStatus = step.outcome === 'approve' ? 'approved' : step.outcome === 'fix' ? 'fix_requested' : step.outcome === 'reject' ? 'rejected' : 'errored'
   return <StatePill status={status} label={step.outcome === 'none' ? 'No verdict' : undefined} />

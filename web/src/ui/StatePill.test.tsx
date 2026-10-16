@@ -18,6 +18,17 @@ describe('StatePill', () => {
     }
   })
 
+  it('gives open, merged and closed a colour of their own', () => {
+    expect(ENCODING.open.tone).toBe('blue')
+    expect(ENCODING.merged.tone).toBe('teal')
+    expect(ENCODING.closed.tone).toBe('plum')
+    expect(ENCODING.running.tone).toBe('blue')
+    for (const tone of ['teal', 'plum']) {
+      const { container } = render(<StatePill status={tone === 'teal' ? 'merged' : 'closed'} />)
+      expect((container.firstElementChild as HTMLElement).dataset.tone).toBe(tone)
+    }
+  })
+
   it('renders icon and label in pill mode, with the tone as data', () => {
     const { container } = render(<StatePill status="fix_requested" />)
     const pill = container.firstElementChild as HTMLElement

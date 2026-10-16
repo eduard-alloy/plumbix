@@ -25,6 +25,9 @@
   --s-amber:   light-dark(oklch(0.5 0.11 70),    oklch(0.81 0.12 75));   --s-amber-bg:   light-dark(oklch(0.955 0.04 80),   oklch(0.27 0.045 70));
   --s-red:     light-dark(oklch(0.5 0.17 25),    oklch(0.75 0.14 25));   --s-red-bg:     light-dark(oklch(0.95 0.025 25),   oklch(0.27 0.05 25));
   --s-violet:  light-dark(oklch(0.5 0.17 320),   oklch(0.77 0.13 320));  --s-violet-bg:  light-dark(oklch(0.95 0.03 320),   oklch(0.27 0.05 320));
+  /* Added after the handoff so open, merged and closed carry a colour of their own. */
+  --s-teal:    light-dark(oklch(0.47 0.10 190),  oklch(0.78 0.11 190));  --s-teal-bg:    light-dark(oklch(0.95 0.03 190),   oklch(0.265 0.045 190));
+  --s-plum:    light-dark(oklch(0.49 0.12 350),  oklch(0.77 0.11 350));  --s-plum-bg:    light-dark(oklch(0.95 0.025 350),  oklch(0.27 0.045 350));
 
   /* Diff and search */
   --diff-add:   light-dark(oklch(0.96 0.03 152),  oklch(0.235 0.035 152));

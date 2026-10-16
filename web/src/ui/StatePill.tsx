@@ -4,7 +4,7 @@
 // screen readers only. The table mirrors web/design/README.md.
 import './pill.css'
 
-export type Tone = 'neutral' | 'blue' | 'green' | 'amber' | 'red' | 'violet' | 'ink'
+export type Tone = 'neutral' | 'blue' | 'green' | 'amber' | 'red' | 'violet' | 'ink' | 'teal' | 'plum'
 
 export type PillStatus =
   | 'open' | 'running' | 'approved' | 'fix_requested' | 'rejected' | 'needs_human' | 'escalated' | 'merged' | 'closed'
@@ -38,15 +38,15 @@ const PATHS: Record<Exclude<Glyph, 'half' | 'none'>, string> = {
 }
 
 export const ENCODING: Record<PillStatus, Encoding> = {
-  open: { label: 'Open', tone: 'neutral', glyph: 'none' },
+  open: { label: 'Open', tone: 'blue', glyph: 'none' },
   running: { label: 'Running', tone: 'blue', glyph: 'half' },
   approved: { label: 'Approved', tone: 'green', glyph: 'check' },
   fix_requested: { label: 'Fix requested', tone: 'amber', glyph: 'ret' },
   rejected: { label: 'Rejected', tone: 'red', glyph: 'x' },
   needs_human: { label: 'Needs human', tone: 'violet', glyph: 'bang' },
   escalated: { label: 'Escalated', tone: 'violet', glyph: 'up' },
-  merged: { label: 'Merged', tone: 'ink', glyph: 'check', filled: true },
-  closed: { label: 'Closed', tone: 'neutral', glyph: 'slash' },
+  merged: { label: 'Merged', tone: 'teal', glyph: 'check', filled: true },
+  closed: { label: 'Closed', tone: 'plum', glyph: 'slash' },
   finished: { label: 'Finished', tone: 'neutral', glyph: 'check' },
   errored: { label: 'Errored', tone: 'violet', glyph: 'bang' },
   cancelled: { label: 'Cancelled', tone: 'neutral', glyph: 'slash' },

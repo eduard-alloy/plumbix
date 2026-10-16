@@ -84,7 +84,11 @@ func Combine(criteria []change.Criterion, results []ValidatorResult, required, c
 	for _, res := range results {
 		reported[res.Name] = true
 		if res.Err != nil || res.Verdict == nil {
-			r.Validators = append(r.Validators, ValidatorOutcome{Name: res.Name, Error: fmt.Sprint(res.Err)})
+			why := "no verdict file"
+			if res.Err != nil {
+				why = res.Err.Error()
+			}
+			r.Validators = append(r.Validators, ValidatorOutcome{Name: res.Name, Error: why})
 			human = append(human, fmt.Sprintf("validator %s produced no valid verdict: %v", res.Name, res.Err))
 			continue
 		}
