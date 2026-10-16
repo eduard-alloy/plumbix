@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/gitops"
 	"github.com/eduard-alloy/plumbix/internal/run"
 )
 
@@ -69,6 +70,9 @@ func (e *Engine) Merge(ctx context.Context, changeID string) (change.Change, err
 		e.beforePush()
 	}
 	if err := m.Push(ctx, c.TargetBranch, sha, target); err != nil {
+		if errors.Is(err, gitops.ErrPushDenied) {
+			return change.Change{}, fmt.Errorf("%w; set a token for repository %s in Settings and merge again", err, repo.ID)
+		}
 		return change.Change{}, err
 	}
 

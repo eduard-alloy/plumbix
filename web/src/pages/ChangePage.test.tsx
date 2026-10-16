@@ -88,6 +88,17 @@ describe('Change page', () => {
     await waitFor(() => expect(screen.getByRole('complementary', { name: 'Verdict' }).textContent).toContain('Merged into main.'))
   })
 
+  it('sends a denied push to the repository settings', async () => {
+    db.mergeResult = 'push_denied'
+    await open(approved.id)
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    const notice = await screen.findByRole('status')
+    expect(notice.textContent).toContain('Not merged: the host refused the push')
+    expect(notice.textContent).toContain('Set a token with push rights')
+    fireEvent.click(within(notice).getByRole('button', { name: 'Open repository settings' }))
+    expect(window.location.pathname).toBe('/repos')
+  })
+
   it('closes only after an inline confirm', async () => {
     await open(fixRequested.id)
     expect(screen.queryByRole('button', { name: 'Merge' })).toBeNull()

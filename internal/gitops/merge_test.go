@@ -2,6 +2,7 @@ package gitops
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -159,5 +160,31 @@ func TestCommits(t *testing.T) {
 	tip, err := m.Commits(ctx, "", c3)
 	if err != nil || len(tip) != 1 || tip[0].SHA != c3 {
 		t.Errorf("tip only = %+v, %v", tip, err)
+	}
+}
+
+func TestPushErrorsAreClassified(t *testing.T) {
+	cases := []struct {
+		stderr string
+		want   error
+	}{
+		{"fatal: could not read Username for 'https://github.com': terminal prompts disabled", ErrPushDenied},
+		{"remote: Invalid username or token.\nfatal: Authentication failed for 'https://github.com/o/r/'", ErrPushDenied},
+		{"remote: Permission to o/r.git denied to someone.\nfatal: unable to access 'https://github.com/o/r/': The requested URL returned error: 403", ErrPushDenied},
+		{"git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.", ErrPushDenied},
+		{"! [rejected] main -> main (stale info)", ErrPushRejected},
+	}
+	for _, c := range cases {
+		err := pushError(fmt.Errorf("git push: exit status 128: %s", c.stderr), "main")
+		if !errors.Is(err, c.want) {
+			t.Errorf("%q: err = %v, want %v", c.stderr, err, c.want)
+		}
+		if errors.Is(err, ErrPushDenied) && strings.Contains(err.Error(), "github.com") {
+			t.Errorf("%q: the denied error repeats git's output: %v", c.stderr, err)
+		}
+	}
+	other := errors.New("git push: exit status 1: something else")
+	if err := pushError(other, "main"); err != other {
+		t.Errorf("unrelated error was rewritten: %v", err)
 	}
 }

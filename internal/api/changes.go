@@ -120,6 +120,8 @@ func (h *changeHandlers) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "target_moved", err.Error())
 	case errors.Is(err, gitops.ErrPushRejected):
 		writeError(w, http.StatusConflict, "push_rejected", err.Error())
+	case errors.Is(err, gitops.ErrPushDenied):
+		writeError(w, http.StatusConflict, "push_denied", err.Error())
 	default:
 		h.log.Error("request failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal error")

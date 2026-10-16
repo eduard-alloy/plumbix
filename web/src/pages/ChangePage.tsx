@@ -128,6 +128,9 @@ export function ChangePage({ id }: { id: string }) {
         setNotice(null)
         iterationsRef.current?.scrollIntoView?.({ block: 'start' })
         break
+      case 'settings':
+        go('/repos')
+        break
     }
   }
 

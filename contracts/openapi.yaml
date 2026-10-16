@@ -490,9 +490,10 @@ paths:
         merge strategy and pushes it to the host. Refused when the source
         branch moved since validation (source_moved: the new commits need a
         verdict), when the target branch is not the commit validation assumed
-        (target_moved: bring the target into the source and push), or when the
-        remote moved during the push (push_rejected). A refused merge changes
-        nothing.
+        (target_moved: bring the target into the source and push), when the
+        remote moved during the push (push_rejected), or when the host did not
+        accept Plumbix's credentials for the push (push_denied: set a token for
+        the repository). A refused merge changes nothing.
       parameters:
         - $ref: "#/components/parameters/ChangeID"
       responses:
@@ -507,7 +508,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: Codes invalid_state (not approved, or a merge is in progress), source_moved, target_moved, push_rejected.
+          description: Codes invalid_state (not approved, or a merge is in progress), source_moved, target_moved, push_rejected, push_denied.
           content:
             application/json:
               schema:

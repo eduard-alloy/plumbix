@@ -287,7 +287,7 @@ export interface NoticeVM {
   title: string
   body: string
   cmd: string
-  action: 'validate' | 'copy' | 'merge' | 'iterations' | null
+  action: 'validate' | 'copy' | 'merge' | 'iterations' | 'settings' | null
   actionLabel: string
 }
 
@@ -307,6 +307,14 @@ export function refusalNotice(code: string, ctx: { src: string; tgt: string; hea
       }
     case 'push_rejected':
       return { title: 'Not merged: the remote changed during the merge', body: 'Nothing was pushed and the verdict still stands. Try the merge again.', cmd: '', action: 'merge', actionLabel: 'Merge again' }
+    case 'push_denied':
+      return {
+        title: 'Not merged: the host refused the push',
+        body: `The host did not accept Plumbix's token for a push to ${ctx.tgt}, or there is none for this repository. Set a token with push rights for the repository in Settings, then merge again. Nothing was pushed and the verdict still stands.`,
+        cmd: '',
+        action: 'settings',
+        actionLabel: 'Open repository settings',
+      }
     case 'invalid_state':
       return { title: 'Not merged: this change is no longer approved', body: 'A new push started another validation. Merge becomes available again if it is approved.', cmd: '', action: 'iterations', actionLabel: 'Show iterations' }
     case 'validating':

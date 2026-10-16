@@ -264,7 +264,7 @@ The poller sees a new head on any branch of a registered repo. If an open change
 1. A human merges an `approved` change. While the merge runs, no new validation can start for it.
 2. After a fresh fetch, the source branch must still point at the validated commit (`source_moved` otherwise) and the target branch must be the run's base, which means the source already contains the target and the target has not moved (`target_moved` otherwise). This guarantees that the tree landing on the target is exactly the tree the validators judged, so Plumbix never computes a merge and never meets a conflict (A15).
 3. Git ops builds the commit in the bare mirror with `git commit-tree`: `squash` is one commit with the validated tree on the old target head, `merge` is a merge commit with the same tree, `rebase` is a fast-forward to the source head. Author is the source head's author, committer is Plumbix, and the message carries `Plumbix-Change` and `Plumbix-Run` trailers.
-4. The push uses `--force-with-lease=<branch>:<old>`; if the remote moved meanwhile the merge fails with `push_rejected` and nothing changes.
+4. The push uses `--force-with-lease=<branch>:<old>`; if the remote moved meanwhile the merge fails with `push_rejected`, and if the host refuses the credentials (no token, a bad one, or one without push rights) it fails with `push_denied`. Either way nothing changes.
 5. The merge is recorded (`merges` table, shown as `merge` on the change) and the change moves to `merged`.
 
 ### 5.5 Bypass detection
