@@ -73,14 +73,18 @@ func (m *Mirror) WithAuth(a Auth, askpass string) *Mirror {
 
 // command builds a git command. Credentials go only into the process
 // environment, never into its arguments, and personal credential helpers
-// are switched off.
+// are switched off. The command runs in the mirror once it exists and in a
+// neutral directory before that: git must never depend on the caller's
+// working directory, which inside Plumbix's own pipeline is a worktree
+// whose git directory lives on the host.
 func (m *Mirror) command(ctx context.Context, args ...string) *exec.Cmd {
-	full := []string{"-c", "credential.helper="}
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "credential.helper="}, args...)...)
 	if _, err := os.Stat(m.dir); err == nil {
-		full = append(full, "-C", m.dir)
+		cmd.Dir = m.dir
+	} else {
+		cmd.Dir = os.TempDir()
 	}
-	cmd := exec.CommandContext(ctx, "git", append(full, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1")
+	cmd.Env = append(cleanEnv(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1")
 	if os.Getenv("GIT_SSH_COMMAND") == "" && os.Getenv("GIT_SSH") == "" {
 		// Never let SSH wait for a password or a host key prompt.
 		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
@@ -89,6 +93,24 @@ func (m *Mirror) command(ctx context.Context, args ...string) *exec.Cmd {
 		cmd.Env = append(cmd.Env, "GIT_ASKPASS="+m.askpass, "PLUMBIX_GIT_USER="+m.auth.User, "PLUMBIX_GIT_TOKEN="+m.auth.Token)
 	}
 	return cmd
+}
+
+// repoLocationVars are the environment variables that point git at a
+// repository. Inherited from the server's environment they would override
+// the mirror; they are never passed on.
+var repoLocationVars = map[string]bool{"GIT_DIR": true, "GIT_WORK_TREE": true, "GIT_INDEX_FILE": true, "GIT_OBJECT_DIRECTORY": true, "GIT_ALTERNATE_OBJECT_DIRECTORIES": true, "GIT_COMMON_DIR": true, "GIT_NAMESPACE": true}
+
+// cleanEnv returns the process environment without repoLocationVars.
+func cleanEnv() []string {
+	env := os.Environ()
+	out := env[:0:0]
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		if !repoLocationVars[name] {
+			out = append(out, kv)
+		}
+	}
+	return out
 }
 
 // git runs a git command in the mirror and returns stdout.
