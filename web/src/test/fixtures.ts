@@ -61,6 +61,10 @@ export const approvedRuns: Run[] = [
       findings: [{ validator: 'ai-review', severity: 'blocker', message: 'AC-1 unmet: only one retry attempted', criterion: 'AC-1', file: 'internal/evidence/upload.go', line: 64 }],
       risks: [],
       reasons: [],
+      validators: [
+        { name: 'validate', outcome: 'fix', summary: 'AC-1 unmet' },
+        { name: 'ai-review', outcome: 'fix', summary: 'only one retry attempted' },
+      ],
     },
     steps: fixSteps(),
     started_at: at(44),
@@ -102,6 +106,10 @@ export const approvedRuns: Run[] = [
       findings: [{ validator: 'ai-review', severity: 'minor', message: 'Backoff ceiling is hard-coded at 8 s; consider a constant', file: 'internal/evidence/upload.go', line: 71 }],
       risks: [{ validator: 'ai-review', area: 'tests', message: '2 test files were modified', human_required: false }],
       reasons: [],
+      validators: [
+        { name: 'validate', outcome: 'approve', summary: 'all checked criteria met' },
+        { name: 'ai-review', outcome: 'approve', summary: 'the change does what it says' },
+      ],
     },
     steps: okSteps(),
     started_at: at(8),
@@ -152,6 +160,10 @@ export const fixRequestedRuns: Run[] = [
       ],
       risks: [{ validator: 'ai-review', area: 'credentials', message: 'The token is sent through a new HTTP client; check it is not logged when a request fails', human_required: true }],
       reasons: [],
+      validators: [
+        { name: 'validate', outcome: 'fix', summary: 'two criteria unmet' },
+        { name: 'ai-review', outcome: 'fix', summary: 'expiry is not read from the API' },
+      ],
     },
     steps: fixSteps(),
     started_at: at(16),

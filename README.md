@@ -46,6 +46,25 @@ git init --bare ~/git/myapp.git           # or point at an existing bare repo
 
 Plumbix also accepts `file://` paths and SSH remotes (`ssh://host/path` or `user@host:path`), which use your own SSH keys. Your repository needs a `.plumbix/pipeline.yaml`; see [ARCHITECTURE.md](ARCHITECTURE.md) section 4.2.
 
+## Plumbix validates itself
+
+Every change to this repository goes through Plumbix. `.plumbix/pipeline.yaml` builds, tests and lints the Go code and the web interface in parallel containers, then the reference validator and the AI validator judge the change against its intent. Nothing lands on `main` without a verdict; a commit that gets there any other way raises an alert.
+
+To contribute a change: push a branch, then submit it with its intent and acceptance criteria.
+
+```sh
+cat > change.json <<'EOF'
+{"repo_id": "<id from plumbix repo list>", "source_branch": "my-branch", "target_branch": "main",
+ "title": "What the change does", "intent": "Why, in a few sentences.",
+ "acceptance_criteria": [{"text": "All Go tests pass", "check": {"steps": ["test"]}}]}
+EOF
+./bin/plumbix submit -f change.json
+./bin/plumbix events --change <change-id>   # watch the run; or open the web interface
+./bin/plumbix change merge <change-id>      # once approved
+```
+
+The first pipeline commit landed on `main` directly, since nothing could validate it yet; Plumbix flagged it, and the alert is recorded in `work_units/WU-012.md`.
+
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE).

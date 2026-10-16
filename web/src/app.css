@@ -331,6 +331,9 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 .guidance-editor { padding: 10px 0 14px; display: flex; flex-direction: column; gap: 6px; }
 .guidance-editor .label { margin: 0; }
 .editor-row td { border-bottom: 1px solid var(--border); background: var(--surface); padding: 0 12px; }
+/* Validator decisions beside run status */
+.status-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.vstep { grid-template-columns: 14px minmax(0, 1fr) auto auto; }
 
 /* Repository token */
 .token-editor { padding: 10px 0 14px; display: flex; flex-direction: column; gap: 8px; }

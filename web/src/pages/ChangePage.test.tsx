@@ -144,3 +144,36 @@ describe('Change page', () => {
     await screen.findByText('No change c_nope')
   })
 })
+
+describe('Validator outcomes', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+    db = install()
+  })
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('shows what each validator decided next to how its step ran', async () => {
+    const verdict = await open(fixRequested.id)
+    const ai = within(verdict).getByText('ai-review').closest('.vstep')!
+    expect(ai.textContent).toContain('Fix requested')
+    const row = screen.getByText('ai-review', { selector: '.step .name' }).closest('.step')!
+    expect(row.textContent).toContain('Succeeded')
+    expect(row.textContent).toContain('Fix requested')
+    const test = screen.getByText('test', { selector: '.step .name' }).closest('.step')!
+    expect(test.textContent).not.toContain('Fix requested')
+  })
+
+  it('says No verdict for a validator step that produced none', async () => {
+    const run = db.runs[fixRequested.id][0]
+    run.result!.validators = [{ name: 'validate', outcome: 'fix', summary: 'two criteria unmet' }, { name: 'ai-review', error: 'validator step errored: image not found' }]
+    run.steps = run.steps.map((s) => (s.name === 'ai-review' ? { ...s, status: 'errored', error: 'image not found' } : s))
+    await open(fixRequested.id)
+    const row = screen.getByText('ai-review', { selector: '.step .name' }).closest('.step')!
+    expect(row.textContent).toContain('No verdict')
+  })
+})
