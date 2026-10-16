@@ -101,3 +101,44 @@ func TestFetchBadURL(t *testing.T) {
 		t.Fatal("expected fetch error")
 	}
 }
+
+// TestGitRunsOutsideTheCallersRepository: before the mirror exists, git
+// must not care where the process runs. Plumbix's own pipeline runs the
+// tests inside a worktree whose git directory is on the host, where every
+// git command run in that directory fails.
+func TestGitRunsOutsideTheCallersRepository(t *testing.T) {
+	broken := t.TempDir()
+	if err := os.WriteFile(filepath.Join(broken, ".git"), []byte("gitdir: /nonexistent/mirror.git/worktrees/workspace\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(broken)
+	r := gittest.New(t)
+	want := r.Commit("feat", map[string]string{"a.txt": "a\n"}, "a")
+	m := Open(filepath.Join(t.TempDir(), "never-created.git"), r.Remote)
+	heads, err := m.ListHeads(ctx)
+	if err != nil {
+		t.Fatalf("ListHeads from inside a broken worktree: %v", err)
+	}
+	if heads["feat"] != want {
+		t.Errorf("heads = %v", heads)
+	}
+	if err := m.Fetch(ctx); err != nil {
+		t.Fatalf("Fetch from inside a broken worktree: %v", err)
+	}
+}
+
+// TestInheritedGitVariablesAreDropped: GIT_DIR and friends in the server's
+// environment must not point git away from the mirror.
+func TestInheritedGitVariablesAreDropped(t *testing.T) {
+	t.Setenv("GIT_DIR", "/nonexistent/elsewhere.git")
+	t.Setenv("GIT_WORK_TREE", "/nonexistent/tree")
+	r := gittest.New(t)
+	want := r.Commit("feat", map[string]string{"a.txt": "a\n"}, "a")
+	m := Open(filepath.Join(t.TempDir(), "mirror.git"), r.Remote)
+	if err := m.Fetch(ctx); err != nil {
+		t.Fatalf("Fetch with GIT_DIR set: %v", err)
+	}
+	if head, err := m.Head(ctx, "feat"); err != nil || head != want {
+		t.Fatalf("Head = %s, %v; want %s", head, err, want)
+	}
+}
