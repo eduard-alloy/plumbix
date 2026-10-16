@@ -43,8 +43,8 @@ type Secret struct {
 // KnownSecrets lists the keys Plumbix itself reads, in display order.
 func KnownSecrets() []Secret {
 	return []Secret{
-		{Key: "PLUMBIX_GITHUB_TOKEN", Purpose: "GitHub fine-grained token with contents read and write; fetches, pushes merges, checks expiry", Host: "github"},
-		{Key: "PLUMBIX_AZURE_DEVOPS_TOKEN", Purpose: "Azure DevOps personal access token with code read and write", Host: "azuredevops"},
+		{Key: "PLUMBIX_GITHUB_TOKEN", Purpose: "Default token for every GitHub repository: contents read and write; fetches, pushes merges, checks expiry. A fine-grained token covers only the repositories chosen for it; a repository can carry its own token on the Repositories page", Host: "github"},
+		{Key: "PLUMBIX_AZURE_DEVOPS_TOKEN", Purpose: "Default personal access token for every Azure DevOps repository, code read and write; a repository can carry its own token on the Repositories page", Host: "azuredevops"},
 		{Key: "PLUMBIX_AZURE_DEVOPS_TOKEN_EXPIRES", Purpose: "Expiry date of the Azure DevOps token, YYYY-MM-DD, for the warning a week before"},
 		{Key: "ANTHROPIC_API_KEY", Purpose: "Used by the AI validator step through the pipeline's secrets list"},
 	}

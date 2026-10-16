@@ -64,7 +64,11 @@ func NewHandler(d Deps) http.Handler {
 		registerEventRoutes(protected, &eventHandlers{events: d.Events, log: logger})
 	}
 	if d.Settings != nil && d.Secrets != nil {
-		registerSettingsRoutes(protected, &settingsHandlers{settings: d.Settings, secrets: d.Secrets, hosts: d.Hosts, changes: d.Changes, log: logger})
+		sh := &settingsHandlers{settings: d.Settings, secrets: d.Secrets, hosts: d.Hosts, changes: d.Changes, log: logger}
+		if d.Engine != nil {
+			sh.heads = d.Engine.ListHeads
+		}
+		registerSettingsRoutes(protected, sh)
 	}
 	protected.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such endpoint")

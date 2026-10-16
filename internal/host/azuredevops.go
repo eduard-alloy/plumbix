@@ -22,19 +22,21 @@ const (
 
 // AzureDevOps authenticates with a personal access token.
 type AzureDevOps struct {
-	Token   string
-	Expires string // the token's expiry date as YYYY-MM-DD; empty means unknown
+	Token      string
+	Expires    string            // the token's expiry date as YYYY-MM-DD; empty means unknown
+	RepoTokens map[string]string // a repository's own token, by repository id
 }
 
 // Kind implements Host.
 func (a *AzureDevOps) Kind() string { return change.HostAzureDevOps }
 
 // Auth implements Host.
-func (a *AzureDevOps) Auth(change.Repo) (gitops.Auth, bool) {
-	if a.Token == "" {
+func (a *AzureDevOps) Auth(repo change.Repo) (gitops.Auth, bool) {
+	token := tokenFor(repo, a.Token, a.RepoTokens)
+	if token == "" {
 		return gitops.Auth{}, false
 	}
-	return gitops.Auth{User: azureDevOpsUser, Token: a.Token}, true
+	return gitops.Auth{User: azureDevOpsUser, Token: token}, true
 }
 
 // TokenExpiry returns the expiry date recorded in the secrets file. It makes

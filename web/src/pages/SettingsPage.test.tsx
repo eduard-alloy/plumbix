@@ -29,7 +29,7 @@ describe('Settings page', () => {
     await screen.findByRole('heading', { name: 'Settings' })
     const gh = row('PLUMBIX_GITHUB_TOKEN')
     expect(gh.textContent).toContain('Not set')
-    expect(gh.textContent).toContain('GitHub fine-grained token')
+    expect(gh.textContent).toContain('Default token for every GitHub repository')
     fireEvent.click(within(gh).getByRole('button', { name: 'Set' }))
     const input = within(gh).getByLabelText('PLUMBIX_GITHUB_TOKEN value') as HTMLInputElement
     expect(input.type).toBe('password')
@@ -93,6 +93,40 @@ describe('Settings page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(db.repoGuidance.r_plumbix00001).toBe('Go code needs tests.'))
     await screen.findByText('Saved')
+  })
+
+  it('gives a repository its own token and checks it', async () => {
+    db.repoTokens.r_ledgerapi001 = 'already-set'
+    window.history.replaceState(null, '', '/repos')
+    render(<App />)
+    const rows = await screen.findAllByRole('row')
+    const plumbix = rows.find((r) => r.textContent?.includes('https://github.com/plumbix/plumbix'))!
+    const ledger = rows.find((r) => r.textContent?.includes('ledger-api'))!
+    await waitFor(() => expect(ledger.textContent).toContain('Own token'))
+    expect(plumbix.textContent).toContain('Host token')
+    fireEvent.click(within(plumbix).getByRole('button', { name: 'Token' }))
+    const panel = await screen.findByLabelText('Token for plumbix')
+    expect(panel.textContent).toContain('Uses the GitHub token from Settings')
+    fireEvent.click(within(panel).getByRole('button', { name: 'Set' }))
+    const input = within(panel).getByLabelText('Token value for plumbix') as HTMLInputElement
+    expect(input.type).toBe('password')
+    fireEvent.change(input, { target: { value: 'github_pat_repo_only' } })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(db.repoTokens.r_plumbix00001).toBe('github_pat_repo_only'))
+    await waitFor(() => expect(screen.getByLabelText('Token for plumbix').textContent).toContain('Own token'))
+    expect(document.body.textContent).not.toContain('github_pat_repo_only')
+    fireEvent.click(within(screen.getByLabelText('Token for plumbix')).getByRole('button', { name: 'Check' }))
+    await screen.findByText(/fetched 3 branches with the repository's own token/)
+    fireEvent.click(within(screen.getByLabelText('Token for plumbix')).getByRole('button', { name: 'Remove' }))
+    await waitFor(() => expect(db.repoTokens.r_plumbix00001).toBeUndefined())
+    await waitFor(() => expect(screen.getByLabelText('Token for plumbix').textContent).toContain('Uses the GitHub token from Settings'))
+  })
+
+  it('explains that the host token is a default and fine-grained tokens are per repository', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Settings' })
+    expect(row('PLUMBIX_GITHUB_TOKEN').textContent).toContain('Default token for every GitHub repository')
+    expect(row('PLUMBIX_GITHUB_TOKEN').textContent).toContain('Repositories page')
   })
 
   it('has a Settings entry in the sidebar', async () => {

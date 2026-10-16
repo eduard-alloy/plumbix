@@ -16,8 +16,11 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/engine"
 	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/gitops/gittest"
+	"github.com/eduard-alloy/plumbix/internal/host"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/runner"
+	"github.com/eduard-alloy/plumbix/internal/secrets"
+	"github.com/eduard-alloy/plumbix/internal/settings"
 	"github.com/eduard-alloy/plumbix/internal/store"
 	"github.com/eduard-alloy/plumbix/internal/validation"
 )
@@ -59,7 +62,11 @@ func newRunAPI(t *testing.T) *runAPI {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	eng := engine.New(db, approvingRunner{}, engine.Config{DataDir: data, MaxParallel: 2, DefaultTimeout: time.Minute, MaxFixRounds: 3}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	sec, err := secrets.Open(filepath.Join(data, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := engine.New(db, approvingRunner{}, engine.Config{DataDir: data, MaxParallel: 2, DefaultTimeout: time.Minute, MaxFixRounds: 3, Hosts: host.Live(sec.Values)}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Cleanup(func() { eng.Shutdown(context.Background()) })
 	repo := gittest.New(t)
 	repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": "version: 1\nsteps:\n  - {name: test, image: x, run: x}\n  - {name: validate, image: v, validator: true, needs: [test]}\n"}, "pipeline")
@@ -71,7 +78,7 @@ func newRunAPI(t *testing.T) *runAPI {
 	hub := events.NewHub(db)
 	db.OnEvent(hub.Publish)
 	t.Cleanup(hub.Close)
-	h := NewHandler(Deps{Version: "dev", Token: testToken, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub})
+	h := NewHandler(Deps{Version: "dev", Token: testToken, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub, Settings: settings.New(db), Secrets: sec, Hosts: host.Live(sec.Values)})
 	return &runAPI{testAPI: &testAPI{t: t, h: h}, repoID: repoID, db: db, repo: repo, hub: hub}
 }
 
