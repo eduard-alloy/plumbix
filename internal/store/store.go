@@ -217,10 +217,11 @@ func (db *DB) CreateChange(ctx context.Context, c change.Change) error {
 }
 
 const changeColumns = `c.id, c.repo_id, c.source_branch, c.target_branch, c.title, c.intent, c.acceptance_criteria, c.constraints, c.submitted_by, c.state, c.created_at, c.updated_at,
-	m.commit_sha, m.previous_sha, m.strategy, m.run_id, m.merged_at`
+	m.commit_sha, m.previous_sha, m.strategy, m.run_id, m.merged_at, COALESCE(b.head, '')`
 
-// changeFrom joins each change with its merge, if any.
-const changeFrom = ` FROM changes c LEFT JOIN merges m ON m.change_id = c.id`
+// changeFrom joins each change with its merge, if any, and the last head
+// the poller saw on its source branch.
+const changeFrom = ` FROM changes c LEFT JOIN merges m ON m.change_id = c.id LEFT JOIN branch_heads b ON b.repo_id = c.repo_id AND b.branch = c.source_branch`
 
 // GetChange returns one change.
 func (db *DB) GetChange(ctx context.Context, id string) (change.Change, error) {
@@ -282,7 +283,7 @@ func scanChange(s scanner) (change.Change, error) {
 	var mCommit, mPrevious, mStrategy, mRun, mAt sql.NullString
 	if err := s.Scan(&c.ID, &c.RepoID, &c.SourceBranch, &c.TargetBranch, &c.Title, &c.Intent,
 		&criteria, &constraints, &c.SubmittedBy, &state, &created, &updated,
-		&mCommit, &mPrevious, &mStrategy, &mRun, &mAt); err != nil {
+		&mCommit, &mPrevious, &mStrategy, &mRun, &mAt, &c.SourceHead); err != nil {
 		return change.Change{}, mapErr(err)
 	}
 	c.State = change.State(state)

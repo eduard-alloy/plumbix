@@ -145,6 +145,31 @@ describe('Change page', () => {
   })
 })
 
+describe('Newer commits', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+    db = install()
+  })
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('tells the person the branch moved since the verdict and offers Validate again', async () => {
+    const c = db.changes.find((x) => x.id === needsHuman.id)!
+    c.source_head = '1e88b04fffffffffffffffffffffffffffffffff'
+    const verdict = await open(needsHuman.id)
+    const note = screen.getByRole('note')
+    expect(note.textContent).toContain('Newer commits on chore/go-1.27')
+    expect(note.textContent).toContain('1e88b04')
+    expect(note.textContent).toContain('A push does not restart validation for a change that needs a person')
+    fireEvent.click(within(note).getByRole('button', { name: 'Validate again' }))
+    await waitFor(() => expect(verdict.textContent).toContain('Validating iteration'))
+  })
+})
+
 describe('Validator outcomes', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] })

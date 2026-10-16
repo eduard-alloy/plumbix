@@ -1014,6 +1014,9 @@ components:
           $ref: "#/components/schemas/ChangeState"
         merge:
           $ref: "#/components/schemas/Merge"
+        source_head:
+          description: The source branch's head as the poller last saw it; differs from the last run's head when commits arrived since the verdict.
+          type: string
         created_at:
           type: string
           format: date-time

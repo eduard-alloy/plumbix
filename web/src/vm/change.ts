@@ -108,6 +108,10 @@ export interface ChangeView {
   evidence: { label: string; runId: string; error: string; steps: StepVM[] }
   actions: { primary: 'merge' | 'validate' | null; close: boolean }
   diffRange: string
+  /** Short sha of commits on the branch newer than the judged head, or null. */
+  newerCommits: string | null
+  /** True when only a person moves the change on: a push starts nothing. */
+  needsPerson: boolean
 }
 
 function checkLabel(c: Change['acceptance_criteria'][number]): string {
@@ -274,6 +278,8 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       close: !['merged', 'closed'].includes(c.state),
     },
     diffRange: withHead ? `${shortSha(withHead.base)}..${shortSha(withHead.head)}` : '',
+    newerCommits: c.source_head && cur?.head && c.source_head !== cur.head && !['running', 'open', 'merged', 'closed'].includes(c.state) ? shortSha(c.source_head) : null,
+    needsPerson: ['needs_human', 'escalated', 'rejected'].includes(c.state),
   }
 }
 

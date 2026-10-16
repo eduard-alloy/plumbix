@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -95,5 +96,36 @@ func TestAlerts(t *testing.T) {
 	// A resolved subject can be raised again.
 	if _, created, err := db.Raise(ctx, alert.Alert{Kind: alert.BypassCommit, Key: "main@abc", Message: "back", CreatedAt: t0}); err != nil || !created {
 		t.Errorf("re-raise: %v, %v", created, err)
+	}
+}
+
+// TestChangeCarriesTheBranchHead: once the poller saved a branch's head,
+// the change on that branch reports it, so a client can tell when there
+// are commits newer than the last verdict.
+func TestChangeCarriesTheBranchHead(t *testing.T) {
+	db := openDB(t)
+	ctx := context.Background()
+	now := time.Now()
+	if err := db.CreateRepo(ctx, change.Repo{ID: "r_1", Host: "git", URL: "/tmp/r.git", CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	c := change.Change{ID: "c_1", RepoID: "r_1", SourceBranch: "feat", TargetBranch: "main", Title: "t", Intent: "i", AcceptanceCriteria: []change.Criterion{{ID: "AC-1", Text: "x"}}, State: change.Open, CreatedAt: now, UpdatedAt: now}
+	if err := db.CreateChange(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := db.GetChange(ctx, "c_1")
+	if got.SourceHead != "" {
+		t.Fatalf("head before any poll = %q", got.SourceHead)
+	}
+	if err := db.SaveHeads(ctx, "r_1", map[string]string{"feat": "abc123", "main": "def456"}, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = db.GetChange(ctx, "c_1")
+	if got.SourceHead != "abc123" {
+		t.Errorf("head after poll = %q, want abc123", got.SourceHead)
+	}
+	list, _ := db.ListChanges(ctx, change.Filter{RepoID: "r_1"})
+	if len(list) != 1 || list[0].SourceHead != "abc123" {
+		t.Errorf("list = %+v", list)
 	}
 }

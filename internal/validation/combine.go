@@ -89,7 +89,7 @@ func Combine(criteria []change.Criterion, results []ValidatorResult, required, c
 				why = res.Err.Error()
 			}
 			r.Validators = append(r.Validators, ValidatorOutcome{Name: res.Name, Error: why})
-			human = append(human, fmt.Sprintf("validator %s produced no valid verdict: %v", res.Name, res.Err))
+			human = append(human, fmt.Sprintf("validator %s produced no valid verdict: %s", res.Name, why))
 			continue
 		}
 		v := res.Verdict
