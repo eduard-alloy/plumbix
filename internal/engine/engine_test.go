@@ -15,6 +15,7 @@ import (
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/gitops/gittest"
+	"github.com/eduard-alloy/plumbix/internal/host"
 	"github.com/eduard-alloy/plumbix/internal/refvalidator"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/runner"
@@ -415,5 +416,68 @@ func TestLogPathRejectsTraversal(t *testing.T) {
 	}
 	if p := h.eng.LogPath("../run", "test"); p != "" {
 		t.Errorf("LogPath accepted a bad run id: %s", p)
+	}
+}
+
+func TestRunBranchSkipsValidators(t *testing.T) {
+	h := newHarness(t, Config{})
+	h.repo.Commit("ci-only", map[string]string{"x.go": "package x\n"}, "push without a change")
+	r, err := h.eng.RunBranch(ctx, h.repoID, "ci-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := h.wait(r.ID)
+	if got.Status != run.Finished || got.Outcome != "" || got.Result != nil || got.ChangeID != "" || got.Branch != "ci-only" {
+		t.Fatalf("run = %+v", got)
+	}
+	if len(got.Steps) != 1 || got.Steps[0].Name != "test" || got.Head == "" {
+		t.Errorf("steps = %+v head %q", got.Steps, got.Head)
+	}
+	for _, j := range h.fake.jobs {
+		if j.Name == "validate" {
+			t.Error("a validator ran in a plain run")
+		}
+	}
+}
+
+func TestRunBranchErrors(t *testing.T) {
+	h := newHarness(t, Config{})
+	r, err := h.eng.RunBranch(ctx, h.repoID, "missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := h.wait(r.ID); got.Status != run.Errored || got.Error == "" || got.Outcome != "" {
+		t.Fatalf("run = %+v; a plain run has no outcome", got)
+	}
+	if _, err := h.eng.RunBranch(ctx, "r_nope", "main"); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("unknown repo: %v", err)
+	}
+}
+
+func TestFetchUsesHostCredentials(t *testing.T) {
+	const token = "ghp_engine_secret_42"
+	for name, tc := range map[string]struct {
+		token   string
+		outcome change.State
+	}{
+		"right token": {token, change.Approved},
+		"wrong token": {"nope", change.NeedsHuman},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, Config{Hosts: host.Registry{change.HostGitHub: &host.GitHub{Token: tc.token}}})
+			h.repo.Commit("feat", map[string]string{"a.go": "a\n"}, "a")
+			url := h.repo.ServeHTTP("x-access-token", token)
+			if err := h.db.CreateRepo(ctx, change.Repo{ID: "r_httprepo0001", Host: change.HostGitHub, URL: url, ProtectedBranches: []string{"main"}, MergeStrategy: "squash", CreatedAt: time.Now()}); err != nil {
+				t.Fatal(err)
+			}
+			h.repoID = "r_httprepo0001"
+			r := h.validate(h.submit("feat").ID)
+			if r.Outcome != tc.outcome {
+				t.Fatalf("outcome = %s (%s)", r.Outcome, r.Error)
+			}
+			if strings.Contains(r.Error, token) {
+				t.Fatal("run error leaks the token")
+			}
+		})
 	}
 }

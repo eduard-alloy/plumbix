@@ -152,3 +152,17 @@ func TestReportsAllErrors(t *testing.T) {
 		t.Errorf("Error() = %q, want it to list paths", err.Error())
 	}
 }
+
+func TestWithoutValidators(t *testing.T) {
+	p, err := Parse([]byte(example))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := p.WithoutValidators()
+	if len(q.Steps) != 2 || !reflect.DeepEqual(q.Order(), []string{"test", "lint"}) {
+		t.Errorf("steps %d order %v", len(q.Steps), q.Order())
+	}
+	if len(p.Steps) != 4 {
+		t.Error("original pipeline was modified")
+	}
+}

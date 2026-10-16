@@ -173,3 +173,20 @@ func TestSecretsFileAndFixRounds(t *testing.T) {
 		t.Error("fix_rounds.max 0 accepted")
 	}
 }
+
+func TestPollerConfig(t *testing.T) {
+	dataDir := t.TempDir()
+	cfg, err := Load(Overrides{DataDir: dataDir}, envFrom(nil), t.TempDir())
+	if err != nil || !cfg.Poller.Enabled || cfg.Poller.Interval != DefaultPollInterval {
+		t.Fatalf("defaults: %+v, %v", cfg.Poller, err)
+	}
+	writeFile(t, filepath.Join(dataDir, "config.yaml"), "poller:\n  enabled: false\n  interval: 2m\n")
+	cfg, err = Load(Overrides{DataDir: dataDir}, envFrom(nil), t.TempDir())
+	if err != nil || cfg.Poller.Enabled || cfg.Poller.Interval != 2*time.Minute {
+		t.Errorf("from file: %+v, %v", cfg.Poller, err)
+	}
+	writeFile(t, filepath.Join(dataDir, "config.yaml"), "poller:\n  interval: 1s\n")
+	if _, err := Load(Overrides{DataDir: dataDir}, envFrom(nil), t.TempDir()); err == nil {
+		t.Error("1s interval accepted")
+	}
+}

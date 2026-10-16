@@ -47,7 +47,20 @@ type Config struct {
 	Server      Server    `yaml:"server"`
 	Runner      Runner    `yaml:"runner"`
 	FixRounds   FixRounds `yaml:"fix_rounds"`
+	Poller      Poller    `yaml:"poller"`
 }
+
+// Poller configures push detection.
+type Poller struct {
+	Enabled  bool          `yaml:"enabled"`
+	Interval time.Duration `yaml:"interval"`
+}
+
+// Poller defaults.
+const (
+	DefaultPollInterval = 30 * time.Second
+	MinPollInterval     = 5 * time.Second
+)
 
 // FixRounds limits the fix loop.
 type FixRounds struct {
@@ -81,6 +94,7 @@ func Load(flags Overrides, getenv func(string) string, homeDir string) (Config, 
 		DataDir:   filepath.Join(homeDir, ".plumbix"),
 		Server:    Server{Listen: DefaultListen},
 		FixRounds: FixRounds{Max: DefaultFixRounds},
+		Poller:    Poller{Enabled: true, Interval: DefaultPollInterval},
 		Runner: Runner{
 			MaxParallel:    runtime.NumCPU(),
 			DefaultTimeout: DefaultStepTimeout,
@@ -109,6 +123,9 @@ func Load(flags Overrides, getenv func(string) string, homeDir string) (Config, 
 	}
 	if err := cfg.Runner.validate(); err != nil {
 		return Config{}, err
+	}
+	if cfg.Poller.Interval < MinPollInterval {
+		return Config{}, fmt.Errorf("poller.interval must be at least %s, got %s", MinPollInterval, cfg.Poller.Interval)
 	}
 	if cfg.FixRounds.Max < 1 {
 		return Config{}, fmt.Errorf("fix_rounds.max must be at least 1, got %d", cfg.FixRounds.Max)

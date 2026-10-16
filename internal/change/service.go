@@ -57,6 +57,15 @@ func (s *Service) RegisterRepo(ctx context.Context, in RepoInput) (Repo, error) 
 	return r, nil
 }
 
+// GetRepo returns one repo.
+func (s *Service) GetRepo(ctx context.Context, id string) (Repo, error) {
+	r, err := s.store.GetRepo(ctx, id)
+	if errors.Is(err, ErrNotFound) {
+		return Repo{}, fmt.Errorf("%w: repo %s", ErrNotFound, id)
+	}
+	return r, err
+}
+
 // ListRepos returns every repo.
 func (s *Service) ListRepos(ctx context.Context) ([]Repo, error) {
 	return s.store.ListRepos(ctx)

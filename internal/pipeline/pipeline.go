@@ -45,6 +45,25 @@ func (p *Pipeline) Order() []string {
 	return append([]string(nil), p.order...)
 }
 
+// WithoutValidators returns a copy without validator steps. No step can
+// need a validator, so the remaining needs stay valid.
+func (p *Pipeline) WithoutValidators() *Pipeline {
+	q := &Pipeline{Version: p.Version}
+	keep := map[string]bool{}
+	for _, st := range p.Steps {
+		if !st.Validator {
+			q.Steps = append(q.Steps, st)
+			keep[st.Name] = true
+		}
+	}
+	for _, name := range p.order {
+		if keep[name] {
+			q.order = append(q.order, name)
+		}
+	}
+	return q
+}
+
 var (
 	stepNameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 	varNameRe  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

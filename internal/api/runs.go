@@ -2,8 +2,10 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/engine"
@@ -19,6 +21,7 @@ type runHandlers struct {
 func registerRunRoutes(mux *http.ServeMux, h *runHandlers) {
 	mux.HandleFunc("POST /api/v1/changes/{id}/validate", h.validate)
 	mux.HandleFunc("GET /api/v1/changes/{id}/runs", h.listRuns)
+	mux.HandleFunc("GET /api/v1/repos/{id}/runs", h.listRepoRuns)
 	mux.HandleFunc("GET /api/v1/runs/{id}", h.getRun)
 	mux.HandleFunc("GET /api/v1/runs/{id}/steps/{step}/log", h.stepLog)
 }
@@ -39,6 +42,35 @@ func (h *runHandlers) listRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	runs, err := h.runs.ListRuns(r.Context(), id)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"runs": runs})
+}
+
+// Repo run listing limits.
+const (
+	defaultRunLimit = 50
+	maxRunLimit     = 200
+)
+
+func (h *runHandlers) listRepoRuns(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, err := h.svc.GetRepo(r.Context(), id); err != nil {
+		h.fail(w, err)
+		return
+	}
+	limit := defaultRunLimit
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > maxRunLimit {
+			writeProblems(w, "the request has 1 problem(s)", []change.Problem{{Field: "limit", Message: fmt.Sprintf("must be a number from 1 to %d", maxRunLimit)}})
+			return
+		}
+		limit = n
+	}
+	runs, err := h.runs.ListRepoRuns(r.Context(), id, r.URL.Query().Get("branch"), limit)
 	if err != nil {
 		h.fail(w, err)
 		return

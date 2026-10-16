@@ -20,8 +20,8 @@ func (db *DB) CreateRun(ctx context.Context, r run.Run) error {
 		changeID = r.ChangeID
 	}
 	_, err := db.sql.ExecContext(ctx,
-		`INSERT INTO runs (id, repo_id, change_id, iteration, head, base, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.ID, r.RepoID, changeID, r.Iteration, r.Head, r.Base, string(r.Status), formatTime(r.StartedAt))
+		`INSERT INTO runs (id, repo_id, change_id, branch, iteration, head, base, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID, r.RepoID, changeID, r.Branch, r.Iteration, r.Head, r.Base, string(r.Status), formatTime(r.StartedAt))
 	return mapErr(err)
 }
 
@@ -63,7 +63,7 @@ func (db *DB) FinishRun(ctx context.Context, id string, f run.Finish) error {
 	return tx.Commit()
 }
 
-const runColumns = `id, repo_id, COALESCE(change_id, ''), iteration, head, base, status, outcome, result, error, started_at, finished_at`
+const runColumns = `id, repo_id, COALESCE(change_id, ''), branch, iteration, head, base, status, outcome, result, error, started_at, finished_at`
 
 // GetRun returns one run with its steps.
 func (db *DB) GetRun(ctx context.Context, id string) (run.Run, error) {
@@ -82,6 +82,17 @@ func (db *DB) ListRuns(ctx context.Context, changeID string) ([]run.Run, error) 
 // RunningRuns returns runs still marked running.
 func (db *DB) RunningRuns(ctx context.Context) ([]run.Run, error) {
 	return db.queryRuns(ctx, `SELECT `+runColumns+` FROM runs WHERE status = ? ORDER BY started_at, id`, string(run.Running))
+}
+
+// ListRepoRuns returns a repo's runs, newest first.
+func (db *DB) ListRepoRuns(ctx context.Context, repoID, branch string, limit int) ([]run.Run, error) {
+	query := `SELECT ` + runColumns + ` FROM runs WHERE repo_id = ?`
+	args := []any{repoID}
+	if branch != "" {
+		query += ` AND branch = ?`
+		args = append(args, branch)
+	}
+	return db.queryRuns(ctx, query+` ORDER BY started_at DESC, id DESC LIMIT ?`, append(args, limit)...)
 }
 
 // LastIteration returns the highest iteration number of a change, or 0.
@@ -140,7 +151,7 @@ func (db *DB) withSteps(ctx context.Context, r run.Run) (run.Run, error) {
 func scanRun(s scanner) (run.Run, error) {
 	var r run.Run
 	var status, outcome, result, started, finished string
-	if err := s.Scan(&r.ID, &r.RepoID, &r.ChangeID, &r.Iteration, &r.Head, &r.Base, &status, &outcome, &result, &r.Error, &started, &finished); err != nil {
+	if err := s.Scan(&r.ID, &r.RepoID, &r.ChangeID, &r.Branch, &r.Iteration, &r.Head, &r.Base, &status, &outcome, &result, &r.Error, &started, &finished); err != nil {
 		return run.Run{}, mapErr(err)
 	}
 	r.Status, r.Outcome = run.Status(status), change.State(outcome)

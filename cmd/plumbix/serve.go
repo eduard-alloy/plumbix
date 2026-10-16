@@ -16,6 +16,8 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/config"
 	"github.com/eduard-alloy/plumbix/internal/engine"
+	"github.com/eduard-alloy/plumbix/internal/host"
+	"github.com/eduard-alloy/plumbix/internal/poller"
 	"github.com/eduard-alloy/plumbix/internal/runner"
 	"github.com/eduard-alloy/plumbix/internal/secrets"
 	"github.com/eduard-alloy/plumbix/internal/store"
@@ -76,9 +78,11 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return 1
 	}
 	defer docker.Close()
+	hosts := host.FromSecrets(secretValues)
 	eng := engine.New(db, docker, engine.Config{
 		DataDir: cfg.DataDir, MaxParallel: cfg.Runner.MaxParallel, DefaultTimeout: cfg.Runner.DefaultTimeout,
-		CPUs: cfg.Runner.StepCPUs, MemoryMB: cfg.Runner.StepMemoryMB, MaxFixRounds: cfg.FixRounds.Max, Secrets: secretValues,
+		CPUs: cfg.Runner.StepCPUs, MemoryMB: cfg.Runner.StepMemoryMB, MaxFixRounds: cfg.FixRounds.Max,
+		Secrets: secretValues, Hosts: hosts,
 	}, logger)
 	if err := eng.Recover(ctx); err != nil {
 		logger.Error("recover interrupted runs failed", "err", err)
@@ -89,6 +93,12 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		defer cancel()
 		eng.Shutdown(stopCtx)
 	}()
+	if cfg.Poller.Enabled {
+		p := poller.New(db, eng, hosts, poller.Config{Interval: cfg.Poller.Interval}, logger)
+		pollDone := make(chan struct{})
+		go func() { p.Run(ctx); close(pollDone) }()
+		defer func() { <-pollDone }()
+	}
 	ln, err := net.Listen("tcp", cfg.Server.Listen)
 	if err != nil {
 		logger.Error("listen failed", "addr", cfg.Server.Listen, "err", err)

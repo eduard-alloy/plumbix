@@ -226,6 +226,41 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /repos/{id}/runs:
+    get:
+      operationId: listRepoRuns
+      summary: List a repo's runs, newest first.
+      description: Includes plain runs started by pushes to branches without a change.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: branch
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: The repo's runs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /runs/{id}:
     get:
       operationId: getRun
@@ -620,7 +655,7 @@ components:
     Run:
       type: object
       additionalProperties: false
-      required: [id, repo_id, head, base, status, steps, started_at]
+      required: [id, repo_id, branch, head, base, status, steps, started_at]
       properties:
         id:
           type: string
@@ -628,6 +663,8 @@ components:
         repo_id:
           type: string
         change_id:
+          type: string
+        branch:
           type: string
         iteration:
           type: integer

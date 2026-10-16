@@ -27,6 +27,7 @@ type Run struct {
 	ID         string             `json:"id"`
 	RepoID     string             `json:"repo_id"`
 	ChangeID   string             `json:"change_id,omitempty"`
+	Branch     string             `json:"branch"`
 	Iteration  int                `json:"iteration,omitempty"`
 	Head       string             `json:"head"`
 	Base       string             `json:"base"`
@@ -68,4 +69,7 @@ type Store interface {
 	ListRuns(ctx context.Context, changeID string) ([]Run, error)
 	LastIteration(ctx context.Context, changeID string) (int, error)
 	RunningRuns(ctx context.Context) ([]Run, error)
+	// ListRepoRuns returns a repo's runs, newest first, optionally for one
+	// branch.
+	ListRepoRuns(ctx context.Context, repoID, branch string, limit int) ([]Run, error)
 }

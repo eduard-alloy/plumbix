@@ -17,6 +17,7 @@ import (
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/gitops"
+	"github.com/eduard-alloy/plumbix/internal/host"
 	"github.com/eduard-alloy/plumbix/internal/pipeline"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/runner"
@@ -58,6 +59,7 @@ type Config struct {
 	MemoryMB       int
 	MaxFixRounds   int
 	Secrets        map[string]string
+	Hosts          host.Registry // credentials per git host; nil fetches anonymously
 }
 
 // Engine runs validations in the background.
@@ -72,8 +74,11 @@ type Engine struct {
 	stopAll    context.CancelCauseFunc
 	wg         sync.WaitGroup
 	mu         sync.Mutex
-	active     map[string]activeRun // by change ID
+	active     map[string]activeRun // by change ID, or branchKey for plain runs
 	mirrorLock sync.Map             // repo ID -> *sync.Mutex
+	askpass    string
+	askOnce    sync.Once
+	askErr     error
 }
 
 type activeRun struct {
@@ -109,7 +114,7 @@ func (e *Engine) Validate(ctx context.Context, changeID string) (run.Run, error)
 	if err != nil {
 		return run.Run{}, err
 	}
-	r := run.Run{ID: change.NewID("run_"), RepoID: c.RepoID, ChangeID: c.ID, Iteration: last + 1, Status: run.Running, StartedAt: e.now().UTC(), Steps: []run.Step{}}
+	r := run.Run{ID: change.NewID("run_"), RepoID: c.RepoID, ChangeID: c.ID, Branch: c.SourceBranch, Iteration: last + 1, Status: run.Running, StartedAt: e.now().UTC(), Steps: []run.Step{}}
 	if err := e.store.CreateRun(ctx, r); err != nil {
 		return run.Run{}, err
 	}
@@ -118,20 +123,189 @@ func (e *Engine) Validate(ctx context.Context, changeID string) (run.Run, error)
 			return run.Run{}, fmt.Errorf("mark change running: %w", err)
 		}
 	}
+	e.launch(changeID, r, func(ctx context.Context) ([]run.Step, *validation.Result, error) {
+		return e.runPipeline(ctx, r, c)
+	})
+	return r, nil
+}
+
+// RunBranch starts a plain run of a branch's pipeline without its validators,
+// for pushes that belong to no change. A plain run still going for the same
+// branch is cancelled.
+func (e *Engine) RunBranch(ctx context.Context, repoID, branch string) (run.Run, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	repo, err := e.store.GetRepo(ctx, repoID)
+	if err != nil {
+		if errors.Is(err, change.ErrNotFound) {
+			return run.Run{}, fmt.Errorf("%w: repo %s", change.ErrNotFound, repoID)
+		}
+		return run.Run{}, err
+	}
+	key := branchKey(repoID, branch)
+	if prev, ok := e.active[key]; ok {
+		prev.cancel(errSuperseded)
+	}
+	r := run.Run{ID: change.NewID("run_"), RepoID: repoID, Branch: branch, Status: run.Running, StartedAt: e.now().UTC(), Steps: []run.Step{}}
+	if err := e.store.CreateRun(ctx, r); err != nil {
+		return run.Run{}, err
+	}
+	e.launch(key, r, func(ctx context.Context) ([]run.Step, *validation.Result, error) {
+		return e.runBranch(ctx, r, repo)
+	})
+	return r, nil
+}
+
+// ListHeads asks a repo's remote for its branch heads, with the host's
+// credentials.
+func (e *Engine) ListHeads(ctx context.Context, repo change.Repo) (map[string]string, error) {
+	m, err := e.mirror(repo)
+	if err != nil {
+		return nil, err
+	}
+	return m.ListHeads(ctx)
+}
+
+func branchKey(repoID, branch string) string { return "branch:" + repoID + ":" + branch }
+
+// launch runs work in the background under key. Callers hold e.mu.
+func (e *Engine) launch(key string, r run.Run, work func(context.Context) ([]run.Step, *validation.Result, error)) {
 	runCtx, cancel := context.WithCancelCause(e.base)
-	e.active[changeID] = activeRun{runID: r.ID, cancel: cancel}
+	e.active[key] = activeRun{runID: r.ID, cancel: cancel}
 	e.wg.Add(1)
 	go func() {
 		defer e.wg.Done()
 		defer cancel(nil)
-		e.execute(runCtx, r, c)
+		steps, result, err := work(runCtx)
+		e.end(runCtx, r, steps, result, err)
 		e.mu.Lock()
-		if a, ok := e.active[changeID]; ok && a.runID == r.ID {
-			delete(e.active, changeID)
+		if a, ok := e.active[key]; ok && a.runID == r.ID {
+			delete(e.active, key)
 		}
 		e.mu.Unlock()
 	}()
-	return r, nil
+}
+
+// mirror returns the repo's mirror, authenticated when the host has a token.
+func (e *Engine) mirror(repo change.Repo) (*gitops.Mirror, error) {
+	m := gitops.Open(filepath.Join(e.cfg.DataDir, mirrorsDir, repo.ID+".git"), repo.URL)
+	if e.cfg.Hosts == nil {
+		return m, nil
+	}
+	h, err := e.cfg.Hosts.For(repo)
+	if err != nil {
+		return nil, err
+	}
+	auth, ok := h.Auth(repo)
+	if !ok {
+		return m, nil
+	}
+	e.askOnce.Do(func() { e.askpass, e.askErr = gitops.EnsureAskpass(e.cfg.DataDir) })
+	if e.askErr != nil {
+		return nil, e.askErr
+	}
+	return m.WithAuth(auth, e.askpass), nil
+}
+
+// fetch updates the repo's mirror. Fetches of one repo never overlap.
+func (e *Engine) fetch(ctx context.Context, repo change.Repo) (*gitops.Mirror, error) {
+	m, err := e.mirror(repo)
+	if err != nil {
+		return nil, err
+	}
+	lock := e.repoLock(repo.ID)
+	lock.Lock()
+	defer lock.Unlock()
+	if err := m.Fetch(ctx); err != nil {
+		return nil, fmt.Errorf("fetch %s: %w", repo.URL, err)
+	}
+	return m, nil
+}
+
+// runBranch runs a branch's pipeline without validators.
+func (e *Engine) runBranch(ctx context.Context, r run.Run, repo change.Repo) ([]run.Step, *validation.Result, error) {
+	work := filepath.Join(e.cfg.DataDir, workDir, r.ID)
+	defer os.RemoveAll(work)
+	m, err := e.fetch(ctx, repo)
+	if err != nil {
+		return nil, nil, err
+	}
+	head, err := m.Head(ctx, r.Branch)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := e.store.SetRunCommits(ctx, r.ID, head, ""); err != nil {
+		return nil, nil, err
+	}
+	p, err := e.readPipeline(ctx, m, head, r.Branch)
+	if err != nil {
+		return nil, nil, err
+	}
+	workspace := filepath.Join(work, "workspace")
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		return nil, nil, err
+	}
+	remove, err := m.Worktree(ctx, head, workspace)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer remove()
+	plain := p.WithoutValidators()
+	logs := map[string]*os.File{}
+	defer closeLogs(logs)
+	res := scheduler.Execute(ctx, plain, e.runner, e.schedulerOptions(r.ID, workspace, logs))
+	return toSteps(plain, res), nil, nil
+}
+
+// readPipeline reads and parses the pipeline file at a commit.
+func (e *Engine) readPipeline(ctx context.Context, m *gitops.Mirror, commit, branch string) (*pipeline.Pipeline, error) {
+	src, ok, err := m.Show(ctx, commit, PipelineFile)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("no %s at %s on %s", PipelineFile, short(commit), branch)
+	}
+	p, err := pipeline.Parse(src)
+	if err != nil {
+		return nil, fmt.Errorf("%s at %s: %w", PipelineFile, short(commit), err)
+	}
+	return p, nil
+}
+
+// schedulerOptions returns the options shared by every run.
+func (e *Engine) schedulerOptions(runID, workspace string, logs map[string]*os.File) scheduler.Options {
+	return scheduler.Options{
+		MaxParallel: e.cfg.MaxParallel, DefaultTimeout: e.cfg.DefaultTimeout,
+		Workspace: workspace, CPUs: e.cfg.CPUs, MemoryMB: e.cfg.MemoryMB, Secrets: e.cfg.Secrets,
+		Log: func(step string) io.Writer {
+			f, err := e.openLog(runID, step)
+			if err != nil {
+				e.log.Error("open step log", "run", runID, "step", step, "err", err)
+				return nil
+			}
+			logs[step] = f
+			return f
+		},
+	}
+}
+
+func closeLogs(logs map[string]*os.File) {
+	for _, f := range logs {
+		f.Close()
+	}
+}
+
+// toSteps converts scheduler results into run steps.
+func toSteps(p *pipeline.Pipeline, res scheduler.Result) []run.Step {
+	steps := make([]run.Step, len(res.Steps))
+	for i, s := range res.Steps {
+		steps[i] = run.Step{Name: s.Name, Validator: p.Steps[i].Validator, Status: string(s.Status), ExitCode: s.ExitCode, DurationMS: s.Duration.Milliseconds()}
+		if s.Err != nil {
+			steps[i].Error = s.Err.Error()
+		}
+	}
+	return steps
 }
 
 // Shutdown cancels every run, waits for them to record their state, and
@@ -168,14 +342,8 @@ func (e *Engine) LogPath(runID, step string) string {
 	return filepath.Join(e.cfg.DataDir, evidenceDir, runID, step, validation.LogFile)
 }
 
-// execute performs one run. Every outcome is recorded; nothing is returned.
-// The workspace is removed before the outcome is recorded, so a finished run
-// never has leftovers.
-func (e *Engine) execute(ctx context.Context, r run.Run, c change.Change) {
-	steps, result, err := e.runPipeline(ctx, r, c)
-	e.end(ctx, r, steps, result, err)
-}
-
+// runPipeline performs one iteration of a change. The workspace is removed
+// before the caller records the outcome, so a finished run has no leftovers.
 func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([]run.Step, *validation.Result, error) {
 	work := filepath.Join(e.cfg.DataDir, workDir, r.ID)
 	defer os.RemoveAll(work)
@@ -190,41 +358,21 @@ func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([
 	r.Head, r.Base = prep.head, prep.base
 
 	logs := map[string]*os.File{}
-	defer func() {
-		for _, f := range logs {
-			f.Close()
+	defer closeLogs(logs)
+	opts := e.schedulerOptions(r.ID, prep.workspace, logs)
+	opts.Setup = func(st pipeline.Step, finished []scheduler.StepResult) (scheduler.StepSetup, error) {
+		if !st.Validator {
+			return scheduler.StepSetup{}, nil
 		}
-	}()
-	opts := scheduler.Options{
-		MaxParallel: e.cfg.MaxParallel, DefaultTimeout: e.cfg.DefaultTimeout,
-		Workspace: prep.workspace, CPUs: e.cfg.CPUs, MemoryMB: e.cfg.MemoryMB, Secrets: e.cfg.Secrets,
-		Log: func(step string) io.Writer {
-			f, err := e.openLog(r.ID, step)
-			if err != nil {
-				e.log.Error("open step log", "run", r.ID, "step", step, "err", err)
-				return nil
-			}
-			logs[step] = f
-			return f
-		},
-		Setup: func(st pipeline.Step, finished []scheduler.StepResult) (scheduler.StepSetup, error) {
-			if !st.Validator {
-				return scheduler.StepSetup{}, nil
-			}
-			return e.setupValidator(r, prep, work, st, finished)
-		},
+		return e.setupValidator(r, prep, work, st, finished)
 	}
 	res := scheduler.Execute(ctx, prep.pipeline, e.runner, opts)
 
-	steps := make([]run.Step, len(res.Steps))
+	steps := toSteps(prep.pipeline, res)
 	var results []validation.ValidatorResult
 	var infra []string
 	for i, s := range res.Steps {
 		st := prep.pipeline.Steps[i]
-		steps[i] = run.Step{Name: s.Name, Validator: st.Validator, Status: string(s.Status), ExitCode: s.ExitCode, DurationMS: s.Duration.Milliseconds()}
-		if s.Err != nil {
-			steps[i].Error = s.Err.Error()
-		}
 		if st.Validator {
 			results = append(results, readVerdict(work, s, c.AcceptanceCriteria))
 		} else if s.Status == scheduler.Errored {
@@ -264,13 +412,9 @@ func (e *Engine) prepare(ctx context.Context, r run.Run, c change.Change, work s
 	if err != nil {
 		return p, fmt.Errorf("load repo: %w", err)
 	}
-	m := gitops.Open(filepath.Join(e.cfg.DataDir, mirrorsDir, repo.ID+".git"), repo.URL)
-	lock := e.repoLock(repo.ID)
-	lock.Lock()
-	err = m.Fetch(ctx)
-	lock.Unlock()
+	m, err := e.fetch(ctx, repo)
 	if err != nil {
-		return p, fmt.Errorf("fetch %s: %w", repo.URL, err)
+		return p, err
 	}
 	if p.head, err = m.Head(ctx, c.SourceBranch); err != nil {
 		return p, err
@@ -286,15 +430,8 @@ func (e *Engine) prepare(ctx context.Context, r run.Run, c change.Change, work s
 		return p, err
 	}
 
-	src, ok, err := m.Show(ctx, p.head, PipelineFile)
-	if err != nil {
+	if p.pipeline, err = e.readPipeline(ctx, m, p.head, c.SourceBranch); err != nil {
 		return p, err
-	}
-	if !ok {
-		return p, fmt.Errorf("no %s at %s on %s", PipelineFile, short(p.head), c.SourceBranch)
-	}
-	if p.pipeline, err = pipeline.Parse(src); err != nil {
-		return p, fmt.Errorf("%s at %s: %w", PipelineFile, short(p.head), err)
 	}
 	if targetSrc, ok, err := m.Show(ctx, target, PipelineFile); err == nil && ok {
 		if tp, err := pipeline.Parse(targetSrc); err == nil {
@@ -422,6 +559,13 @@ func (e *Engine) end(ctx context.Context, r run.Run, steps []run.Step, result *v
 		e.finishErrored(wctx, r, runErr, true)
 		return
 	}
+	if result == nil {
+		// A plain branch run: no verdict, no change to move.
+		if err := e.store.FinishRun(wctx, r.ID, run.Finish{Status: run.Finished, Steps: steps, At: e.now().UTC()}); err != nil {
+			e.log.Error("record run", "run", r.ID, "err", err)
+		}
+		return
+	}
 	if err := e.store.FinishRun(wctx, r.ID, run.Finish{Status: run.Finished, Outcome: result.State, Result: result, Steps: steps, At: e.now().UTC()}); err != nil {
 		e.log.Error("record run", "run", r.ID, "err", err)
 		return
@@ -432,7 +576,11 @@ func (e *Engine) end(ctx context.Context, r run.Run, steps []run.Step, result *v
 // finishErrored records an errored run and moves its change to needs_human.
 // requireActive is false only for recovery, where no run is active.
 func (e *Engine) finishErrored(ctx context.Context, r run.Run, runErr error, requireActive bool) {
-	if err := e.store.FinishRun(ctx, r.ID, run.Finish{Status: run.Errored, Outcome: change.NeedsHuman, Error: runErr.Error(), Steps: r.Steps, At: e.now().UTC()}); err != nil {
+	var outcome change.State
+	if r.ChangeID != "" {
+		outcome = change.NeedsHuman
+	}
+	if err := e.store.FinishRun(ctx, r.ID, run.Finish{Status: run.Errored, Outcome: outcome, Error: runErr.Error(), Steps: r.Steps, At: e.now().UTC()}); err != nil {
 		e.log.Error("record errored run", "run", r.ID, "err", err)
 	}
 	e.moveChange(ctx, r, change.NeedsHuman, requireActive)

@@ -15,11 +15,17 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/gitops/gittest"
 )
 
-// startServer runs plumbix serve in-process and returns its address and data dir.
-func startServer(t *testing.T) (addr, dataDir string) {
+// startServer runs plumbix serve in-process and returns its address and data
+// dir. configYAML, when given, is written as the server's config file.
+func startServer(t *testing.T, configYAML ...string) (addr, dataDir string) {
 	t.Helper()
 	clearPlumbixEnv(t)
 	dataDir = t.TempDir()
+	if len(configYAML) > 0 {
+		if err := os.WriteFile(filepath.Join(dataDir, "config.yaml"), []byte(configYAML[0]), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	logs := &syncBuffer{}
 	done := make(chan int, 1)
@@ -128,6 +134,9 @@ func TestCLIFlow(t *testing.T) {
 	if code, _, errOut := c.run("", "run", "log", runID, "test"); code != 1 || !strings.Contains(errOut, "not_found") {
 		t.Errorf("log of a step that never ran: exit %d, %q", code, errOut)
 	}
+	if repoRuns := c.mustRun("", "repo", "runs", repoID, "--branch", "feat")["runs"].([]any); len(repoRuns) != 1 {
+		t.Errorf("repo runs = %v", repoRuns)
+	}
 	revalidated := c.mustRun("", "change", "validate", id)
 	if revalidated["iteration"] != float64(2) {
 		t.Errorf("revalidate = %v", revalidated)
@@ -180,4 +189,25 @@ func TestCLIUsageErrors(t *testing.T) {
 			t.Errorf("plumbix %v: exit %d, want 2", args, code)
 		}
 	}
+}
+
+// TestPushTriggersRun checks push detection end to end: the server polls,
+// sees a new branch and starts a plain run for it.
+func TestPushTriggersRun(t *testing.T) {
+	repo := redirectGitHub(t, "https://github.com/eduard-alloy/plumbix")
+	addr, dataDir := startServer(t, "poller:\n  interval: 5s\n")
+	c := cli{t: t, server: addr, dataDir: dataDir}
+	repoID := c.mustRun("", "repo", "add", "--host", "github", "--url", "https://github.com/eduard-alloy/plumbix")["id"].(string)
+	time.Sleep(6 * time.Second) // let the first poll record the existing heads
+	repo.Commit("ci", map[string]string{"x.txt": "x\n"}, "push")
+	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(250 * time.Millisecond) {
+		runs := c.mustRun("", "repo", "runs", repoID, "--branch", "ci")["runs"].([]any)
+		if len(runs) == 1 {
+			if runs[0].(map[string]any)["change_id"] != nil {
+				t.Errorf("plain run belongs to a change: %v", runs[0])
+			}
+			return
+		}
+	}
+	t.Fatal("no run appeared after the push")
 }

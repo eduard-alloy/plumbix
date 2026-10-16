@@ -18,18 +18,76 @@ var ErrUnknownBranch = errors.New("unknown branch")
 
 // Mirror is a bare mirror of one remote repository.
 type Mirror struct {
-	dir string
-	url string
+	dir     string
+	url     string
+	auth    *Auth
+	askpass string
+}
+
+// Auth is a username and token for HTTPS remotes.
+type Auth struct {
+	User  string
+	Token string
+}
+
+// AskpassFile is the askpass script's name inside the data directory.
+const AskpassFile = "git-askpass.sh"
+
+// askpassScript answers git's prompts from environment variables that are
+// set only for the git process. It contains no secret itself.
+const askpassScript = `#!/bin/sh
+case "$1" in
+  Username*) printf '%s\n' "$PLUMBIX_GIT_USER" ;;
+  *) printf '%s\n' "$PLUMBIX_GIT_TOKEN" ;;
+esac
+`
+
+// EnsureAskpass writes the askpass script into dir (mode 0700) and returns
+// its path.
+func EnsureAskpass(dir string) (string, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	p := filepath.Join(dir, AskpassFile)
+	if err := os.WriteFile(p, []byte(askpassScript), 0o700); err != nil {
+		return "", fmt.Errorf("write askpass script: %w", err)
+	}
+	if err := os.Chmod(p, 0o700); err != nil {
+		return "", err
+	}
+	return p, nil
 }
 
 // Open returns the mirror at dir for the remote url. Nothing is created
 // until Fetch.
 func Open(dir, url string) *Mirror { return &Mirror{dir: dir, url: url} }
 
+// WithAuth makes git authenticate with a, answering prompts through the
+// askpass script at askpass.
+func (m *Mirror) WithAuth(a Auth, askpass string) *Mirror {
+	m.auth, m.askpass = &a, askpass
+	return m
+}
+
+// command builds a git command. Credentials go only into the process
+// environment, never into its arguments, and personal credential helpers
+// are switched off.
+func (m *Mirror) command(ctx context.Context, args ...string) *exec.Cmd {
+	full := []string{"-c", "credential.helper="}
+	if _, err := os.Stat(m.dir); err == nil {
+		full = append(full, "-C", m.dir)
+	}
+	cmd := exec.CommandContext(ctx, "git", append(full, args...)...)
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1")
+	if m.auth != nil {
+		cmd.Env = append(cmd.Env, "GIT_ASKPASS="+m.askpass, "PLUMBIX_GIT_USER="+m.auth.User, "PLUMBIX_GIT_TOKEN="+m.auth.Token)
+	}
+	return cmd
+}
+
 // git runs a git command in the mirror and returns stdout.
 func (m *Mirror) git(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", m.dir}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1")
+	cmd := m.command(ctx, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -51,6 +109,25 @@ func (m *Mirror) Fetch(ctx context.Context) error {
 	}
 	_, err := m.git(ctx, "fetch", "-q", "--prune", "--force", "--no-tags", m.url, "+refs/heads/*:refs/heads/*")
 	return err
+}
+
+// ListHeads asks the remote for its branch heads without fetching objects.
+func (m *Mirror) ListHeads(ctx context.Context) (map[string]string, error) {
+	out, err := m.git(ctx, "ls-remote", "--heads", m.url)
+	if err != nil {
+		return nil, err
+	}
+	heads := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		sha, ref, ok := strings.Cut(line, "\t")
+		if !ok {
+			continue
+		}
+		if branch, ok := strings.CutPrefix(ref, "refs/heads/"); ok {
+			heads[branch] = sha
+		}
+	}
+	return heads, nil
 }
 
 // Head returns the commit a branch points to.

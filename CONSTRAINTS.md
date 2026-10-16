@@ -11,6 +11,7 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Plumbix binds only to local addresses and refuses to start otherwise until authentication exists. (Q12)
 - Step containers have no network path to the Plumbix API. Validators report verdicts through step output only. (Q12)
 - Each git host PAT (GitHub fine-grained, Azure DevOps) is scoped to code read/write, kept in a local secrets file outside the repo, and never logged. (Q13)
+- Git gets tokens only through its process environment and the askpass script in the data directory, never through arguments or URLs. `-c credential.helper=` keeps personal credential helpers out. (WU-008)
 - Plain shell execution without container isolation is not allowed. Agent-written code is untrusted. (Q04)
 
 ## Integration
@@ -22,6 +23,7 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Validator steps run after their needs finish, whatever the outcome. Normal steps still need their needs to succeed. (WU-007)
 - An errored normal step makes the outcome `needs_human`, never `fix_requested`. (WU-007)
 - Only a change's active run may move its state, and cancellation is checked before errors: a cancelled run's errors are not infrastructure failures. (WU-007)
+- Timing tests assert ordering or overlap, never wall-clock totals, because the full suite runs packages in parallel. (WU-008)
 - Tests never reach the network: git URLs are redirected to local repositories with `GIT_CONFIG_COUNT`/`url.<path>.insteadOf`. (WU-007)
 - One process in v1. The scheduler calls the runner only through its interface, so runners can move out later. (ARCHITECTURE A1)
 - Required validators come from the target branch's pipeline file. Any change touching `.plumbix/` needs a human. (A9)

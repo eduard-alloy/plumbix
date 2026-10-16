@@ -149,3 +149,29 @@ func TestRunResponsesMatchOpenAPI(t *testing.T) {
 	a.waitRun(decode[run.Run](t, started).ID)
 	o.check("Error", a.do(http.MethodGet, "/api/v1/runs/run_aaaaaaaaaaaa", ""))
 }
+
+func TestRepoRuns(t *testing.T) {
+	o := loadOpenAPI(t)
+	a := newRunAPI(t)
+	c := decode[change.Change](t, a.do(http.MethodPost, "/api/v1/changes", changeBody(a.repoID, "feat")))
+	first := decode[struct{ Runs []run.Run }](t, a.do(http.MethodGet, "/api/v1/changes/"+c.ID+"/runs", "")).Runs[0]
+	a.waitRun(first.ID)
+	rec := a.do(http.MethodGet, "/api/v1/repos/"+a.repoID+"/runs?branch=feat&limit=5", "")
+	o.check("RunList", rec)
+	runs := decode[struct{ Runs []run.Run }](t, rec).Runs
+	if len(runs) != 1 || runs[0].Branch != "feat" {
+		t.Errorf("runs = %+v", runs)
+	}
+	if got := decode[struct{ Runs []run.Run }](t, a.do(http.MethodGet, "/api/v1/repos/"+a.repoID+"/runs?branch=other", "")).Runs; len(got) != 0 {
+		t.Errorf("other branch = %+v", got)
+	}
+	for path, status := range map[string]int{
+		"/api/v1/repos/r_nope/runs":                     http.StatusNotFound,
+		"/api/v1/repos/" + a.repoID + "/runs?limit=0":   http.StatusBadRequest,
+		"/api/v1/repos/" + a.repoID + "/runs?limit=999": http.StatusBadRequest,
+	} {
+		if rec := a.do(http.MethodGet, path, ""); rec.Code != status {
+			t.Errorf("GET %s = %d, want %d", path, rec.Code, status)
+		}
+	}
+}

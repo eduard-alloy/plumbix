@@ -121,6 +121,7 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 	c.fs.StringVar(&in.URL, "url", "", "HTTPS clone URL (repo add)")
 	c.fs.Var(&in.ProtectedBranches, "protected", "protected branch, repeatable (repo add, default main)")
 	c.fs.StringVar(&in.MergeStrategy, "merge-strategy", "", "squash, merge or rebase (repo add, default squash)")
+	branch := c.fs.String("branch", "", "only runs of this branch (repo runs)")
 	pos, ok := c.parse(args)
 	if !ok {
 		return 2
@@ -131,8 +132,14 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 		return c.call(http.MethodPost, "/api/v1/repos", body)
 	case len(pos) == 1 && pos[0] == "list":
 		return c.call(http.MethodGet, "/api/v1/repos", nil)
+	case len(pos) == 2 && pos[0] == "runs":
+		path := "/api/v1/repos/" + url.PathEscape(pos[1]) + "/runs"
+		if *branch != "" {
+			path += "?branch=" + url.QueryEscape(*branch)
+		}
+		return c.call(http.MethodGet, path, nil)
 	}
-	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> | plumbix repo list")
+	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> | repo list | repo runs <id> [--branch <b>]")
 }
 
 // runSubmit handles "plumbix submit -f <file|->".

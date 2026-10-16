@@ -3,6 +3,9 @@
 package gittest
 
 import (
+	"net/http"
+	"net/http/cgi"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -79,4 +82,28 @@ func (r *Repo) Commit(branch string, files map[string]string, msg string) string
 	r.run(r.work, "push", "-q", "-f", "origin", "HEAD:refs/heads/"+branch)
 	r.run(r.work, "fetch", "-q", "origin")
 	return r.run(r.work, "rev-parse", "HEAD")
+}
+
+// ServeHTTP serves the remote over git's smart HTTP protocol through
+// git-http-backend, requiring basic auth with user and password. It returns
+// the clone URL.
+func (r *Repo) ServeHTTP(user, password string) string {
+	r.t.Helper()
+	execPath := r.run(r.work, "--exec-path")
+	r.run(r.Remote, "config", "http.receivepack", "true")
+	backend := &cgi.Handler{
+		Path: filepath.Join(execPath, "git-http-backend"),
+		Env:  []string{"GIT_PROJECT_ROOT=" + filepath.Dir(r.Remote), "GIT_HTTP_EXPORT_ALL=1", "REMOTE_USER=" + user},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		u, p, ok := req.BasicAuth()
+		if !ok || u != user || p != password {
+			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		backend.ServeHTTP(w, req)
+	}))
+	r.t.Cleanup(srv.Close)
+	return srv.URL + "/" + filepath.Base(r.Remote)
 }
