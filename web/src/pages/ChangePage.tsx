@@ -281,6 +281,28 @@ export function ChangePage({ id }: { id: string }) {
           </div>
         </div>
 
+        {v.newerCommits && (
+          <div role="note" className="notice">
+            <span className="icon">
+              <StatePill status="info" mode="icon" />
+            </span>
+            <div className="text">
+              <span className="title">Newer commits on {c.source_branch}</span>
+              <span className="body">
+                The branch now points at {v.newerCommits}; the last verdict was for {v.header.head}.{' '}
+                {v.needsPerson ? 'A push does not restart validation for a change that needs a person. Validate again when you want a verdict on the new head.' : 'Validation starts on the next poll.'}
+              </span>
+            </div>
+            <div className="buttons">
+              {v.needsPerson && (
+                <button className="secondary small" onClick={() => void validate()} disabled={busy !== null}>
+                  Validate again
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {notice && (
           <div role="status" className="notice">
             <span className="icon">

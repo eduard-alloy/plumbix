@@ -239,3 +239,58 @@ func TestRunStopsOnCancel(t *testing.T) {
 		t.Error("Run never polled")
 	}
 }
+
+// TestHumanStatesDoNotRevalidateOnPush: a change that needs a person stays
+// where it is when its branch moves; only Validate again or Close move it.
+// The other open states still revalidate, and running runs are superseded.
+func TestHumanStatesDoNotRevalidateOnPush(t *testing.T) {
+	sticky := []change.State{change.NeedsHuman, change.Escalated, change.Rejected}
+	live := []change.State{change.Open, change.FixRequested, change.Approved, change.Running}
+	h := newHarness(t, "r_1")
+	h.eng.push("r_1", "main", "m1")
+	ids := map[change.State]string{}
+	for i, st := range append(append([]change.State{}, sticky...), live...) {
+		branch := "b" + string(rune('a'+i))
+		h.eng.push("r_1", branch, branch+"1")
+		c := h.change(t, "r_1", branch)
+		if st != change.Open {
+			if err := h.db.SetChangeState(ctx, c.ID, change.Open, st, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ids[st] = c.ID
+	}
+	_ = h.p.PollOnce(ctx)
+	h.eng.triggers()
+	for i := range sticky {
+		h.eng.push("r_1", "b"+string(rune('a'+i)), "moved")
+	}
+	for i := range live {
+		h.eng.push("r_1", "b"+string(rune('a'+len(sticky)+i)), "moved")
+	}
+	if err := h.p.PollOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	v, b := h.eng.triggers()
+	if len(b) != 0 {
+		t.Errorf("plain runs %v for branches that have a change", b)
+	}
+	got := map[string]bool{}
+	for _, id := range v {
+		got[id] = true
+	}
+	for _, st := range sticky {
+		if got[ids[st]] {
+			t.Errorf("%s was revalidated by a push", st)
+		}
+	}
+	for _, st := range live {
+		if !got[ids[st]] {
+			t.Errorf("%s was not revalidated by a push", st)
+		}
+	}
+	// The poller still records the new heads, so the change can show them.
+	if c, _ := h.db.GetChange(ctx, ids[change.NeedsHuman]); c.SourceHead != "moved" {
+		t.Errorf("needs_human change head = %q, want the pushed head", c.SourceHead)
+	}
+}

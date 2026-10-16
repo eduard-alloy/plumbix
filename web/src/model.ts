@@ -65,6 +65,7 @@ export interface Change {
   submitted_by?: string
   state: ChangeState
   merge?: Merge
+  source_head?: string
   created_at: string
   updated_at: string
 }

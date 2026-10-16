@@ -138,6 +138,12 @@ func (p *Poller) react(ctx context.Context, repo change.Repo, heads, known map[s
 			continue
 		}
 		if c, ok := open[branch]; ok {
+			if c.State.NeedsPerson() {
+				// A change that needs a person is not moved by a push (A21).
+				// The new head is still recorded, so the page can show it.
+				p.log.Info("push on a change that needs a person; not revalidating", "repo", repo.ID, "branch", branch, "change", c.ID, "state", c.State)
+				continue
+			}
 			if skip, err := p.alreadyCovered(ctx, c.ID, sha); err != nil || skip {
 				if err != nil {
 					p.log.Warn("read runs", "change", c.ID, "err", err)

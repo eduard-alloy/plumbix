@@ -36,6 +36,10 @@ func (s State) Valid() bool {
 // Final reports whether no further transitions are possible.
 func (s State) Final() bool { return s == Merged || s == Closed }
 
+// NeedsPerson reports whether only a person may move the change on: a push
+// to its branch starts nothing (A21).
+func (s State) NeedsPerson() bool { return s == NeedsHuman || s == Escalated || s == Rejected }
+
 // Repo is a registered git repository.
 type Repo struct {
 	ID                string    `json:"id"`
@@ -58,7 +62,8 @@ type Change struct {
 	Constraints        []string    `json:"constraints"`
 	SubmittedBy        string      `json:"submitted_by,omitempty"`
 	State              State       `json:"state"`
-	Merge              *Merge      `json:"merge,omitempty"` // set once merged
+	Merge              *Merge      `json:"merge,omitempty"`       // set once merged
+	SourceHead         string      `json:"source_head,omitempty"` // the source branch's head as the poller last saw it
 	CreatedAt          time.Time   `json:"created_at"`
 	UpdatedAt          time.Time   `json:"updated_at"`
 }
