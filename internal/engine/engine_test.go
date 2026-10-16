@@ -164,21 +164,38 @@ func (h *harness) validate(changeID string) run.Run {
 	return h.wait(r.ID)
 }
 
+// wait returns the run once it ended and, for a run that moves its change,
+// once the change has left running: the engine records the run first and
+// moves the change right after, and under load a test that read the state
+// in between saw it still running.
 func (h *harness) wait(runID string) run.Run {
 	h.t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
-	for time.Now().Before(deadline) {
-		r, err := h.db.GetRun(ctx, runID)
-		if err != nil {
+	var r run.Run
+	for {
+		var err error
+		if r, err = h.db.GetRun(ctx, runID); err != nil {
 			h.t.Fatal(err)
 		}
 		if r.Status != run.Running {
+			break
+		}
+		if !time.Now().Before(deadline) {
+			h.t.Fatalf("run %s did not finish", runID)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if r.ChangeID == "" || r.Status == run.Cancelled {
+		return r
+	}
+	for time.Now().Before(deadline) {
+		if h.state(r.ChangeID) != change.Running {
 			return r
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	h.t.Fatalf("run %s did not finish", runID)
-	return run.Run{}
+	h.t.Fatalf("change %s still running after run %s ended", r.ChangeID, runID)
+	return r
 }
 
 func (h *harness) state(id string) change.State {
