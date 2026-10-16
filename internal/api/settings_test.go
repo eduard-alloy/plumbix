@@ -171,8 +171,8 @@ func TestSecretCheck(t *testing.T) {
 		t.Errorf("check with expiry: %+v", c)
 	}
 	_ = a.do(http.MethodPut, "/api/v1/settings/secrets/PLUMBIX_AZURE_DEVOPS_TOKEN_EXPIRES", `{"value": "soon"}`)
-	if c := decode[check](t, a.do(http.MethodPost, "/api/v1/settings/secrets/PLUMBIX_AZURE_DEVOPS_TOKEN/check", "")); c.OK || c.Message == "" {
-		t.Errorf("check with a bad expiry: %+v", c)
+	if c := decode[check](t, a.do(http.MethodPost, "/api/v1/settings/secrets/PLUMBIX_AZURE_DEVOPS_TOKEN/check", "")); c.OK || c.Message == "" || strings.Contains(c.Message, "soon") || strings.Contains(c.Message, "pat") {
+		t.Errorf("check with a bad expiry must not echo any secret value: %+v", c)
 	}
 	rec = a.do(http.MethodPost, "/api/v1/settings/secrets/ANTHROPIC_API_KEY/check", "")
 	o.check("Error", rec)
@@ -216,5 +216,8 @@ func TestRedactSecret(t *testing.T) {
 	}
 	if got := redactSecret("plain", ""); got != "plain" {
 		t.Errorf("empty value changed the text: %q", got)
+	}
+	if got := redactSecrets("expiry soon? token pat1", map[string]string{"A": "soon", "B": "pat1"}); got != "expiry ***? token ***" {
+		t.Errorf("redactSecrets = %q", got)
 	}
 }

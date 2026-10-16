@@ -195,11 +195,10 @@ func (h *settingsHandlers) checkSecret(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), tokenCheckTimeout)
 	defer cancel()
-	value, _ := h.secrets.Get(key)
 	expires, known, err := adapter.TokenExpiry(ctx)
 	switch {
 	case err != nil:
-		writeJSON(w, http.StatusOK, secretCheck{Message: "check failed: " + redactSecret(err.Error(), value)})
+		writeJSON(w, http.StatusOK, secretCheck{Message: "check failed: " + redactSecrets(err.Error(), h.secrets.Values())})
 	case known:
 		writeJSON(w, http.StatusOK, secretCheck{OK: true, ExpiresAt: &expires, Message: "token accepted; expires " + expires.UTC().Format("2006-01-02")})
 	default:
@@ -246,6 +245,15 @@ func redactSecret(text, value string) string {
 		return text
 	}
 	return strings.ReplaceAll(text, value, "***")
+}
+
+// redactSecrets hides every secret value in text, so an adapter's error
+// can never echo one.
+func redactSecrets(text string, values map[string]string) string {
+	for _, v := range values {
+		text = redactSecret(text, v)
+	}
+	return text
 }
 
 func (h *settingsHandlers) fail(w http.ResponseWriter, err error) {
