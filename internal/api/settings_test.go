@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/host"
@@ -219,5 +220,61 @@ func TestRedactSecret(t *testing.T) {
 	}
 	if got := redactSecrets("expiry soon? token pat1", map[string]string{"A": "soon", "B": "pat1"}); got != "expiry ***? token ***" {
 		t.Errorf("redactSecrets = %q", got)
+	}
+}
+
+// TestRepoToken: a repository's own token is set and removed through its
+// settings, hidden from the global secrets list, and checked by fetching
+// that repository's branches with it.
+func TestRepoToken(t *testing.T) {
+	o := loadOpenAPI(t)
+	a := newRunAPI(t)
+	a.repo.Commit("feat", map[string]string{"z.txt": "z\n"}, "z")
+	url := a.repo.ServeHTTP("x-access-token", "repo-token-123")
+	const id = "r_tokenrepo0001"
+	if err := a.db.CreateRepo(ctxBG, change.Repo{ID: id, Host: "github", URL: url, ProtectedBranches: []string{"main"}, MergeStrategy: "squash", CreatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	type rs struct {
+		Guidance       string `json:"guidance"`
+		TokenSet       bool   `json:"token_set"`
+		TokenUpdatedAt string `json:"token_updated_at"`
+	}
+	type check struct {
+		OK      bool   `json:"ok"`
+		Message string `json:"message"`
+	}
+	rec := a.do(http.MethodGet, "/api/v1/repos/"+id+"/settings", "")
+	o.check("RepoSettings", rec)
+	if s := decode[rs](t, rec); s.TokenSet {
+		t.Fatalf("initial = %+v", s)
+	}
+	rec = a.do(http.MethodPost, "/api/v1/repos/"+id+"/token/check", "")
+	o.check("SecretCheck", rec)
+	if c := decode[check](t, rec); c.OK {
+		t.Fatalf("check without a token: %+v", c)
+	}
+	if rec := a.do(http.MethodPut, "/api/v1/repos/"+id+"/token", `{"value": "repo-token-123"}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("set repo token: %d %s", rec.Code, rec.Body.String())
+	}
+	if s := decode[rs](t, a.do(http.MethodGet, "/api/v1/repos/"+id+"/settings", "")); !s.TokenSet || s.TokenUpdatedAt == "" {
+		t.Errorf("after set = %+v", s)
+	}
+	rec = a.do(http.MethodPost, "/api/v1/repos/"+id+"/token/check", "")
+	o.check("SecretCheck", rec)
+	if c := decode[check](t, rec); !c.OK || !strings.Contains(c.Message, "2 branches") || strings.Contains(c.Message, "repo-token-123") {
+		t.Errorf("check with the repo token: %+v", c)
+	}
+	if body := a.do(http.MethodGet, "/api/v1/settings", "").Body.String(); strings.Contains(body, "PLUMBIX_REPO_TOKEN") || strings.Contains(body, "repo-token-123") {
+		t.Errorf("repository tokens leak into the global list: %s", body)
+	}
+	if rec := a.do(http.MethodDelete, "/api/v1/repos/"+id+"/token", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("remove: %d", rec.Code)
+	}
+	if s := decode[rs](t, a.do(http.MethodGet, "/api/v1/repos/"+id+"/settings", "")); s.TokenSet {
+		t.Errorf("after remove = %+v", s)
+	}
+	if rec := a.do(http.MethodPut, "/api/v1/repos/r_nope/token", `{"value": "x"}`); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown repo: %d", rec.Code)
 	}
 }
