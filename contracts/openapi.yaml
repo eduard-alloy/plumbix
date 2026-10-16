@@ -1032,10 +1032,27 @@ components:
       description: The combined outcome of an iteration's validators.
       type: object
       additionalProperties: false
-      required: [state, criteria, findings, risks, reasons]
+      required: [state, criteria, findings, risks, reasons, validators]
       properties:
         state:
           $ref: "#/components/schemas/ChangeState"
+        validators:
+          description: What each validator decided, in pipeline order. A validator that asked for fixes still ran fine; a missing outcome means it produced no verdict and error says why.
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [name]
+            properties:
+              name:
+                type: string
+              outcome:
+                type: string
+                enum: [approve, fix, reject]
+              summary:
+                type: string
+              error:
+                type: string
         criteria:
           type: array
           items:

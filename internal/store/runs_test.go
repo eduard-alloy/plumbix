@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -42,7 +43,8 @@ func TestRunLifecycle(t *testing.T) {
 	}
 
 	result := &validation.Result{State: change.FixRequested, Reasons: []string{}, Criteria: []validation.CombinedCriterion{{ID: "AC-1", Text: "a", Status: validation.Unmet}},
-		Findings: []validation.SourcedFinding{{Validator: "validate", Finding: validation.Finding{Severity: "major", Message: "m"}}}, Risks: []validation.SourcedRisk{}}
+		Findings: []validation.SourcedFinding{{Validator: "validate", Finding: validation.Finding{Severity: "major", Message: "m"}}}, Risks: []validation.SourcedRisk{},
+		Validators: []validation.ValidatorOutcome{{Name: "validate", Outcome: validation.Fix, Summary: "s"}}}
 	steps := []run.Step{{Name: "test", Status: "failed", ExitCode: 1, DurationMS: 1200}, {Name: "validate", Validator: true, Status: "succeeded", DurationMS: 300}}
 	end := t0.Add(time.Minute)
 	if err := db.FinishRun(ctx, "run_1", run.Finish{Status: run.Finished, Outcome: change.FixRequested, Result: result, Steps: steps, At: end}); err != nil {
@@ -82,5 +84,35 @@ func TestIterationsAndList(t *testing.T) {
 	}
 	if _, err := db.GetRun(ctx, "run_none"); !errors.Is(err, change.ErrNotFound) {
 		t.Errorf("missing run: %v", err)
+	}
+}
+
+// TestOldResultsGetAnEmptyValidatorsList: results stored before the field
+// existed come back with an empty list, so the contract holds for them.
+func TestOldResultsGetAnEmptyValidatorsList(t *testing.T) {
+	db := openDB(t)
+	ctx := context.Background()
+	now := time.Now()
+	if err := db.CreateRepo(ctx, change.Repo{ID: "r_1", Host: "git", URL: "/tmp/r.git", CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateChange(ctx, change.Change{ID: "c_1", RepoID: "r_1", SourceBranch: "f", TargetBranch: "main", Title: "t", Intent: "i", AcceptanceCriteria: []change.Criterion{{ID: "AC-1", Text: "x"}}, State: change.Open, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateRun(ctx, run.Run{ID: "run_1", RepoID: "r_1", ChangeID: "c_1", Branch: "f", Iteration: 1, Status: run.Running, StartedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.FinishRun(ctx, "run_1", run.Finish{Status: run.Finished, Outcome: change.Approved, Result: &validation.Result{State: change.Approved}, At: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.ExecContext(ctx, `UPDATE runs SET result = ? WHERE id = ?`, `{"state":"approved","criteria":[],"findings":[],"risks":[],"reasons":[]}`, "run_1"); err != nil {
+		t.Fatal(err)
+	}
+	r, err := db.GetRun(ctx, "run_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Result == nil || r.Result.Validators == nil || len(r.Result.Validators) != 0 {
+		t.Fatalf("validators = %#v, want an empty list", r.Result)
 	}
 }

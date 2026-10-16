@@ -6,6 +6,7 @@ import type { Diff } from '../model'
 import { useRoute } from '../router'
 import { useNow, useStore } from '../store'
 import { StatePill, type PillStatus } from '../ui/StatePill'
+import type { StepVM as StepView } from '../vm/change'
 import { LogPanel, type LogTarget } from '../ui/LogPanel'
 import { DiffView, type Highlight } from '../ui/DiffView'
 import { changeView, refusalNotice, type NoticeVM, type StepVM } from '../vm/change'
@@ -189,7 +190,10 @@ export function ChangePage({ id }: { id: string }) {
         <StatePill status={s.status as PillStatus} mode="icon" />
         <span className="name">{s.name}</span>
         <span>{s.validator && <span className="tag">validator</span>}</span>
-        <StatePill status={s.status as PillStatus} mode="text" />
+        <span className="status-cell">
+          <StatePill status={s.status as PillStatus} mode="text" />
+          <Decision step={s} />
+        </span>
         <span className="mono dim">{s.exit}</span>
         <span className="mono dim2 right">{s.dur}</span>
         <span className="log">{s.hasLog ? 'Log' : ''}</span>
@@ -409,9 +413,10 @@ export function ChangePage({ id }: { id: string }) {
                 <div className="label">{v.verdict.stepsLabel}</div>
                 <div className="steps">
                   {v.verdict.steps.map((s) => (
-                    <button key={s.name} className="vstep" disabled={!s.hasLog} onClick={() => openLog(latestRun, s)}>
+                    <button key={s.name} className="vstep" disabled={!s.hasLog} onClick={() => openLog(latestRun, s)} title={s.summary}>
                       <StatePill status={s.status as PillStatus} mode="icon" />
                       <span className="name">{s.name}</span>
+                      <Decision step={s} />
                       <span className="dur">{s.dur}</span>
                     </button>
                   ))}
@@ -551,4 +556,11 @@ export function ChangePage({ id }: { id: string }) {
       {log && <LogPanel target={log} onClose={() => setLog(null)} />}
     </>
   )
+}
+
+/** Decision shows what a validator decided, apart from how its step ran. */
+function Decision({ step }: { step: StepView }) {
+  if (!step.outcome) return null
+  const status: PillStatus = step.outcome === 'approve' ? 'approved' : step.outcome === 'fix' ? 'fix_requested' : step.outcome === 'reject' ? 'rejected' : 'errored'
+  return <StatePill status={status} label={step.outcome === 'none' ? 'No verdict' : undefined} />
 }

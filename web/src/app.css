@@ -302,3 +302,7 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 .ds-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
 .ds-box { border: 1px solid var(--border); border-radius: var(--r-lg); margin-bottom: 10px; overflow: hidden; }
 .ds-box.filters { border-bottom: 1px solid var(--border); }
+
+/* Validator decisions beside run status */
+.status-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.vstep { grid-template-columns: 14px minmax(0, 1fr) auto auto; }

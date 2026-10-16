@@ -20,11 +20,21 @@ type ValidatorResult struct {
 
 // Result is the combined outcome of an iteration's validators.
 type Result struct {
-	State    change.State        `json:"state"`
-	Criteria []CombinedCriterion `json:"criteria"`
-	Findings []SourcedFinding    `json:"findings"`
-	Risks    []SourcedRisk       `json:"risks"`
-	Reasons  []string            `json:"reasons"` // why the change was rejected or needs a human
+	State      change.State        `json:"state"`
+	Criteria   []CombinedCriterion `json:"criteria"`
+	Findings   []SourcedFinding    `json:"findings"`
+	Risks      []SourcedRisk       `json:"risks"`
+	Reasons    []string            `json:"reasons"`    // why the change was rejected or needs a human
+	Validators []ValidatorOutcome  `json:"validators"` // what each validator decided, in pipeline order
+}
+
+// ValidatorOutcome is one validator's own decision, kept apart from how
+// its step ran: a validator that asks for fixes has still run fine.
+type ValidatorOutcome struct {
+	Name    string  `json:"name"`
+	Outcome Outcome `json:"outcome,omitempty"` // empty when the validator produced no verdict
+	Summary string  `json:"summary,omitempty"`
+	Error   string  `json:"error,omitempty"` // why there is no verdict
 }
 
 // CombinedCriterion is one criterion's status across validators.
@@ -59,7 +69,7 @@ type SourcedRisk struct {
 // required lists the validators the target branch's pipeline demands, and
 // changedFiles are the files the change touches.
 func Combine(criteria []change.Criterion, results []ValidatorResult, required, changedFiles []string) Result {
-	r := Result{Criteria: []CombinedCriterion{}, Findings: []SourcedFinding{}, Risks: []SourcedRisk{}, Reasons: []string{}}
+	r := Result{Criteria: []CombinedCriterion{}, Findings: []SourcedFinding{}, Risks: []SourcedRisk{}, Reasons: []string{}, Validators: []ValidatorOutcome{}}
 	byID := map[string]*CombinedCriterion{}
 	for _, c := range criteria {
 		r.Criteria = append(r.Criteria, CombinedCriterion{ID: c.ID, Text: c.Text, Status: Unknown})
@@ -74,10 +84,12 @@ func Combine(criteria []change.Criterion, results []ValidatorResult, required, c
 	for _, res := range results {
 		reported[res.Name] = true
 		if res.Err != nil || res.Verdict == nil {
+			r.Validators = append(r.Validators, ValidatorOutcome{Name: res.Name, Error: fmt.Sprint(res.Err)})
 			human = append(human, fmt.Sprintf("validator %s produced no valid verdict: %v", res.Name, res.Err))
 			continue
 		}
 		v := res.Verdict
+		r.Validators = append(r.Validators, ValidatorOutcome{Name: res.Name, Outcome: v.Outcome, Summary: v.Summary})
 		switch v.Outcome {
 		case Reject:
 			rejected = true

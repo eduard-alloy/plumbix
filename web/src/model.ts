@@ -108,12 +108,22 @@ export interface Risk {
   human_required: boolean
 }
 
+export type ValidatorDecision = 'approve' | 'fix' | 'reject'
+
+export interface ValidatorOutcome {
+  name: string
+  outcome?: ValidatorDecision
+  summary?: string
+  error?: string
+}
+
 export interface Result {
   state: ChangeState
   criteria: CombinedCriterion[]
   findings: Finding[]
   risks: Risk[]
   reasons: string[]
+  validators?: ValidatorOutcome[]
 }
 
 export interface Run {

@@ -191,6 +191,9 @@ func scanRun(s scanner) (run.Run, error) {
 		if err := json.Unmarshal([]byte(result), r.Result); err != nil {
 			return run.Run{}, fmt.Errorf("run %s: result: %w", r.ID, err)
 		}
+		if r.Result.Validators == nil { // results stored before the field existed
+			r.Result.Validators = []validation.ValidatorOutcome{}
+		}
 	}
 	var err error
 	if r.StartedAt, err = parseTime(started); err != nil {

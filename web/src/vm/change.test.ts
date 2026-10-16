@@ -37,6 +37,7 @@ describe('changeView for an approved change', () => {
       record: undefined,
     })
     expect(v.verdict.steps.map((s) => s.name)).toEqual(['validate', 'ai-review'])
+    expect(v.verdict.steps.map((s) => s.outcome)).toEqual(['approve', 'approve'])
   })
 
   it('groups findings by severity with their links, and lists risks', () => {
@@ -72,6 +73,12 @@ describe('changeView for other states', () => {
   it('fix_requested: blockers in the sentence, no primary action', () => {
     const v = changeView(fixRequested, fixRequestedRuns, plumbix, undefined, NOW)
     expect(v.verdict.sentence).toBe('2 blockers. Sent back to mira; a new push validates again.')
+    expect(v.verdict.steps.map((s) => [s.name, s.outcome])).toEqual([
+      ['validate', 'fix'],
+      ['ai-review', 'fix'],
+    ])
+    expect(v.evidence.steps.find((s) => s.name === 'ai-review')?.outcome).toBe('fix')
+    expect(v.evidence.steps.find((s) => s.name === 'test')?.outcome).toBeUndefined()
     expect(v.findings.map((g) => [g.label, g.items.length])).toEqual([
       ['Blockers', 2],
       ['Minor', 1],
@@ -102,6 +109,7 @@ describe('changeView for other states', () => {
     expect(v.verdict.reasons).toEqual(['step build could not run: image golang:1.27 not found'])
     expect(v.verdict.counts).toBe('')
     expect(v.criteria[0]).toMatchObject({ status: 'unknown', reason: 'Not judged: step build could not run: image golang:1.27 not found' })
+    expect(v.evidence.steps[0].outcome).toBeUndefined()
     expect(v.critCount).toBe('0 of 1 met')
     expect(v.iterations[0]).toMatchObject({ status: 'errored', headline: 'step build could not run: image golang:1.27 not found' })
     expect(v.evidence.error).toBe('step build could not run: image golang:1.27 not found')
