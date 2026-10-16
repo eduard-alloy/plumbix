@@ -15,6 +15,7 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Plain shell execution without container isolation is not allowed. Agent-written code is untrusted. (Q04)
 
 ## Integration
+- Azure DevOps does not report a personal access token's expiry to the token's holder (its token lifecycle API needs a Microsoft Entra ID sign-in). The expiry warning relies on `PLUMBIX_AZURE_DEVOPS_TOKEN_EXPIRES` in the secrets file; without it there is no warning. Azure DevOps ignores the basic-auth user name when the password is a token. (WU-009)
 - Plain git remotes (host `git`): absolute paths, `file://`, `ssh://`, scp-style. No credentials; SSH runs in batch mode unless the user set their own SSH command. Local remotes should be bare repositories. (WU-015)
 - GitHub and Azure DevOps are the v1 hosts. Both sit behind one narrow host boundary designed from these two real implementations. (Q03, revised)
 - Pushes are detected by polling in v1, because a local-only Plumbix is unreachable for service hooks. (Q12)

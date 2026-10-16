@@ -218,7 +218,7 @@ type Host interface {
 }
 ```
 
-Branch heads come from `git ls-remote`, fetches and pushes from `git` with credentials passed through `GIT_ASKPASS`. This works the same on both hosts. Each adapter only knows its URL format, its credential style and how to read token expiry. Status reporting back to the host (GitHub commit statuses, Azure DevOps PR statuses) is a later feature.
+Branch heads come from `git ls-remote`, fetches and pushes from `git` with credentials passed through `GIT_ASKPASS`. This works the same on both hosts. Each adapter only knows its URL format, its credential style and how to read token expiry. GitHub reports expiry on every authenticated API call; Azure DevOps reports none, so its adapter reads the date the user recorded in the secrets file. Status reporting back to the host (GitHub commit statuses, Azure DevOps PR statuses) is a later feature.
 
 ## 5. Main flows
 

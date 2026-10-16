@@ -89,3 +89,46 @@ func TestPlainGit(t *testing.T) {
 		t.Errorf("expiry: ok=%v err=%v", ok, err)
 	}
 }
+
+var azRepo = change.Repo{ID: "r_2", Host: change.HostAzureDevOps, URL: "https://dev.azure.com/org/proj/_git/app"}
+
+func TestAzureDevOpsAuth(t *testing.T) {
+	a, ok := (&AzureDevOps{Token: "tok"}).Auth(azRepo)
+	if !ok || a.User == "" || a.Token != "tok" {
+		t.Errorf("auth = %+v, %v", a, ok)
+	}
+	if _, ok := (&AzureDevOps{}).Auth(azRepo); ok {
+		t.Error("auth without a token should be anonymous")
+	}
+}
+
+func TestAzureDevOpsTokenExpiry(t *testing.T) {
+	exp, ok, err := (&AzureDevOps{Token: "tok", Expires: "2026-12-31"}).TokenExpiry(context.Background())
+	if err != nil || !ok || !exp.Equal(time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expiry = %v, %v, %v", exp, ok, err)
+	}
+	if _, ok, err := (&AzureDevOps{Token: "tok"}).TokenExpiry(context.Background()); ok || err != nil {
+		t.Errorf("no date: ok=%v err=%v", ok, err)
+	}
+	if _, ok, err := (&AzureDevOps{Expires: "2026-12-31"}).TokenExpiry(context.Background()); ok || err != nil {
+		t.Errorf("no token: ok=%v err=%v", ok, err)
+	}
+	_, _, err = (&AzureDevOps{Token: "tok", Expires: "31/12/2026"}).TokenExpiry(context.Background())
+	if err == nil || !strings.Contains(err.Error(), AzureDevOpsExpiryKey) || strings.Contains(err.Error(), "tok") {
+		t.Errorf("bad date: err = %v", err)
+	}
+}
+
+func TestAzureDevOpsRegistry(t *testing.T) {
+	r := FromSecrets(map[string]string{AzureDevOpsTokenKey: "tok", AzureDevOpsExpiryKey: "2027-01-15"})
+	h, err := r.For(azRepo)
+	if err != nil || h.Kind() != change.HostAzureDevOps {
+		t.Fatalf("host = %v, %v", h, err)
+	}
+	if a, ok := h.Auth(azRepo); !ok || a.Token != "tok" {
+		t.Error("token from secrets not used")
+	}
+	if exp, ok, err := h.TokenExpiry(context.Background()); err != nil || !ok || exp.Year() != 2027 {
+		t.Errorf("expiry from secrets: %v, %v, %v", exp, ok, err)
+	}
+}

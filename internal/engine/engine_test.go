@@ -455,22 +455,29 @@ func TestRunBranchErrors(t *testing.T) {
 }
 
 func TestFetchUsesHostCredentials(t *testing.T) {
-	const token = "ghp_engine_secret_42"
+	const token = "host_engine_secret_42"
 	for name, tc := range map[string]struct {
+		kind    string
+		adapter func(token string) host.Host
 		token   string
 		outcome change.State
 	}{
-		"right token": {token, change.Approved},
-		"wrong token": {"nope", change.NeedsHuman},
+		"github right token":      {change.HostGitHub, func(t string) host.Host { return &host.GitHub{Token: t} }, token, change.Approved},
+		"github wrong token":      {change.HostGitHub, func(t string) host.Host { return &host.GitHub{Token: t} }, "nope", change.NeedsHuman},
+		"azuredevops right token": {change.HostAzureDevOps, func(t string) host.Host { return &host.AzureDevOps{Token: t} }, token, change.Approved},
+		"azuredevops wrong token": {change.HostAzureDevOps, func(t string) host.Host { return &host.AzureDevOps{Token: t} }, "nope", change.NeedsHuman},
 	} {
 		t.Run(name, func(t *testing.T) {
-			h := newHarness(t, Config{Hosts: host.Registry{change.HostGitHub: &host.GitHub{Token: tc.token}}})
+			adapter := tc.adapter(tc.token)
+			h := newHarness(t, Config{Hosts: host.Registry{tc.kind: adapter}})
 			h.repo.Commit("feat", map[string]string{"a.go": "a\n"}, "a")
-			url := h.repo.ServeHTTP("x-access-token", token)
-			if err := h.db.CreateRepo(ctx, change.Repo{ID: "r_httprepo0001", Host: change.HostGitHub, URL: url, ProtectedBranches: []string{"main"}, MergeStrategy: "squash", CreatedAt: time.Now()}); err != nil {
+			repo := change.Repo{ID: "r_httprepo0001", Host: tc.kind, ProtectedBranches: []string{"main"}, MergeStrategy: "squash", CreatedAt: time.Now()}
+			auth, _ := adapter.Auth(repo)
+			repo.URL = h.repo.ServeHTTP(auth.User, token)
+			if err := h.db.CreateRepo(ctx, repo); err != nil {
 				t.Fatal(err)
 			}
-			h.repoID = "r_httprepo0001"
+			h.repoID = repo.ID
 			r := h.validate(h.submit("feat").ID)
 			if r.Outcome != tc.outcome {
 				t.Fatalf("outcome = %s (%s)", r.Outcome, r.Error)

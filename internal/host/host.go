@@ -38,8 +38,9 @@ func (r Registry) For(repo change.Repo) (Host, error) {
 // FromSecrets builds the registry from the secrets file's values.
 func FromSecrets(secrets map[string]string) Registry {
 	return Registry{
-		change.HostGitHub: &GitHub{Token: secrets[GitHubTokenKey]},
-		change.HostGit:    Plain{},
+		change.HostGitHub:      &GitHub{Token: secrets[GitHubTokenKey]},
+		change.HostAzureDevOps: &AzureDevOps{Token: secrets[AzureDevOpsTokenKey], Expires: secrets[AzureDevOpsExpiryKey]},
+		change.HostGit:         Plain{},
 	}
 }
 
