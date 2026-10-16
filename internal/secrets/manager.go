@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Manager owns a secrets file: it holds the current values and rewrites the
@@ -17,19 +18,48 @@ type Manager struct {
 	path     string
 	mu       sync.RWMutex
 	values   map[string]string
+	loaded   time.Time // mtime of the file the values came from
 	watchers []func()
 }
 
 // Open loads path, or starts empty when it does not exist yet. A file that
 // others can read is refused, as in Load.
 func Open(path string) (*Manager, error) {
-	values, err := Load(path)
-	if errors.Is(err, os.ErrNotExist) {
-		values = map[string]string{}
-	} else if err != nil {
+	m := &Manager{path: path, values: map[string]string{}}
+	if err := m.reload(); err != nil {
 		return nil, err
 	}
-	return &Manager{path: path, values: values}, nil
+	return m, nil
+}
+
+// reload reads the file when it changed since the last read. Callers hold
+// m.mu for writing. A missing file means no secrets.
+func (m *Manager) reload() error {
+	info, err := os.Stat(m.path)
+	if errors.Is(err, os.ErrNotExist) {
+		m.values, m.loaded = map[string]string{}, time.Time{}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("secrets file: %w", err)
+	}
+	if info.ModTime().Equal(m.loaded) {
+		return nil
+	}
+	values, err := Load(m.path)
+	if err != nil {
+		return err
+	}
+	m.values, m.loaded = values, info.ModTime()
+	return nil
+}
+
+// refresh picks up a file edited by hand while the server runs. Errors
+// keep the last good values.
+func (m *Manager) refresh() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_ = m.reload()
 }
 
 // Path is the file the manager writes.
@@ -37,6 +67,7 @@ func (m *Manager) Path() string { return m.path }
 
 // Values returns a copy of every secret.
 func (m *Manager) Values() map[string]string {
+	m.refresh()
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	out := make(map[string]string, len(m.values))
@@ -48,6 +79,7 @@ func (m *Manager) Values() map[string]string {
 
 // Get returns one secret.
 func (m *Manager) Get(key string) (string, bool) {
+	m.refresh()
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	v, ok := m.values[key]
@@ -56,6 +88,7 @@ func (m *Manager) Get(key string) (string, bool) {
 
 // Keys returns the set keys, sorted.
 func (m *Manager) Keys() []string {
+	m.refresh()
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	keys := make([]string, 0, len(m.values))
@@ -90,6 +123,7 @@ func (m *Manager) Set(key, value string) error {
 		return fmt.Errorf("secret %s: %v", key, err)
 	}
 	m.mu.Lock()
+	_ = m.reload()
 	if err := m.rewrite(key, key+"="+quoted); err != nil {
 		m.mu.Unlock()
 		return err
@@ -103,6 +137,7 @@ func (m *Manager) Set(key, value string) error {
 // Unset removes key from the file. A key that is not set is left alone.
 func (m *Manager) Unset(key string) error {
 	m.mu.Lock()
+	_ = m.reload()
 	if _, ok := m.values[key]; !ok {
 		m.mu.Unlock()
 		return nil
@@ -169,6 +204,9 @@ func (m *Manager) rewrite(key, line string) error {
 	}
 	if err := os.Rename(tmp, m.path); err != nil {
 		return fmt.Errorf("replace secrets file: %w", err)
+	}
+	if info, err := os.Stat(m.path); err == nil {
+		m.loaded = info.ModTime()
 	}
 	return nil
 }

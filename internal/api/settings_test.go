@@ -209,3 +209,12 @@ func TestSettingsRoutesAbsentWithoutDeps(t *testing.T) {
 		t.Errorf("without Settings the route must not exist: %d", rec.Code)
 	}
 }
+
+func TestRedactSecret(t *testing.T) {
+	if got := redactSecret("401 for token ghp_abc at github", "ghp_abc"); got != "401 for token *** at github" {
+		t.Errorf("redact = %q", got)
+	}
+	if got := redactSecret("plain", ""); got != "plain" {
+		t.Errorf("empty value changed the text: %q", got)
+	}
+}

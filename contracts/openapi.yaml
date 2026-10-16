@@ -120,7 +120,7 @@ paths:
       operationId: getRepoSettings
       summary: One repository's review guidance.
       parameters:
-        - $ref: "#/components/parameters/ChangeID"
+        - $ref: "#/components/parameters/RepoID"
       responses:
         "200":
           description: The repository's settings.
@@ -136,7 +136,7 @@ paths:
       operationId: updateRepoSettings
       summary: Set one repository's review guidance; empty clears it.
       parameters:
-        - $ref: "#/components/parameters/ChangeID"
+        - $ref: "#/components/parameters/RepoID"
       requestBody:
         required: true
         content:
@@ -711,6 +711,12 @@ components:
         state-changing ones an Origin of http://<that host>; otherwise 401 or 403.
   parameters:
     ChangeID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    RepoID:
       name: id
       in: path
       required: true

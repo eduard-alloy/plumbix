@@ -3,7 +3,7 @@
 Newest first. Each entry cites its source in DISCOVERY.md.
 
 ## Security
-- Secrets set through the API are written to the configured secrets file by `secrets.Manager` (atomic rename, mode 0600, other lines and comments kept) and are never returned, logged or echoed in errors; only set/unset and the time of the last change through Plumbix are shown. Handlers that receive a secret log the key, never the body. (WU-018, A18)
+- Secrets set through the API are written to the configured secrets file by `secrets.Manager` (atomic rename, mode 0600, other lines and comments kept) and are never returned, logged or echoed in errors; only set/unset and the time of the last change through Plumbix are shown. Handlers that receive a secret log the key, never the body; the token check redacts the value from any adapter error. The manager re-reads the file when its mtime changes, so hand edits while the server runs are seen on the next use and kept by the next write. (WU-018, A18)
 - Browser sign-in (A17): login links and session cookies are stored as SHA-256 hashes only; links live 10 minutes and work once, sessions 30 days. Every cookie request must carry the listen address as `Host`, and state-changing ones an `Origin` of `http://<listen>`; the bearer token is exempt from both. The sign-in exchange is a POST, never a GET, so prefetchers cannot consume a link. (WU-016)
 - The web app is served outside `/api/` with a same-origin Content-Security-Policy and no inline scripts; `/api/` keeps its protection. The container probe also checks `GET /api/v1/changes`. (WU-016)
 - On Docker Desktop, step containers reach the host's loopback through `host.docker.internal`, `gateway.docker.internal` and `192.168.65.254`. Loopback binding alone never protects the API. (WU-003)

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
@@ -194,10 +195,11 @@ func (h *settingsHandlers) checkSecret(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), tokenCheckTimeout)
 	defer cancel()
+	value, _ := h.secrets.Get(key)
 	expires, known, err := adapter.TokenExpiry(ctx)
 	switch {
 	case err != nil:
-		writeJSON(w, http.StatusOK, secretCheck{Message: "check failed: " + err.Error()})
+		writeJSON(w, http.StatusOK, secretCheck{Message: "check failed: " + redactSecret(err.Error(), value)})
 	case known:
 		writeJSON(w, http.StatusOK, secretCheck{OK: true, ExpiresAt: &expires, Message: "token accepted; expires " + expires.UTC().Format("2006-01-02")})
 	default:
@@ -236,6 +238,14 @@ func (h *settingsHandlers) updateRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.getRepo(w, r)
+}
+
+// redactSecret hides value wherever it appears in text.
+func redactSecret(text, value string) string {
+	if value == "" {
+		return text
+	}
+	return strings.ReplaceAll(text, value, "***")
 }
 
 func (h *settingsHandlers) fail(w http.ResponseWriter, err error) {

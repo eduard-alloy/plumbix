@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestManagerSetsReplacesAndRemovesKeepingTheRest(t *testing.T) {
@@ -119,5 +120,38 @@ func TestManagerRefusesLoosePermissionsOnOpen(t *testing.T) {
 	}
 	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "chmod 600") {
 		t.Fatalf("Open with 0644: %v", err)
+	}
+}
+
+// TestManagerSeesHandEdits: a file edited while the server runs is read
+// again on the next use, so hand edits and browser edits coexist.
+func TestManagerSeesHandEdits(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(path, []byte("A=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := m.Values(); v["A"] != "1" {
+		t.Fatalf("values = %v", v)
+	}
+	time.Sleep(20 * time.Millisecond) // a distinct mtime on coarse filesystems
+	if err := os.WriteFile(path, []byte("A=2\nB=3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(path, future, future); err != nil {
+		t.Fatal(err)
+	}
+	if v := m.Values(); v["A"] != "2" || v["B"] != "3" {
+		t.Fatalf("values after a hand edit = %v", v)
+	}
+	if err := m.Set("C", "4"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := Load(path); got["A"] != "2" || got["B"] != "3" || got["C"] != "4" {
+		t.Fatalf("file after Set keeps the hand edit: %v", got)
 	}
 }
