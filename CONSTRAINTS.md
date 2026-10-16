@@ -3,6 +3,7 @@
 Newest first. Each entry cites its source in DISCOVERY.md.
 
 ## Security
+- Secrets set through the API are written to the configured secrets file by `secrets.Manager` (atomic rename, mode 0600, other lines and comments kept) and are never returned, logged or echoed in errors; only set/unset and the time of the last change through Plumbix are shown. Handlers that receive a secret log the key, never the body. (WU-018, A18)
 - Browser sign-in (A17): login links and session cookies are stored as SHA-256 hashes only; links live 10 minutes and work once, sessions 30 days. Every cookie request must carry the listen address as `Host`, and state-changing ones an `Origin` of `http://<listen>`; the bearer token is exempt from both. The sign-in exchange is a POST, never a GET, so prefetchers cannot consume a link. (WU-016)
 - The web app is served outside `/api/` with a same-origin Content-Security-Policy and no inline scripts; `/api/` keeps its protection. The container probe also checks `GET /api/v1/changes`. (WU-016)
 - On Docker Desktop, step containers reach the host's loopback through `host.docker.internal`, `gateway.docker.internal` and `192.168.65.254`. Loopback binding alone never protects the API. (WU-003)
@@ -24,6 +25,8 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Neither host can enforce merges in v1 because the PAT acts as the user. Plumbix flags bypass commits instead. (Q13)
 
 ## Architecture
+- Pipeline steps may not set `PLUMBIX_*` environment variables themselves (the parser reserves them), so the AI model reaches validator steps only through the settings (`scheduler.StepSetup.Env`, filled only for names the step or its secrets did not set) or through a secret of that name. Operator guidance is trusted by validators because it comes from the settings, never from the repository. (WU-018, A19)
+- The engine and the poller read secrets and host adapters through `host.Source` / `Config.SecretSource` on every use, never from a copy taken at start. New code that needs a token must do the same. (WU-018)
 - Events are appended by the store inside the transaction of the write they describe. A new store write that changes what a client sees must emit one; services never emit, the engine appends only `step.finished`. `TestLifecycleEmitsEvents` keeps `events.Types` and `contracts/events.schema.json` the same set and checks every emitted event against the schema. (WU-014, A16)
 - `Hub.Publish` never blocks a writer: a subscriber more than `events.SubscriberBuffer` events behind is cut off and replays from the store. The stream handler subscribes before replaying and skips ids already sent, so clients see no gap and no duplicate. Open streams end only when the hub closes, so the server closes it when its context ends. Events are never pruned in v1. (WU-014)
 - A change merges only when the source branch still points at the validated commit and the target branch equals the run's base (the source contains the target). The target then receives the validated tree unchanged; Plumbix never computes a merge. (WU-010, A15)

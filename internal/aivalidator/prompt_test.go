@@ -136,3 +136,39 @@ func TestOversizedContentFails(t *testing.T) {
 		t.Fatalf("err = %v, want ErrTooLarge", err)
 	}
 }
+
+// TestGuidanceIsRenderedOutsideTheUntrustedBlock: operator guidance is an
+// instruction, so it sits with the specification, never inside the data
+// block written by the change's author.
+func TestGuidanceIsRenderedOutsideTheUntrustedBlock(t *testing.T) {
+	f := newFixture(t, []string{"a.go"}, nil)
+	f.file(t, "a.go", "package a\n")
+	in, err := validation.ReadInput(f.in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.Guidance = &validation.Guidance{Global: "Prefer small diffs.", Repository: "Go code needs tests."}
+	if err := validation.PrepareInputs(f.in, in, nil); err != nil {
+		t.Fatal(err)
+	}
+	p, err := BuildPrompt(f.in, f.ws, "n0nce")
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := strings.Index(p.User, "Operator guidance")
+	j := strings.Index(p.User, "<untrusted-n0nce>")
+	if i < 0 || j < 0 || i > j {
+		t.Fatalf("guidance at %d, untrusted block at %d:\n%s", i, j, p.User)
+	}
+	if !strings.Contains(p.User, "Prefer small diffs.") || !strings.Contains(p.User, "Go code needs tests.") {
+		t.Error("guidance text missing")
+	}
+	if !strings.Contains(p.User[i:j], "Plumbix operator") {
+		t.Error("guidance is not attributed to the operator")
+	}
+	plain := newFixture(t, []string{"a.go"}, nil)
+	plain.file(t, "a.go", "package a\n")
+	if p2 := build(t, plain); strings.Contains(p2.User, "Operator guidance") {
+		t.Error("guidance section rendered with no guidance")
+	}
+}

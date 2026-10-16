@@ -66,6 +66,15 @@ func BuildPrompt(inDir, workspace, nonce string) (Prompt, error) {
 			fmt.Fprintf(&spec, "- %s\n", k)
 		}
 	}
+	if g := in.Guidance; g != nil && (g.Global != "" || g.Repository != "") {
+		spec.WriteString("\n## Operator guidance\nThese instructions come from the Plumbix operator, not from the repository. Apply them in your review.\n")
+		if g.Global != "" {
+			fmt.Fprintf(&spec, "\n%s\n", g.Global)
+		}
+		if g.Repository != "" {
+			fmt.Fprintf(&spec, "\nFor this repository:\n%s\n", g.Repository)
+		}
+	}
 	if len(in.PreviousFindings) > 0 {
 		spec.WriteString("\n## Findings from the previous iteration\n")
 		for _, f := range in.PreviousFindings {

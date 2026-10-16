@@ -23,6 +23,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/runner"
 	"github.com/eduard-alloy/plumbix/internal/scheduler"
+	"github.com/eduard-alloy/plumbix/internal/settings"
 	"github.com/eduard-alloy/plumbix/internal/validation"
 )
 
@@ -62,8 +63,16 @@ type Config struct {
 	CPUs           float64
 	MemoryMB       int
 	MaxFixRounds   int
-	Secrets        map[string]string
-	Hosts          host.Registry // credentials per git host; nil fetches anonymously
+	Secrets        map[string]string        // fixed secrets; SecretSource wins when set
+	SecretSource   func() map[string]string // current secrets, read on every run
+	Hosts          host.Source              // credentials per git host; nil fetches anonymously
+	Settings       Settings                 // guidance and model for validator steps; nil for none
+}
+
+// Settings is what the engine reads from the operator's settings.
+type Settings interface {
+	Guidance(ctx context.Context, repoID string) (settings.Guidance, error)
+	AIModel(ctx context.Context) (string, error)
 }
 
 // Engine runs validations in the background.
@@ -211,7 +220,7 @@ func (e *Engine) mirror(repo change.Repo) (*gitops.Mirror, error) {
 	if e.cfg.Hosts == nil {
 		return m, nil
 	}
-	h, err := e.cfg.Hosts.For(repo)
+	h, err := e.cfg.Hosts.Hosts().For(repo)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +305,7 @@ func (e *Engine) readPipeline(ctx context.Context, m *gitops.Mirror, commit, bra
 func (e *Engine) schedulerOptions(r run.Run, workspace string, logs map[string]*os.File) scheduler.Options {
 	return scheduler.Options{
 		MaxParallel: e.cfg.MaxParallel, DefaultTimeout: e.cfg.DefaultTimeout,
-		Workspace: workspace, CPUs: e.cfg.CPUs, MemoryMB: e.cfg.MemoryMB, Secrets: e.cfg.Secrets,
+		Workspace: workspace, CPUs: e.cfg.CPUs, MemoryMB: e.cfg.MemoryMB, Secrets: e.secrets(),
 		Log: func(step string) io.Writer {
 			f, err := e.openLog(r.ID, step)
 			if err != nil {
@@ -308,6 +317,14 @@ func (e *Engine) schedulerOptions(r run.Run, workspace string, logs map[string]*
 		},
 		Finished: func(i int, st pipeline.Step, res scheduler.StepResult) { e.recordStep(r, i, st, res) },
 	}
+}
+
+// secrets returns the current secret values.
+func (e *Engine) secrets() map[string]string {
+	if e.cfg.SecretSource != nil {
+		return e.cfg.SecretSource()
+	}
+	return e.cfg.Secrets
 }
 
 // recordStep stores a finished step on its run and appends a step.finished
@@ -517,6 +534,23 @@ func (e *Engine) setupValidator(r run.Run, p prepared, work string, st pipeline.
 		evidence = append(evidence, validation.StepEvidence{Step: f.Name, Status: string(f.Status), ExitCode: f.ExitCode, DurationMS: f.Duration.Milliseconds(), Log: log})
 	}
 	input := validation.NewInput(c, p.base, p.head, p.changed, r.Iteration, p.previous)
+	setup := scheduler.StepSetup{WorkspaceReadOnly: true}
+	if e.cfg.Settings != nil {
+		g, err := e.cfg.Settings.Guidance(context.Background(), r.RepoID)
+		if err != nil {
+			return scheduler.StepSetup{}, fmt.Errorf("read guidance: %w", err)
+		}
+		if g.Global != "" || g.Repository != "" {
+			input.Guidance = &validation.Guidance{Global: g.Global, Repository: g.Repository}
+		}
+		model, err := e.cfg.Settings.AIModel(context.Background())
+		if err != nil {
+			return scheduler.StepSetup{}, fmt.Errorf("read model setting: %w", err)
+		}
+		if model != "" {
+			setup.Env = map[string]string{"PLUMBIX_AI_MODEL": model}
+		}
+	}
 	if err := validation.PrepareInputs(in, input, evidence); err != nil {
 		return scheduler.StepSetup{}, err
 	}
@@ -530,13 +564,11 @@ func (e *Engine) setupValidator(r run.Run, p prepared, work string, st pipeline.
 	if err := os.Chmod(out, 0o777); err != nil {
 		return scheduler.StepSetup{}, err
 	}
-	return scheduler.StepSetup{
-		WorkspaceReadOnly: true,
-		Mounts: []runner.Mount{
-			{Source: in, Target: validation.InPath, ReadOnly: true},
-			{Source: out, Target: validation.OutPath},
-		},
-	}, nil
+	setup.Mounts = []runner.Mount{
+		{Source: in, Target: validation.InPath, ReadOnly: true},
+		{Source: out, Target: validation.OutPath},
+	}
+	return setup, nil
 }
 
 func readVerdict(work string, s scheduler.StepResult, criteria []change.Criterion) validation.ValidatorResult {

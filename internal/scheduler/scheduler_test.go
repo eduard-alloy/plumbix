@@ -374,3 +374,26 @@ func TestFinishedHookOnCancel(t *testing.T) {
 		t.Fatalf("hook saw %v, want both steps cancelled", seen)
 	}
 }
+
+// TestSetupEnvFillsOnlyWhatTheStepDidNotSet: Setup may add environment
+// variables (the model for validator steps); a value the step sets itself
+// or takes from a secret stays.
+func TestSetupEnvFillsOnlyWhatTheStepDidNotSet(t *testing.T) {
+	p := mustParse(t, "  - {name: a, image: x, run: x}\n  - {name: b, image: x, run: x, env: {AI_MODEL: mine}}\n  - {name: c, image: x, run: x, secrets: [AI_MODEL]}\n")
+	fake := newFake(ok)
+	o := opts(3)
+	o.Secrets = map[string]string{"AI_MODEL": "from-secret"}
+	o.Setup = func(pipeline.Step, []StepResult) (StepSetup, error) {
+		return StepSetup{Env: map[string]string{"AI_MODEL": "from-settings", "EXTRA": "1"}}, nil
+	}
+	Execute(context.Background(), p, fake, o)
+	if fake.jobs["a"].Env["AI_MODEL"] != "from-settings" || fake.jobs["a"].Env["EXTRA"] != "1" {
+		t.Errorf("a env = %v", fake.jobs["a"].Env)
+	}
+	if fake.jobs["b"].Env["AI_MODEL"] != "mine" {
+		t.Errorf("b env = %v; the step's own value must win", fake.jobs["b"].Env)
+	}
+	if fake.jobs["c"].Env["AI_MODEL"] != "from-secret" {
+		t.Errorf("c env = %v; the secret must win", fake.jobs["c"].Env)
+	}
+}

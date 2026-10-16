@@ -11,7 +11,10 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/auth"
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/engine"
+	"github.com/eduard-alloy/plumbix/internal/host"
 	"github.com/eduard-alloy/plumbix/internal/run"
+	"github.com/eduard-alloy/plumbix/internal/secrets"
+	"github.com/eduard-alloy/plumbix/internal/settings"
 )
 
 // Deps are the handler's dependencies.
@@ -30,6 +33,11 @@ type Deps struct {
 	Sessions *auth.Sessions
 	Origin   string
 	Web      http.Handler // the browser app, served outside /api/; nil answers 404 there
+	// Settings and Secrets together enable the settings routes; Hosts serves
+	// the on-demand token check.
+	Settings *settings.Service
+	Secrets  *secrets.Manager
+	Hosts    host.Source
 }
 
 // NewHandler returns the HTTP handler for the public API.
@@ -54,6 +62,9 @@ func NewHandler(d Deps) http.Handler {
 	}
 	if d.Events != nil {
 		registerEventRoutes(protected, &eventHandlers{events: d.Events, log: logger})
+	}
+	if d.Settings != nil && d.Secrets != nil {
+		registerSettingsRoutes(protected, &settingsHandlers{settings: d.Settings, secrets: d.Secrets, hosts: d.Hosts, changes: d.Changes, log: logger})
 	}
 	protected.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such endpoint")

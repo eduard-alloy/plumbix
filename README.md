@@ -40,6 +40,7 @@ git init --bare ~/git/myapp.git           # or point at an existing bare repo
 ./bin/plumbix alert list                 # commits that reached main without a verdict
 ./bin/plumbix events                     # follow everything Plumbix does, one JSON event per line
 ./bin/plumbix login                      # one-time link that signs your browser in at http://127.0.0.1:6400
+# in the browser: Settings holds the git host tokens, the AI key and model, and review guidance for validators
 # then open http://127.0.0.1:6400: changes that need you first, verdict and evidence on each, merge with one click
 ```
 
