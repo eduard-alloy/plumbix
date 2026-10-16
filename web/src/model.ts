@@ -203,6 +203,12 @@ export interface SettingsView {
   secrets: SecretStatus[]
 }
 
+export interface RepoSettings {
+  guidance: string
+  token_set?: boolean
+  token_updated_at?: string
+}
+
 export interface SecretCheck {
   ok: boolean
   expires_at?: string

@@ -22,19 +22,21 @@ const (
 
 // GitHub authenticates with a personal access token.
 type GitHub struct {
-	Token   string
-	APIBase string // empty means https://api.github.com
+	Token      string
+	APIBase    string            // empty means https://api.github.com
+	RepoTokens map[string]string // a repository's own token, by repository id
 }
 
 // Kind implements Host.
 func (g *GitHub) Kind() string { return change.HostGitHub }
 
 // Auth implements Host.
-func (g *GitHub) Auth(change.Repo) (gitops.Auth, bool) {
-	if g.Token == "" {
+func (g *GitHub) Auth(repo change.Repo) (gitops.Auth, bool) {
+	token := tokenFor(repo, g.Token, g.RepoTokens)
+	if token == "" {
 		return gitops.Auth{}, false
 	}
-	return gitops.Auth{User: gitHubUser, Token: g.Token}, true
+	return gitops.Auth{User: gitHubUser, Token: token}, true
 }
 
 // TokenExpiry reads the expiry GitHub reports on any authenticated call.

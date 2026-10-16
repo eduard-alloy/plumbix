@@ -18,11 +18,13 @@ export interface FakeDB {
   secretChecks: Record<string, { ok: boolean; expires_at?: string; message: string }>
   settings: { ai_model: string; guidance: string }
   repoGuidance: Record<string, string>
+  repoTokens: Record<string, string>
+  repoChecks: Record<string, { ok: boolean; message: string }>
 }
 
 const KNOWN_SECRETS = [
-  { key: 'PLUMBIX_GITHUB_TOKEN', purpose: 'GitHub fine-grained token with contents read and write; fetches, pushes merges, checks expiry', host: 'github' },
-  { key: 'PLUMBIX_AZURE_DEVOPS_TOKEN', purpose: 'Azure DevOps personal access token with code read and write', host: 'azuredevops' },
+  { key: 'PLUMBIX_GITHUB_TOKEN', purpose: 'Default token for every GitHub repository: contents read and write; fetches, pushes merges, checks expiry. A fine-grained token covers only the repositories chosen for it; a repository can carry its own token on the Repositories page', host: 'github' },
+  { key: 'PLUMBIX_AZURE_DEVOPS_TOKEN', purpose: 'Default personal access token for every Azure DevOps repository, code read and write; a repository can carry its own token on the Repositories page', host: 'azuredevops' },
   { key: 'PLUMBIX_AZURE_DEVOPS_TOKEN_EXPIRES', purpose: 'Expiry date of the Azure DevOps token, YYYY-MM-DD, for the warning a week before' },
   { key: 'ANTHROPIC_API_KEY', purpose: 'Used by the AI validator step through the pipeline secrets list' },
 ]
@@ -54,6 +56,8 @@ export function freshDB(): FakeDB {
     secretChecks: {},
     settings: { ai_model: '', guidance: '' },
     repoGuidance: {},
+    repoTokens: {},
+    repoChecks: {},
   }
 }
 
@@ -168,7 +172,23 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       const id = repoSettings[1]
       if (!db.repos.some((r) => r.id === id)) return error(404, 'not_found', `repo ${id}`)
       if (method === 'PUT') db.repoGuidance[id] = (JSON.parse(String(init?.body)) as { guidance: string }).guidance.trim()
-      return json(200, { guidance: db.repoGuidance[id] ?? '' })
+      return json(200, { guidance: db.repoGuidance[id] ?? '', token_set: id in db.repoTokens, token_updated_at: id in db.repoTokens ? new Date().toISOString() : undefined })
+    }
+    const repoToken = path.match(/^\/api\/v1\/repos\/([^/]+)\/token(\/check)?$/)
+    if (repoToken) {
+      const [, id, check] = repoToken
+      if (!db.repos.some((r) => r.id === id)) return error(404, 'not_found', `repo ${id}`)
+      if (check && method === 'POST') return json(200, db.repoChecks[id] ?? { ok: id in db.repoTokens, message: id in db.repoTokens ? "fetched 3 branches with the repository's own token" : 'fetch failed: authentication required' })
+      if (method === 'PUT') {
+        const body = JSON.parse(String(init?.body)) as { value: string }
+        if (!body.value) return error(400, 'invalid_request', 'a value is required')
+        db.repoTokens[id] = body.value
+        return new Response(null, { status: 204 })
+      }
+      if (method === 'DELETE') {
+        delete db.repoTokens[id]
+        return new Response(null, { status: 204 })
+      }
     }
     if (path === '/api/v1/changes') return json(200, { changes: db.changes })
     const resolve = path.match(/^\/api\/v1\/alerts\/([^/]+)\/resolve$/)

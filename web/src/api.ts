@@ -1,6 +1,6 @@
 // The API client. Every call goes to the same origin with the session
 // cookie; a 401 anywhere means the browser is not signed in.
-import type { Alert, Change, Diff, Repo, Run, SecretCheck, SettingsView } from './model'
+import type { Alert, Change, Diff, Repo, RepoSettings, Run, SecretCheck, SettingsView } from './model'
 
 export class ApiError extends Error {
   constructor(
@@ -88,8 +88,11 @@ export const api = {
   setSecret: (key: string, value: string) => request<void>('PUT', `/api/v1/settings/secrets/${encodeURIComponent(key)}`, { value }),
   removeSecret: (key: string) => request<void>('DELETE', `/api/v1/settings/secrets/${encodeURIComponent(key)}`),
   checkSecret: (key: string) => request<SecretCheck>('POST', `/api/v1/settings/secrets/${encodeURIComponent(key)}/check`),
-  repoSettings: (id: string) => request<{ guidance: string }>('GET', `/api/v1/repos/${encodeURIComponent(id)}/settings`),
-  updateRepoSettings: (id: string, guidance: string) => request<{ guidance: string }>('PUT', `/api/v1/repos/${encodeURIComponent(id)}/settings`, { guidance }),
+  repoSettings: (id: string) => request<RepoSettings>('GET', `/api/v1/repos/${encodeURIComponent(id)}/settings`),
+  updateRepoSettings: (id: string, guidance: string) => request<RepoSettings>('PUT', `/api/v1/repos/${encodeURIComponent(id)}/settings`, { guidance }),
+  setRepoToken: (id: string, value: string) => request<void>('PUT', `/api/v1/repos/${encodeURIComponent(id)}/token`, { value }),
+  removeRepoToken: (id: string) => request<void>('DELETE', `/api/v1/repos/${encodeURIComponent(id)}/token`),
+  checkRepoToken: (id: string) => request<SecretCheck>('POST', `/api/v1/repos/${encodeURIComponent(id)}/token/check`),
 }
 
 /** stepLogUrl is where a step's raw log can be opened. */

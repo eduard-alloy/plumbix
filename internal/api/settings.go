@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -23,6 +24,7 @@ type settingsHandlers struct {
 	secrets  *secrets.Manager
 	hosts    host.Source
 	changes  *change.Service
+	heads    func(ctx context.Context, repo change.Repo) (map[string]string, error) // fetches a repo's branch heads; nil disables the repo token check
 	log      *slog.Logger
 }
 
@@ -35,6 +37,9 @@ func registerSettingsRoutes(mux *http.ServeMux, h *settingsHandlers) {
 	if h.changes != nil {
 		mux.HandleFunc("GET /api/v1/repos/{id}/settings", h.getRepo)
 		mux.HandleFunc("PUT /api/v1/repos/{id}/settings", h.updateRepo)
+		mux.HandleFunc("PUT /api/v1/repos/{id}/token", h.setRepoToken)
+		mux.HandleFunc("DELETE /api/v1/repos/{id}/token", h.removeRepoToken)
+		mux.HandleFunc("POST /api/v1/repos/{id}/token/check", h.checkRepoToken)
 	}
 }
 
@@ -88,6 +93,9 @@ func (h *settingsHandlers) view(ctx context.Context) (settingsView, error) {
 	extra := h.secrets.Keys()
 	sort.Strings(extra)
 	for _, k := range extra {
+		if host.IsRepoTokenKey(k) {
+			continue // shown on the repository, not here
+		}
 		if !listed[k] {
 			if err := add(k, "Named by a pipeline step's secrets list", "", false); err != nil {
 				return settingsView{}, err
@@ -140,7 +148,7 @@ func (h *settingsHandlers) setSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.secrets.Set(key, body.Value); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", redactSecret(err.Error(), body.Value))
 		return
 	}
 	if err := h.settings.MarkSecret(r.Context(), key); err != nil {
@@ -206,18 +214,115 @@ func (h *settingsHandlers) checkSecret(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type repoSettings struct {
+	Guidance       string     `json:"guidance"`
+	TokenSet       bool       `json:"token_set"`
+	TokenUpdatedAt *time.Time `json:"token_updated_at,omitempty"`
+}
+
+func (h *settingsHandlers) repoView(ctx context.Context, repo change.Repo) (repoSettings, error) {
+	g, err := h.settings.Guidance(ctx, repo.ID)
+	if err != nil {
+		return repoSettings{}, err
+	}
+	v := repoSettings{Guidance: g.Repository}
+	key := host.RepoTokenKey(repo.ID)
+	if _, set := h.secrets.Get(key); set {
+		v.TokenSet = true
+		if when, ok, err := h.settings.SecretUpdated(ctx, key); err != nil {
+			return repoSettings{}, err
+		} else if ok {
+			v.TokenUpdatedAt = &when
+		}
+	}
+	return v, nil
+}
+
 func (h *settingsHandlers) getRepo(w http.ResponseWriter, r *http.Request) {
 	repo, err := h.changes.GetRepo(r.Context(), r.PathValue("id"))
 	if err != nil {
 		h.fail(w, err)
 		return
 	}
-	g, err := h.settings.Guidance(r.Context(), repo.ID)
+	v, err := h.repoView(r.Context(), repo)
 	if err != nil {
 		h.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"guidance": g.Repository})
+	writeJSON(w, http.StatusOK, v)
+}
+
+// setRepoToken gives one repository its own token, which wins over the
+// host-wide one for that repository.
+func (h *settingsHandlers) setRepoToken(w http.ResponseWriter, r *http.Request) {
+	repo, err := h.changes.GetRepo(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	var body struct {
+		Value string `json:"value"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	key := host.RepoTokenKey(repo.ID)
+	if err := h.secrets.Set(key, body.Value); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", redactSecret(err.Error(), body.Value))
+		return
+	}
+	if err := h.settings.MarkSecret(r.Context(), key); err != nil {
+		h.fail(w, err)
+		return
+	}
+	h.log.Info("repository token set", "repo", repo.ID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *settingsHandlers) removeRepoToken(w http.ResponseWriter, r *http.Request) {
+	repo, err := h.changes.GetRepo(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	key := host.RepoTokenKey(repo.ID)
+	if err := h.secrets.Unset(key); err != nil {
+		h.fail(w, err)
+		return
+	}
+	if err := h.settings.ForgetSecret(r.Context(), key); err != nil {
+		h.fail(w, err)
+		return
+	}
+	h.log.Info("repository token removed", "repo", repo.ID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// checkRepoToken fetches the repository's branch heads with whatever
+// credentials apply to it now: its own token, else the host-wide one.
+func (h *settingsHandlers) checkRepoToken(w http.ResponseWriter, r *http.Request) {
+	repo, err := h.changes.GetRepo(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	if h.heads == nil {
+		writeJSON(w, http.StatusOK, secretCheck{Message: "no engine to fetch with"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), tokenCheckTimeout)
+	defer cancel()
+	heads, err := h.heads(ctx, repo)
+	if err != nil {
+		writeJSON(w, http.StatusOK, secretCheck{Message: "fetch failed: " + redactSecrets(err.Error(), h.secrets.Values())})
+		return
+	}
+	_, own := h.secrets.Get(host.RepoTokenKey(repo.ID))
+	with := "the host token"
+	if own {
+		with = "the repository's own token"
+	}
+	writeJSON(w, http.StatusOK, secretCheck{OK: true, Message: fmt.Sprintf("fetched %d branches with %s", len(heads), with)})
 }
 
 func (h *settingsHandlers) updateRepo(w http.ResponseWriter, r *http.Request) {

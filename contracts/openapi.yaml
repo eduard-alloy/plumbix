@@ -156,6 +156,66 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /repos/{id}/token:
+    put:
+      operationId: setRepoToken
+      summary: Give one repository its own token.
+      description: >
+        A fine-grained GitHub token covers only the repositories chosen for it, so a repository may carry its own
+        token; it wins over the host-wide one for that repository. Stored in the secrets file like any secret, never
+        returned.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [value]
+              properties:
+                value:
+                  type: string
+                  minLength: 1
+      responses:
+        "204":
+          description: Set.
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: removeRepoToken
+      summary: Remove a repository's own token; the host-wide one applies again.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+      responses:
+        "204":
+          description: Removed, or was not set.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /repos/{id}/token/check:
+    post:
+      operationId: checkRepoToken
+      summary: Fetch the repository's branches with the credentials that apply to it now.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+      responses:
+        "200":
+          description: The check's result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretCheck"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /login-links:
     post:
       operationId: createLoginLink
@@ -1166,6 +1226,12 @@ components:
         guidance:
           type: string
           maxLength: 4000
+        token_set:
+          description: Whether the repository has its own token, which wins over the host-wide one for it.
+          type: boolean
+        token_updated_at:
+          type: string
+          format: date-time
     LoginLink:
       type: object
       additionalProperties: false

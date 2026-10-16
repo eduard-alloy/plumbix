@@ -2,6 +2,7 @@
 // Each row can open its review guidance, the one thing set here.
 import { Fragment, useEffect, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../api'
+import { agoLong, minutesBetween } from '../format'
 import type { Repo } from '../model'
 import { useStore } from '../store'
 import { repoName } from '../vm/changes'
@@ -44,10 +45,106 @@ function GuidanceEditor({ repo }: { repo: Repo }) {
 
 const HOST = { github: 'GitHub', azuredevops: 'Azure DevOps', git: 'git' }
 
+function TokenEditor({ repo, onChanged }: { repo: Repo; onChanged: (set: boolean) => void }) {
+  const name = repoName(repo)
+  const [state, setState] = useState<{ set: boolean; updatedAt?: string } | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState('')
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const load = async () => {
+    try {
+      const s = await api.repoSettings(repo.id)
+      setState({ set: !!s.token_set, updatedAt: s.token_updated_at })
+      onChanged(!!s.token_set)
+    } catch {
+      setState({ set: false })
+    }
+  }
+  useEffect(() => {
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo.id])
+  const act = async (fn: () => Promise<void>) => {
+    setBusy(true)
+    setResult(null)
+    try {
+      await fn()
+    } catch (err) {
+      setResult({ ok: false, text: err instanceof ApiError ? err.message : String(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+  async function save(e: FormEvent) {
+    e.preventDefault()
+    if (!value) return
+    await act(async () => {
+      await api.setRepoToken(repo.id, value)
+      setValue('')
+      setEditing(false)
+      await load()
+    })
+  }
+  const hostLabel = HOST[repo.host]
+  return (
+    <div className="token-editor" aria-label={`Token for ${name}`} role="group">
+      <div className="token-state">
+        {state === null ? '' : state.set ? `Own token${state.updatedAt ? ` · set ${agoLong(minutesBetween(state.updatedAt, new Date()))}` : ''}` : `Uses the ${hostLabel} token from Settings`}
+        <span className="dim"> · a fine-grained token covers only the repositories chosen for it; give this one its own if the host token does not cover it.</span>
+      </div>
+      <div className="form-row">
+        {!editing && (
+          <button className="secondary small" onClick={() => setEditing(true)} disabled={busy}>
+            {state?.set ? 'Replace' : 'Set'}
+          </button>
+        )}
+        <button className="secondary small" onClick={() => void act(async () => setResult(await api.checkRepoToken(repo.id).then((c) => ({ ok: c.ok, text: c.message }))))} disabled={busy}>
+          Check
+        </button>
+        {state?.set && (
+          <button className="quiet" onClick={() => void act(async () => { await api.removeRepoToken(repo.id); await load() })} disabled={busy}>
+            Remove
+          </button>
+        )}
+        {result && (
+          <span className={result.ok ? 'status-text' : 'status-text error'}>{result.text}</span>
+        )}
+      </div>
+      {editing && (
+        <form className="edit" onSubmit={(e) => void save(e)}>
+          <input type="password" autoComplete="off" aria-label={`Token value for ${name}`} value={value} onChange={(e) => setValue(e.target.value)} placeholder="Paste the token; it is stored on the server and never shown again" autoFocus />
+          <button className="primary" type="submit" disabled={busy || !value} style={{ height: 28 }}>
+            Save
+          </button>
+          <button className="quiet" type="button" onClick={() => { setEditing(false); setValue('') }}>
+            Cancel
+          </button>
+        </form>
+      )}
+    </div>
+  )
+}
+
 export function ReposPage() {
   const { state } = useStore()
   const changes = Object.values(state.changes)
-  const [open, setOpen] = useState<string | null>(null)
+  const [open, setOpen] = useState<{ id: string; what: 'guidance' | 'token' } | null>(null)
+  const [ownToken, setOwnToken] = useState<Record<string, boolean>>({})
+  // The Token column must be right before any panel is opened.
+  const repoIDs = state.repos.map((r) => r.id).join(',')
+  useEffect(() => {
+    let live = true
+    for (const id of repoIDs.split(',').filter(Boolean)) {
+      api
+        .repoSettings(id)
+        .then((s) => live && setOwnToken((m) => (m[id] === !!s.token_set ? m : { ...m, [id]: !!s.token_set })))
+        .catch(() => undefined)
+    }
+    return () => {
+      live = false
+    }
+  }, [repoIDs])
   return (
     <>
       <div className="sticky">
@@ -76,6 +173,7 @@ export function ReposPage() {
                 <th>Protected branches</th>
                 <th>Merge</th>
                 <th className="right">Changes</th>
+                <th>Token</th>
                 <th />
               </tr>
             </thead>
@@ -91,17 +189,21 @@ export function ReposPage() {
                     <td className="mono">{r.protected_branches.join(', ')}</td>
                     <td className="mono dim2">{r.merge_strategy}</td>
                     <td className="mono dim right">{changes.filter((c) => c.repo_id === r.id).length}</td>
+                    <td className="dim2">{r.host === 'git' ? '—' : ownToken[r.id] ? 'Own token' : 'Host token'}</td>
                     <td className="right">
-                      <button className="quiet" aria-expanded={open === r.id} onClick={() => setOpen(open === r.id ? null : r.id)}>
+                      {r.host !== 'git' && (
+                        <button className="quiet" aria-expanded={open?.id === r.id && open.what === 'token'} onClick={() => setOpen(open?.id === r.id && open.what === 'token' ? null : { id: r.id, what: 'token' })}>
+                          Token
+                        </button>
+                      )}
+                      <button className="quiet" aria-expanded={open?.id === r.id && open.what === 'guidance'} onClick={() => setOpen(open?.id === r.id && open.what === 'guidance' ? null : { id: r.id, what: 'guidance' })}>
                         Guidance
                       </button>
                     </td>
                   </tr>
-                  {open === r.id && (
+                  {open?.id === r.id && (
                     <tr className="editor-row">
-                      <td colSpan={7}>
-                        <GuidanceEditor repo={r} />
-                      </td>
+                      <td colSpan={8}>{open.what === 'guidance' ? <GuidanceEditor repo={r} /> : <TokenEditor repo={r} onChanged={(set) => setOwnToken((m) => ({ ...m, [r.id]: set }))} />}</td>
                     </tr>
                   )}
                 </Fragment>
