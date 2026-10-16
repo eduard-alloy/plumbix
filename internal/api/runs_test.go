@@ -75,16 +75,33 @@ func newRunAPI(t *testing.T) *runAPI {
 	return &runAPI{testAPI: &testAPI{t: t, h: h}, repoID: repoID, db: db, repo: repo, hub: hub}
 }
 
+// waitRun returns the run once it ended and its change, if any, has left
+// running: the engine records the run first and moves the change right
+// after, and a test acting in that gap races the engine.
 func (a *runAPI) waitRun(id string) run.Run {
 	a.t.Helper()
-	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		r := decode[run.Run](a.t, a.do(http.MethodGet, "/api/v1/runs/"+id, ""))
-		if r.Status != run.Running {
+	deadline := time.Now().Add(15 * time.Second)
+	var r run.Run
+	for {
+		if r = decode[run.Run](a.t, a.do(http.MethodGet, "/api/v1/runs/"+id, "")); r.Status != run.Running {
+			break
+		}
+		if !time.Now().Before(deadline) {
+			a.t.Fatal("run did not finish")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if r.ChangeID == "" || r.Status == run.Cancelled {
+		return r
+	}
+	for time.Now().Before(deadline) {
+		if c := decode[change.Change](a.t, a.do(http.MethodGet, "/api/v1/changes/"+r.ChangeID, "")); c.State != change.Running {
 			return r
 		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	a.t.Fatal("run did not finish")
-	return run.Run{}
+	a.t.Fatalf("change %s still running after run %s ended", r.ChangeID, id)
+	return r
 }
 
 func TestSubmitStartsValidation(t *testing.T) {
