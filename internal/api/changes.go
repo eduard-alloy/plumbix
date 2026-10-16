@@ -11,6 +11,7 @@ import (
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/engine"
+	"github.com/eduard-alloy/plumbix/internal/gitops"
 )
 
 // MaxJSONBytes is the largest JSON request body the API accepts.
@@ -113,6 +114,12 @@ func (h *changeHandlers) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "invalid_state", err.Error())
 	case errors.Is(err, change.ErrConflict):
 		writeError(w, http.StatusConflict, "conflict", err.Error())
+	case errors.Is(err, engine.ErrSourceMoved):
+		writeError(w, http.StatusConflict, "source_moved", err.Error())
+	case errors.Is(err, engine.ErrTargetMoved):
+		writeError(w, http.StatusConflict, "target_moved", err.Error())
+	case errors.Is(err, gitops.ErrPushRejected):
+		writeError(w, http.StatusConflict, "push_rejected", err.Error())
 	default:
 		h.log.Error("request failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal", "internal error")

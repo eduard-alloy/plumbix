@@ -22,6 +22,9 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Neither host can enforce merges in v1 because the PAT acts as the user. Plumbix flags bypass commits instead. (Q13)
 
 ## Architecture
+- A change merges only when the source branch still points at the validated commit and the target branch equals the run's base (the source contains the target). The target then receives the validated tree unchanged; Plumbix never computes a merge. (WU-010, A15)
+- Bypass detection walks first-parent commits between the last known head and the new head; commits inside a recorded Plumbix merge range are not bypasses. One alert per push, one open alert per kind and key. (WU-010)
+- During a merge the engine refuses to start a validation for that change; a close that races a merge leaves the change closed with a merge record, which is logged. (WU-010)
 - Validator steps run after their needs finish, whatever the outcome. Normal steps still need their needs to succeed. (WU-007)
 - An errored normal step makes the outcome `needs_human`, never `fix_requested`. (WU-007)
 - Only a change's active run may move its state, and cancellation is checked before errors: a cancelled run's errors are not infrastructure failures. (WU-007)
@@ -53,6 +56,7 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - The pipeline format is Plumbix's own minimal, strict YAML with a published, versioned schema. No compatibility with other CI formats. (Q08)
 
 ## Development environment
+- `make integration` builds the two validator images concurrently from the same context. `TestImageFailsCleanlyWithoutKey` failed once under that load and passes alone; rerun before suspecting a change. (WU-010)
 - The Claude Code sandbox blocks local port binding, Go module downloads (TLS through its proxy fails) and the Docker socket. Tests that bind ports, `go get`/`go mod tidy`, and Docker integration tests run outside the sandbox, or with `sandbox.network.allowLocalBinding: true`. (WU-001)
 - Once Go's build cache has been written outside the sandbox, the sandbox can't read it. Run all Go commands outside the sandbox. (WU-002)
 - `make check` (build, test, vet, gofmt) is the gate for every work unit. (WU-001)

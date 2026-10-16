@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/eduard-alloy/plumbix/internal/alert"
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/engine"
 	"github.com/eduard-alloy/plumbix/internal/run"
@@ -19,6 +20,7 @@ type Deps struct {
 	Changes *change.Service // nil leaves the repo and change routes out
 	Engine  *engine.Engine  // nil leaves the run routes out and skips auto-validation
 	Runs    run.Store       // required with Engine
+	Alerts  alert.Store     // nil leaves the alert routes out
 	Logger  *slog.Logger    // nil discards logs
 }
 
@@ -37,6 +39,9 @@ func NewHandler(d Deps) http.Handler {
 		if d.Engine != nil {
 			registerRunRoutes(protected, &runHandlers{changeHandlers: ch, engine: d.Engine, runs: d.Runs})
 		}
+	}
+	if d.Alerts != nil {
+		registerAlertRoutes(protected, &alertHandlers{alerts: d.Alerts, log: logger})
 	}
 	protected.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such endpoint")

@@ -75,6 +75,8 @@ type Engine struct {
 	wg         sync.WaitGroup
 	mu         sync.Mutex
 	active     map[string]activeRun // by change ID, or branchKey for plain runs
+	merging    map[string]bool      // changes with a merge in progress
+	beforePush func()               // test hook run between building and pushing a merge
 	mirrorLock sync.Map             // repo ID -> *sync.Mutex
 	askpass    string
 	askOnce    sync.Once
@@ -106,6 +108,9 @@ func (e *Engine) Validate(ctx context.Context, changeID string) (run.Run, error)
 	}
 	if c.State.Final() {
 		return run.Run{}, fmt.Errorf("%w: change %s is %s", change.ErrInvalidState, changeID, c.State)
+	}
+	if e.merging[changeID] {
+		return run.Run{}, fmt.Errorf("%w: change %s is being merged", change.ErrInvalidState, changeID)
 	}
 	if prev, ok := e.active[changeID]; ok {
 		prev.cancel(errSuperseded)
@@ -164,6 +169,16 @@ func (e *Engine) ListHeads(ctx context.Context, repo change.Repo) (map[string]st
 		return nil, err
 	}
 	return m.ListHeads(ctx)
+}
+
+// Commits fetches the repo and lists the first-parent commits from..to,
+// newest first, or only to when from is empty.
+func (e *Engine) Commits(ctx context.Context, repo change.Repo, from, to string) ([]gitops.Commit, error) {
+	m, err := e.fetch(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	return m.Commits(ctx, from, to)
 }
 
 func branchKey(repoID, branch string) string { return "branch:" + repoID + ":" + branch }

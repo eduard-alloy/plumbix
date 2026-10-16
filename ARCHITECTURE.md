@@ -122,7 +122,8 @@ The base address comes from config `server.listen`, default `127.0.0.1:6400`. Ev
 | GET | `/api/v1/runs/{id}/steps/{step}/log` | A step's log, streamed while running. |
 | GET | `/api/v1/runs/{id}/steps/{step}/artifacts/{path}` | Download an artifact. |
 | POST | `/api/v1/pipelines/check` | Validate a pipeline file without running it. |
-| GET | `/api/v1/alerts` | Bypass commits and token-expiry warnings. |
+| GET | `/api/v1/alerts` | Bypass commits and token-expiry warnings, open ones unless `include_resolved=true`. |
+| POST | `/api/v1/alerts/{id}/resolve` | Mark an alert as handled. |
 | GET | `/api/v1/events` | SSE stream. Supports `Last-Event-ID` so clients can resume. |
 
 ### 4.2 Pipeline file, version 1
@@ -245,14 +246,15 @@ The poller sees a new head on any branch of a registered repo. If an open change
 
 ### 5.4 Merge
 
-1. A human merges an `approved` change.
-2. Git ops checks that the target branch head equals the head validation used. If it moved, the merge is refused and a re-run is offered.
-3. Git ops builds the merge commit in the mirror with the repo's strategy, records it as a Plumbix merge, and pushes with the expected old head (`git push --force-with-lease=<branch>:<old>` without forcing anything else).
-4. The change moves to `merged`.
+1. A human merges an `approved` change. While the merge runs, no new validation can start for it.
+2. After a fresh fetch, the source branch must still point at the validated commit (`source_moved` otherwise) and the target branch must be the run's base, which means the source already contains the target and the target has not moved (`target_moved` otherwise). This guarantees that the tree landing on the target is exactly the tree the validators judged, so Plumbix never computes a merge and never meets a conflict (A15).
+3. Git ops builds the commit in the bare mirror with `git commit-tree`: `squash` is one commit with the validated tree on the old target head, `merge` is a merge commit with the same tree, `rebase` is a fast-forward to the source head. Author is the source head's author, committer is Plumbix, and the message carries `Plumbix-Change` and `Plumbix-Run` trailers.
+4. The push uses `--force-with-lease=<branch>:<old>`; if the remote moved meanwhile the merge fails with `push_rejected` and nothing changes.
+5. The merge is recorded (`merges` table, shown as `merge` on the change) and the change moves to `merged`.
 
 ### 5.5 Bypass detection
 
-When the poller sees a protected branch move to a commit that Plumbix did not push, it raises a `bypass_commit` alert. The alert names the commit, the author and the time.
+When the poller sees a protected branch move, it lists the first-parent commits between the old and new head (only the tip for a branch it has never seen). Commits inside a Plumbix merge's range (`previous..commit`) are Plumbix's own. Any other commit is a bypass: one `bypass_commit` alert per push names the branch and each commit's sha, author, time and subject. A branch moved only by Plumbix merges starts no plain run, since its tree was validated already. Alerts are deduplicated per kind and key (`branch@head` for bypasses, the host kind for token expiry), and token alerts resolve themselves once the token is healthy.
 
 ## 6. Storage and files
 
@@ -308,6 +310,7 @@ These are implementation calls made in this architecture step, with the reasons 
 | A12 | An AI validator ships in milestone 1 as a separate validator image. It uses Anthropic's Go SDK with structured JSON output, model `claude-opus-5-5` by default (`PLUMBIX_AI_MODEL`), effort `high` (`PLUMBIX_AI_EFFORT`), and server-side refusal fallbacks. Repository content goes in a randomly named untrusted block | User approved the paid service (2026-10-15). It catches what deterministic checks miss, such as weakened tests or criteria without a check. Keeping it a pluggable step keeps the core free of AI (Q07). | AI inside the Plumbix core, a provider-neutral wrapper library |
 | A13 | Secrets live in a dotenv file (`secrets_file`), mode `0600` | The user asked for a `.env` file. Dotenv is the most familiar format for open-source users. | A YAML secrets file |
 | A14 | The API needs a local bearer token, generated on first start in `<data_dir>/api-token` (mode `0600`). The browser gets a one-time login link with the web interface (WU-011) | Owner's choice (option A) after WU-003 showed Docker Desktop containers reach host loopback. Containers never see the data directory, so they can't authenticate. | No network for steps by default (partial fix, breaks dependency downloads), accepting the exposure |
+| A15 | A change merges only when its source branch already contains the target's head, and the target lands the validated tree byte for byte | The verdict decides what merges, so what merges must be what was judged. A merge Plumbix computed after validation would be untested code. The client brings the target into the source and gets a fresh verdict instead. | Merging as long as the target did not move (lands an untested tree when the source was behind), letting Plumbix resolve merges |
 
 ## 9. Risks and open items
 

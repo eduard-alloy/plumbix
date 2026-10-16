@@ -204,26 +204,30 @@ func (db *DB) CreateChange(ctx context.Context, c change.Change) error {
 	return mapErr(err)
 }
 
-const changeColumns = `id, repo_id, source_branch, target_branch, title, intent, acceptance_criteria, constraints, submitted_by, state, created_at, updated_at`
+const changeColumns = `c.id, c.repo_id, c.source_branch, c.target_branch, c.title, c.intent, c.acceptance_criteria, c.constraints, c.submitted_by, c.state, c.created_at, c.updated_at,
+	m.commit_sha, m.previous_sha, m.strategy, m.run_id, m.merged_at`
+
+// changeFrom joins each change with its merge, if any.
+const changeFrom = ` FROM changes c LEFT JOIN merges m ON m.change_id = c.id`
 
 // GetChange returns one change.
 func (db *DB) GetChange(ctx context.Context, id string) (change.Change, error) {
-	return scanChange(db.sql.QueryRowContext(ctx, `SELECT `+changeColumns+` FROM changes WHERE id = ?`, id))
+	return scanChange(db.sql.QueryRowContext(ctx, `SELECT `+changeColumns+changeFrom+` WHERE c.id = ?`, id))
 }
 
 // ListChanges returns matching changes, oldest first.
 func (db *DB) ListChanges(ctx context.Context, f change.Filter) ([]change.Change, error) {
-	query := `SELECT ` + changeColumns + ` FROM changes WHERE 1 = 1`
+	query := `SELECT ` + changeColumns + changeFrom + ` WHERE 1 = 1`
 	var args []any
 	if f.RepoID != "" {
-		query += ` AND repo_id = ?`
+		query += ` AND c.repo_id = ?`
 		args = append(args, f.RepoID)
 	}
 	if f.State != "" {
-		query += ` AND state = ?`
+		query += ` AND c.state = ?`
 		args = append(args, string(f.State))
 	}
-	rows, err := db.sql.QueryContext(ctx, query+` ORDER BY created_at, id`, args...)
+	rows, err := db.sql.QueryContext(ctx, query+` ORDER BY c.created_at, c.id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -258,11 +262,20 @@ func (db *DB) SetChangeState(ctx context.Context, id string, from, to change.Sta
 func scanChange(s scanner) (change.Change, error) {
 	var c change.Change
 	var criteria, constraints, state, created, updated string
+	var mCommit, mPrevious, mStrategy, mRun, mAt sql.NullString
 	if err := s.Scan(&c.ID, &c.RepoID, &c.SourceBranch, &c.TargetBranch, &c.Title, &c.Intent,
-		&criteria, &constraints, &c.SubmittedBy, &state, &created, &updated); err != nil {
+		&criteria, &constraints, &c.SubmittedBy, &state, &created, &updated,
+		&mCommit, &mPrevious, &mStrategy, &mRun, &mAt); err != nil {
 		return change.Change{}, mapErr(err)
 	}
 	c.State = change.State(state)
+	if mCommit.Valid {
+		at, err := parseTime(mAt.String)
+		if err != nil {
+			return change.Change{}, err
+		}
+		c.Merge = &change.Merge{Commit: mCommit.String, Previous: mPrevious.String, Strategy: mStrategy.String, RunID: mRun.String, MergedAt: at}
+	}
 	if err := json.Unmarshal([]byte(criteria), &c.AcceptanceCriteria); err != nil {
 		return change.Change{}, fmt.Errorf("change %s: criteria: %w", c.ID, err)
 	}

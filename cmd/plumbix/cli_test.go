@@ -152,6 +152,15 @@ func TestCLIFlow(t *testing.T) {
 	if list := c.mustRun("", "change", "list", "--state", "needs_human", "--repo", repoID)["changes"].([]any); len(list) != 1 {
 		t.Errorf("list = %v", list)
 	}
+	if code, _, errOut := c.run("", "change", "merge", id); code != 1 || !strings.Contains(errOut, "invalid_state") {
+		t.Errorf("merge of an unapproved change: exit %d, stderr %q", code, errOut)
+	}
+	if alerts := c.mustRun("", "alert", "list")["alerts"].([]any); len(alerts) != 0 {
+		t.Errorf("alerts = %v", alerts)
+	}
+	if code, _, errOut := c.run("", "alert", "resolve", "al_nope"); code != 1 || !strings.Contains(errOut, "not_found") {
+		t.Errorf("resolve unknown alert: exit %d, stderr %q", code, errOut)
+	}
 	if closed := c.mustRun("", "change", "close", id); closed["state"] != "closed" {
 		t.Errorf("close = %v", closed)
 	}

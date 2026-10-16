@@ -36,6 +36,8 @@ git init --bare ~/git/myapp.git           # or point at an existing bare repo
 ./bin/plumbix repo add --host git --url ~/git/myapp.git
 ./bin/plumbix submit -f change.json        # intent, criteria, source and target branch
 ./bin/plumbix change runs <change-id>
+./bin/plumbix change merge <change-id>   # once approved: lands the validated tree on main
+./bin/plumbix alert list                 # commits that reached main without a verdict
 ```
 
 Plumbix also accepts `file://` paths and SSH remotes (`ssh://host/path` or `user@host:path`), which use your own SSH keys. Your repository needs a `.plumbix/pipeline.yaml`; see [ARCHITECTURE.md](ARCHITECTURE.md) section 4.2.

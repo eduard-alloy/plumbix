@@ -3,7 +3,6 @@
 package gitops
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -91,13 +90,7 @@ func (m *Mirror) command(ctx context.Context, args ...string) *exec.Cmd {
 
 // git runs a git command in the mirror and returns stdout.
 func (m *Mirror) git(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := m.command(ctx, args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
-	}
-	return stdout.Bytes(), nil
+	return m.run(ctx, nil, nil, args...)
 }
 
 // Fetch creates the mirror if needed and updates every branch from the

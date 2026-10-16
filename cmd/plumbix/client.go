@@ -199,10 +199,33 @@ func runChange(args []string, stdout, stderr io.Writer) int {
 		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/close", nil)
 	case len(pos) == 2 && pos[0] == "validate":
 		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/validate", nil)
+	case len(pos) == 2 && pos[0] == "merge":
+		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/merge", nil)
 	case len(pos) == 2 && pos[0] == "runs":
 		return c.call(http.MethodGet, "/api/v1/changes/"+url.PathEscape(pos[1])+"/runs", nil)
 	}
-	return usageError(stderr, "usage: plumbix change list [--repo <id>] [--state <s>] | change show|close|validate|runs <id>")
+	return usageError(stderr, "usage: plumbix change list [--repo <id>] [--state <s>] | change show|close|validate|merge|runs <id>")
+}
+
+// runAlert handles "plumbix alert list|resolve".
+func runAlert(args []string, stdout, stderr io.Writer) int {
+	c := newClientCmd("alert", stdout, stderr)
+	all := c.fs.Bool("all", false, "include resolved alerts (alert list)")
+	pos, ok := c.parse(args)
+	if !ok {
+		return 2
+	}
+	switch {
+	case len(pos) == 1 && pos[0] == "list":
+		path := "/api/v1/alerts"
+		if *all {
+			path += "?include_resolved=true"
+		}
+		return c.call(http.MethodGet, path, nil)
+	case len(pos) == 2 && pos[0] == "resolve":
+		return c.call(http.MethodPost, "/api/v1/alerts/"+url.PathEscape(pos[1])+"/resolve", nil)
+	}
+	return usageError(stderr, "usage: plumbix alert list [--all] | plumbix alert resolve <alert-id>")
 }
 
 // runRun handles "plumbix run show|log".

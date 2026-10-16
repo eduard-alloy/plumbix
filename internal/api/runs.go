@@ -20,6 +20,7 @@ type runHandlers struct {
 
 func registerRunRoutes(mux *http.ServeMux, h *runHandlers) {
 	mux.HandleFunc("POST /api/v1/changes/{id}/validate", h.validate)
+	mux.HandleFunc("POST /api/v1/changes/{id}/merge", h.merge)
 	mux.HandleFunc("GET /api/v1/changes/{id}/runs", h.listRuns)
 	mux.HandleFunc("GET /api/v1/repos/{id}/runs", h.listRepoRuns)
 	mux.HandleFunc("GET /api/v1/runs/{id}", h.getRun)
@@ -33,6 +34,15 @@ func (h *runHandlers) validate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, rn)
+}
+
+func (h *runHandlers) merge(w http.ResponseWriter, r *http.Request) {
+	c, err := h.engine.Merge(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, c)
 }
 
 func (h *runHandlers) listRuns(w http.ResponseWriter, r *http.Request) {

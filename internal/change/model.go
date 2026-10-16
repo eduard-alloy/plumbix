@@ -58,8 +58,26 @@ type Change struct {
 	Constraints        []string    `json:"constraints"`
 	SubmittedBy        string      `json:"submitted_by,omitempty"`
 	State              State       `json:"state"`
+	Merge              *Merge      `json:"merge,omitempty"` // set once merged
 	CreatedAt          time.Time   `json:"created_at"`
 	UpdatedAt          time.Time   `json:"updated_at"`
+}
+
+// Merge says how a change landed on its target branch.
+type Merge struct {
+	Commit   string    `json:"commit"`   // the commit now at the target's head
+	Previous string    `json:"previous"` // the target's head before the merge
+	Strategy string    `json:"strategy"`
+	RunID    string    `json:"run_id"` // the approved run that was merged
+	MergedAt time.Time `json:"merged_at"`
+}
+
+// MergeRecord is a Merge with the change and branch it belongs to.
+type MergeRecord struct {
+	ChangeID string
+	RepoID   string
+	Branch   string
+	Merge
 }
 
 // Criterion is one acceptance criterion.
@@ -99,4 +117,7 @@ type Store interface {
 	// SetChangeState moves a change from one state to another. It returns
 	// ErrConflict if the change is no longer in state from.
 	SetChangeState(ctx context.Context, id string, from, to State, at time.Time) error
+	RecordMerge(ctx context.Context, m MergeRecord) error // ErrConflict if the change was merged already
+	// ListMerges returns the merges Plumbix pushed to a branch, oldest first.
+	ListMerges(ctx context.Context, repoID, branch string) ([]MergeRecord, error)
 }

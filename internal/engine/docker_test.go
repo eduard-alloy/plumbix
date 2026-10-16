@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,6 +70,13 @@ func TestRealDockerLoop(t *testing.T) {
 	good := h.validate(submit("good").ID)
 	if good.Outcome != change.Approved {
 		t.Fatalf("good branch: %+v result %+v", good, good.Result)
+	}
+	merged, err := eng.Merge(ctx, good.ChangeID)
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	if out, _ := exec.Command("git", "-C", repo.Remote, "rev-parse", "main").Output(); strings.TrimSpace(string(out)) != merged.Merge.Commit {
+		t.Errorf("remote main = %s, merge commit %s", out, merged.Merge.Commit)
 	}
 	bad := h.validate(submit("bad").ID)
 	if bad.Outcome != change.FixRequested || bad.Status != run.Finished {

@@ -21,6 +21,8 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/validation"
 )
 
+var ctxBG = context.Background()
+
 // approvingRunner passes every step and makes validators approve.
 type approvingRunner struct{}
 
@@ -44,6 +46,7 @@ type runAPI struct {
 	*testAPI
 	repoID string
 	db     *store.DB
+	repo   *gittest.Repo
 }
 
 func newRunAPI(t *testing.T) *runAPI {
@@ -63,8 +66,8 @@ func newRunAPI(t *testing.T) *runAPI {
 	if err := db.CreateRepo(context.Background(), change.Repo{ID: repoID, Host: "github", URL: repo.Remote, ProtectedBranches: []string{"main"}, MergeStrategy: "squash", CreatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHandler(Deps{Version: "dev", Token: testToken, Changes: change.NewService(db), Engine: eng, Runs: db})
-	return &runAPI{testAPI: &testAPI{t: t, h: h}, repoID: repoID, db: db}
+	h := NewHandler(Deps{Version: "dev", Token: testToken, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db})
+	return &runAPI{testAPI: &testAPI{t: t, h: h}, repoID: repoID, db: db, repo: repo}
 }
 
 func (a *runAPI) waitRun(id string) run.Run {

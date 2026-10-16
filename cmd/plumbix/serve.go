@@ -104,7 +104,7 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		logger.Error("listen failed", "addr", cfg.Server.Listen, "err", err)
 		return 1
 	}
-	if err := api.Run(ctx, ln, api.NewHandler(api.Deps{Version: version, Token: token, Changes: change.NewService(db), Engine: eng, Runs: db, Logger: logger}), logger, config.DefaultShutdownTimeout); err != nil {
+	if err := api.Run(ctx, ln, api.NewHandler(api.Deps{Version: version, Token: token, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Logger: logger}), logger, config.DefaultShutdownTimeout); err != nil {
 		logger.Error("server stopped with error", "err", err)
 		return 1
 	}

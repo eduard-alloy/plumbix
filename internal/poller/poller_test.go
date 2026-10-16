@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/gitops"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/store"
 )
@@ -23,6 +24,7 @@ type fakeEngine struct {
 	mu        sync.Mutex
 	heads     map[string]map[string]string // repo ID -> branch -> sha
 	failRepo  string
+	history   map[string]gitops.Commit
 	validated []string
 	branches  []string
 }

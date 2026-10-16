@@ -107,6 +107,12 @@ type harness struct {
 
 func newHarness(t *testing.T, cfg Config) *harness {
 	t.Helper()
+	return newHarnessWith(t, cfg, "squash")
+}
+
+// newHarnessWith is newHarness with the repo's merge strategy.
+func newHarnessWith(t *testing.T, cfg Config, strategy string) *harness {
+	t.Helper()
 	data := t.TempDir()
 	db, err := store.Open(filepath.Join(data, "plumbix.db"))
 	if err != nil {
@@ -130,7 +136,7 @@ func newHarness(t *testing.T, cfg Config) *harness {
 	// Register through the store directly: the test remote is a local path,
 	// which the public repo rules (GitHub or Azure DevOps URLs) don't allow.
 	h.repoID = "r_testrepo0001"
-	if err := db.CreateRepo(ctx, change.Repo{ID: h.repoID, Host: "github", URL: h.repo.Remote, ProtectedBranches: []string{"main"}, MergeStrategy: "squash", CreatedAt: time.Now()}); err != nil {
+	if err := db.CreateRepo(ctx, change.Repo{ID: h.repoID, Host: "github", URL: h.repo.Remote, ProtectedBranches: []string{"main"}, MergeStrategy: strategy, CreatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	return h

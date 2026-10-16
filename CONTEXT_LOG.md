@@ -16,3 +16,4 @@
 | 2026-10-16 | WU-008 | ✅ | GitHub adapter + host boundary, askpass git auth (tested via local http-backend), branch heads, poller (push → revalidate or plain run), RunBranch, repo runs API/CLI. 177 tests. Next: WU-009. |
 | 2026-10-16 | WU-015 | ✅ | Plain git host (local path, file://, SSH), SSH batch mode, README local quickstart. Gate-in-front-of-host idea recorded as M2 candidate. 181 tests. Next: WU-009. |
 | 2026-10-16 | WU-009 | ✅ | Azure DevOps adapter behind the host boundary: PAT auth, expiry date from the secrets file (Azure DevOps reports none), engine credentials test for both hosts. 184 tests. Next: WU-010. |
+| 2026-10-16 | WU-010 | ✅ | Merge on approval (squash/merge/rebase via commit-tree, lease push, strict source-contains-target rule, A15), bypass detection with Plumbix merge ranges, alerts (bypass, token expiry) with API and CLI. 201 tests. Next: WU-014. |
