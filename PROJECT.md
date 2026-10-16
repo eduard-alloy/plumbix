@@ -45,12 +45,12 @@ The fix loop runs across the contract. A "fix" verdict goes back to the client, 
 
 ## Milestone 1 success criteria
 
-- [x] Every change to Plumbix's own code goes through Plumbix: pipeline runs, the reference validator issues a verdict, and nothing merges without one. Evidence: `.plumbix/pipeline.yaml`; the acceptance run recorded under "Acceptance run" in `work_units/WU-012.md` (iteration 1 requested fixes and found a real bug; the merge commit is recorded by the follow-up change).
+- [x] Every change to Plumbix's own code goes through Plumbix: pipeline runs, the reference validator issues a verdict, and nothing merges without one. Evidence: `.plumbix/pipeline.yaml`; change `c_bzfnjwmsw7yv` (the gitops fix found by this acceptance) was validated by both validators and merged by Plumbix as `2ebba61` on `main`; the full record is under "Acceptance run" in `work_units/WU-012.md`.
 - [x] Changes are submitted through the public API, with no internal shortcuts. Evidence: WU-012 submitted its own change with `plumbix submit`, which only speaks HTTP.
 - [x] Independent pipeline steps run in parallel containers. Evidence: `build`, `test`, `lint` and `web` have no `needs`; `scheduler.TestIndependentStepsRunConcurrently`; the acceptance run's step timings in WU-012.
 - [x] A push to GitHub or Azure DevOps triggers a pipeline run through polling. Evidence: `poller` tests; WU-012 iteration 2 started from a push with no API call.
 - [x] Commits that reach a protected branch without a verdict are flagged. Evidence: alert `al_xcncmstxyhxi` for the bootstrap commit `2da8efa` on `main` (WU-012).
-- [x] All tests, lint and build pass. Evidence: `make check` and `make integration` at every work unit; the `build`, `test`, `lint` and `web` steps of Plumbix's own pipeline on every iteration recorded in `work_units/WU-012.md` after the first (iteration 1's `test` step failed on a real bug, fixed by its own change).
+- [x] All tests, lint and build pass. Evidence: `make check` and `make integration` at every work unit; the `build`, `test`, `lint` and `web` steps of Plumbix's own pipeline on the iteration that merged each change (earlier iterations failed on real faults, each fixed by its own change, as `work_units/WU-012.md` records).
 
 ## Features
 
