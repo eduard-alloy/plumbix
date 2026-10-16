@@ -130,3 +130,30 @@ func TestHumanRequiredRiskNeedsHuman(t *testing.T) {
 		t.Fatalf("result = %+v", r)
 	}
 }
+
+// TestValidatorsAreRecorded: the combined result keeps each validator's own
+// decision, so a client can show what a validator said, not only whether
+// its step ran.
+func TestValidatorsAreRecorded(t *testing.T) {
+	r := combine([]ValidatorResult{
+		{Name: "validate", Verdict: verdict(Fix, map[string]Status{"AC-1": Unmet, "AC-2": Met, "AC-3": Met})},
+		{Name: "ai-review", Verdict: verdict(Approve, allMet)},
+		{Name: "broken", Err: errors.New("validator step errored")},
+	}, []string{"validate", "ai-review", "broken"})
+	if len(r.Validators) != 3 {
+		t.Fatalf("validators = %+v", r.Validators)
+	}
+	want := []ValidatorOutcome{
+		{Name: "validate", Outcome: Fix, Summary: "s"},
+		{Name: "ai-review", Outcome: Approve, Summary: "s"},
+		{Name: "broken", Error: "validator step errored"},
+	}
+	for i, w := range want {
+		if r.Validators[i] != w {
+			t.Errorf("validator %d = %+v, want %+v", i, r.Validators[i], w)
+		}
+	}
+	if none := combine(nil, nil); none.Validators == nil {
+		t.Error("validators must be an empty list, never null")
+	}
+}
