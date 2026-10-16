@@ -1,0 +1,53 @@
+import { describe, expect, it } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { StatePill, ENCODING, type PillStatus } from './StatePill'
+
+describe('StatePill', () => {
+  it('has an entry for every status in the encoding table', () => {
+    const keys: PillStatus[] = [
+      'open', 'running', 'approved', 'fix_requested', 'rejected', 'needs_human', 'escalated', 'merged', 'closed',
+      'finished', 'errored', 'cancelled',
+      'succeeded', 'failed', 'timed_out', 'skipped', 'queued',
+      'met', 'unmet', 'unknown', 'pending',
+      'blocker', 'major', 'minor',
+      'human_required', 'alert', 'resolved', 'info',
+    ]
+    for (const k of keys) {
+      expect(ENCODING[k], k).toBeDefined()
+      expect(ENCODING[k].label, k).not.toBe('')
+    }
+  })
+
+  it('renders icon and label in pill mode, with the tone as data', () => {
+    const { container } = render(<StatePill status="fix_requested" />)
+    const pill = container.firstElementChild as HTMLElement
+    expect(pill.textContent).toBe('Fix requested')
+    expect(pill.querySelector('svg')).not.toBeNull()
+    expect(pill.dataset.tone).toBe('amber')
+    expect(pill.dataset.mode).toBe('pill')
+    expect(pill.title).toBe('Fix requested')
+  })
+
+  it('keeps the label for screen readers in icon mode', () => {
+    const { container } = render(<StatePill status="met" mode="icon" />)
+    const pill = container.firstElementChild as HTMLElement
+    expect(pill.querySelector('svg')).not.toBeNull()
+    expect(screen.getByText('Met').className).toContain('sr-only')
+  })
+
+  it('shows only the label in text mode and accepts a custom label', () => {
+    const { container } = render(<StatePill status="approved" mode="text" label="Signed in" />)
+    const pill = container.firstElementChild as HTMLElement
+    expect(pill.querySelector('svg')).toBeNull()
+    expect(pill.textContent).toBe('Signed in')
+  })
+
+  it('draws a dashed circle for queued and pending, a filled one for merged and blockers', () => {
+    const dashed = render(<StatePill status="queued" />).container.querySelector('circle')!
+    expect(dashed.getAttribute('stroke-dasharray')).toBe('2.1 2.1')
+    const filled = render(<StatePill status="merged" />).container.querySelector('circle')!
+    expect(filled.getAttribute('fill')).toBe('currentColor')
+    const half = render(<StatePill status="running" />).container.querySelector('path')!
+    expect(half.getAttribute('fill')).toBe('currentColor')
+  })
+})

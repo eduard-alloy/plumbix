@@ -1,0 +1,33 @@
+.pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px 0 4px;
+  border-radius: var(--r-sm);
+  font: 500 12px/1 var(--ui);
+  white-space: nowrap;
+  vertical-align: middle;
+  flex: none;
+}
+.pill svg { display: block; flex: none; }
+.pill[data-mode='icon'], .pill[data-mode='plain'], .pill[data-mode='text'] { height: auto; padding: 0; background: transparent; }
+
+.pill[data-tone='neutral'] { color: var(--s-neutral); background: var(--s-neutral-bg); }
+.pill[data-tone='blue'] { color: var(--s-blue); background: var(--s-blue-bg); }
+.pill[data-tone='green'] { color: var(--s-green); background: var(--s-green-bg); }
+.pill[data-tone='amber'] { color: var(--s-amber); background: var(--s-amber-bg); }
+.pill[data-tone='red'] { color: var(--s-red); background: var(--s-red-bg); }
+.pill[data-tone='violet'] { color: var(--s-violet); background: var(--s-violet-bg); }
+.pill[data-tone='ink'] { color: var(--text); background: var(--surface-2); }
+.pill[data-mode='icon'], .pill[data-mode='plain'], .pill[data-mode='text'] { background: transparent !important; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

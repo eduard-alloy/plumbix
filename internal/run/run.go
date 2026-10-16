@@ -64,6 +64,9 @@ type Finish struct {
 type Store interface {
 	CreateRun(ctx context.Context, r Run) error
 	SetRunCommits(ctx context.Context, id, head, base string) error
+	// RecordStep stores one step's outcome while the run is still going, at
+	// its position in the pipeline, so clients see progress before the end.
+	RecordStep(ctx context.Context, id string, position int, s Step) error
 	FinishRun(ctx context.Context, id string, f Finish) error
 	GetRun(ctx context.Context, id string) (Run, error) // change.ErrNotFound
 	ListRuns(ctx context.Context, changeID string) ([]Run, error)

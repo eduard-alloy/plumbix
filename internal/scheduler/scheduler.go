@@ -41,10 +41,10 @@ type Options struct {
 	// Setup, when set, runs just before a step starts. It sees the steps
 	// finished so far and can add mounts, for example validator inputs.
 	Setup func(step pipeline.Step, finished []StepResult) (StepSetup, error)
-	// Finished, when set, is called exactly once per step with its final
-	// result, as soon as it is known: after the step ran, when it was
-	// skipped, or when it could not be built.
-	Finished func(step pipeline.Step, result StepResult)
+	// Finished, when set, is called exactly once per step with its index in
+	// the pipeline and its final result, as soon as it is known: after the
+	// step ran, when it was skipped, or when it could not be built.
+	Finished func(index int, step pipeline.Step, result StepResult)
 }
 
 // StepSetup is extra configuration for one step.
@@ -98,7 +98,7 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 	settle := func(i int, r StepResult) {
 		results[i] = r
 		if o.Finished != nil {
-			o.Finished(steps[i], r)
+			o.Finished(i, steps[i], r)
 		}
 	}
 

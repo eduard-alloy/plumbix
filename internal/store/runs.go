@@ -37,7 +37,18 @@ func (db *DB) SetRunCommits(ctx context.Context, id, head, base string) error {
 	return db.updateOne(ctx, `UPDATE runs SET head = ?, base = ? WHERE id = ?`, head, base, id)
 }
 
-// FinishRun records a run's end, its steps and its combined result.
+// RecordStep implements run.Store. A step recorded twice keeps the latest.
+func (db *DB) RecordStep(ctx context.Context, id string, position int, s run.Step) error {
+	_, err := db.sql.ExecContext(ctx,
+		`INSERT INTO steps (run_id, position, name, validator, status, exit_code, duration_ms, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (run_id, name) DO UPDATE SET position = excluded.position, validator = excluded.validator, status = excluded.status,
+		 exit_code = excluded.exit_code, duration_ms = excluded.duration_ms, error = excluded.error`,
+		id, position, s.Name, s.Validator, s.Status, s.ExitCode, s.DurationMS, s.Error)
+	return mapErr(err)
+}
+
+// FinishRun records a run's end, its steps and its combined result. Steps
+// recorded while the run was going are replaced by the final list.
 func (db *DB) FinishRun(ctx context.Context, id string, f run.Finish) error {
 	result := ""
 	if f.Result != nil {
@@ -55,6 +66,9 @@ func (db *DB) FinishRun(ctx context.Context, id string, f run.Finish) error {
 			 RETURNING repo_id, COALESCE(change_id, ''), branch, iteration, head, base`,
 			string(f.Status), string(f.Outcome), result, f.Error, formatTime(f.At), id).Scan(&repoID, &changeID, &branch, &iteration, &head, &base); err != nil {
 			return mapErr(err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM steps WHERE run_id = ?`, id); err != nil {
+			return err
 		}
 		for i, s := range f.Steps {
 			if _, err := tx.ExecContext(ctx,

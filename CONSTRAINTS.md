@@ -60,6 +60,8 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - The pipeline format is Plumbix's own minimal, strict YAML with a published, versioned schema. No compatibility with other CI formats. (Q08)
 
 ## Development environment
+- Web tests run with Vitest, jsdom and Testing Library against a fake `fetch` and `EventSource` (`web/src/test/server.ts`) and API-shaped fixtures. Fake only `Date` (`vi.useFakeTimers({ toFake: ['Date'] })`): faking timers hangs Testing Library's `waitFor`. A StatePill's screen-reader label is part of its parent's accessible name, so queries by name use unanchored patterns. (WU-011)
+- The engine records each step on its run as it finishes (`RecordStep`); `FinishRun` replaces the list. Clients may show a run's steps before it ends but never know which step is running. (WU-011)
 - `make build` runs `make web` first, which needs Node and npm; `web/dist` is embedded by `web/embed.go`, so a Go-only build still works and serves a "not built" page at `/`. Vite builds with `emptyOutDir` off so `web/dist/.gitkeep` stays. The Vite dev server is not wired to the API: the cookie checks refuse its Host and Origin, so develop against the built app or add a proxy with `changeOrigin` later. (WU-016)
 - `make integration` builds the two validator images concurrently from the same context. `TestImageFailsCleanlyWithoutKey` failed once under that load and passes alone; rerun before suspecting a change. (WU-010)
 - The Claude Code sandbox blocks local port binding, Go module downloads (TLS through its proxy fails) and the Docker socket. Tests that bind ports, `go get`/`go mod tidy`, and Docker integration tests run outside the sandbox, or with `sandbox.network.allowLocalBinding: true`. (WU-001)

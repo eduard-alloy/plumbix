@@ -7,6 +7,7 @@ import (
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/events"
+	"github.com/eduard-alloy/plumbix/internal/run"
 )
 
 func typesOf(evs []events.Event) []events.Type {
@@ -146,4 +147,42 @@ func TestFailedStepEventCarriesTheFailure(t *testing.T) {
 		t.Fatalf("step events = %+v; want test failed with exit 2, then the validator", steps)
 	}
 	_ = r
+}
+
+// TestStepsAreRecordedAsTheyFinish: a running run already lists the steps
+// that ended, so a client can show progress before the verdict.
+func TestStepsAreRecordedAsTheyFinish(t *testing.T) {
+	h := newHarness(t, Config{})
+	h.fake.block["validate"] = true
+	h.repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
+	c := h.submit("feat")
+	r, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got run.Run
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		var err error
+		if got, err = h.db.GetRun(ctx, r.ID); err != nil {
+			t.Fatal(err)
+		}
+		if len(got.Steps) > 0 {
+			break
+		}
+	}
+	if got.Status != run.Running || len(got.Steps) != 1 || got.Steps[0].Name != "test" || got.Steps[0].Status != "succeeded" {
+		t.Fatalf("mid-run = %+v; want the finished test step while validate still runs", got)
+	}
+	// A blocked step only ends by cancellation: a new validation replaces
+	// the run, and the finished run lists every step once, in order.
+	h.fake.mu.Lock()
+	h.fake.block["validate"] = false
+	h.fake.mu.Unlock()
+	done := h.wait(h.validate(c.ID).ID)
+	if len(done.Steps) != 2 || done.Steps[0].Name != "test" || done.Steps[1].Name != "validate" || done.Steps[1].Status != "succeeded" {
+		t.Fatalf("finished steps = %+v; want both once, in pipeline order", done.Steps)
+	}
+	if old := h.wait(r.ID); old.Status != run.Cancelled || len(old.Steps) != 2 {
+		t.Fatalf("cancelled run = %+v; want its two steps (test succeeded, validate cancelled) once each", old)
+	}
 }

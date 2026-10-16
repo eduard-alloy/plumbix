@@ -1,0 +1,143 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { App } from '../App'
+import { approved, fixRequested, needsHuman, NOW, running } from '../test/fixtures'
+import { emit, install, type FakeDB } from '../test/server'
+
+let db: FakeDB
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(NOW)
+  db = install()
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
+
+async function open(id: string) {
+  window.history.replaceState(null, '', `/changes/${id}`)
+  render(<App />)
+  return screen.findByRole('complementary', { name: 'Verdict' })
+}
+
+describe('Change page', () => {
+  it('shows intent, criteria, verdict, findings, risks, iterations and evidence for an approved change', async () => {
+    const verdict = await open(approved.id)
+    expect(screen.getByRole('heading', { level: 1, name: 'Retry failed artifact uploads' })).toBeTruthy()
+    expect(screen.getByText(/Uploads to the evidence store fail/)).toBeTruthy()
+    expect(screen.getByText('no new dependencies')).toBeTruthy()
+    expect(screen.getByText('3 of 3 met')).toBeTruthy()
+    const ac1 = screen.getByText('A transient upload error is retried up to three times').closest('.criterion')!
+    expect(ac1.textContent).toContain('TestUploadRetriesThrice covers three attempts with backoff')
+    expect(ac1.textContent).toContain('ai-review')
+    expect(within(ac1 as HTMLElement).getByRole('link', { name: 'evidence/ai-review/review.json' }).getAttribute('href')).toBe('/api/v1/runs/run_8h2k4m1qz2bb/steps/ai-review/log')
+    fireEvent.click(within(ac1 as HTMLElement).getByRole('button', { name: '+1 validator' }))
+    expect(ac1.textContent).toContain('step test succeeded')
+    expect(verdict.textContent).toContain('All 3 criteria met. No blockers.')
+    expect(verdict.textContent).toContain('3/3 met · 0 blockers · 1 finding · 1 risk')
+    expect(verdict.textContent).toContain('Merge squashes 9f3c1e2 onto main')
+    expect(screen.getByText('Backoff ceiling is hard-coded at 8 s; consider a constant')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'internal/evidence/upload.go:71' })).toBeTruthy()
+    expect(screen.getByText('2 test files were modified')).toBeTruthy()
+    expect(screen.getByText('No human needed')).toBeTruthy()
+    const iterations = screen.getAllByRole('button', { name: /Iteration \d/ })
+    expect(iterations.map((b) => b.textContent)).toEqual([expect.stringContaining('Iteration 2'), expect.stringContaining('Iteration 1')])
+    expect(iterations[0].getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText('iteration 2 · run_8h2k4m1qz2bb · 9f3c1e2')).toBeTruthy()
+    fireEvent.click(iterations[1])
+    expect(screen.getByText('iteration 1 · run_3d9x7p2cq1aa · 4c2e8d1')).toBeTruthy()
+    const steps = screen.getAllByRole('link', { name: 'Log' })
+    expect(steps).toHaveLength(5)
+    expect(steps[1].getAttribute('href')).toBe('/api/v1/runs/run_3d9x7p2cq1aa/steps/test/log')
+    expect(screen.getByText('Updated 4 min ago')).toBeTruthy()
+    expect(screen.getByText(/a81d7c0\.\.9f3c1e2/)).toBeTruthy()
+  })
+
+  it('merges with one click and shows the record', async () => {
+    const verdict = await open(approved.id)
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    await waitFor(() => expect(verdict.textContent).toContain('Merged into main.'))
+    expect(screen.getByText('5c0e7a3b9d21')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Merge' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull()
+  })
+
+  it('turns a merge refusal into a next step', async () => {
+    db.mergeResult = 'target_moved'
+    await open(approved.id)
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    const notice = await screen.findByRole('status')
+    expect(notice.textContent).toContain('Not merged: main moved')
+    expect(notice.textContent).toContain('git fetch origin && git merge origin/main && git push')
+    expect(within(notice).getByRole('button', { name: 'Copy command' })).toBeTruthy()
+    fireEvent.click(within(notice).getByRole('button', { name: 'Dismiss' }))
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Merge' })).toBeTruthy()
+
+    db.mergeResult = 'push_rejected'
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    const again = await screen.findByRole('status')
+    expect(again.textContent).toContain('the remote changed during the merge')
+    db.mergeResult = 'ok'
+    fireEvent.click(within(again).getByRole('button', { name: 'Merge again' }))
+    await waitFor(() => expect(screen.getByRole('complementary', { name: 'Verdict' }).textContent).toContain('Merged into main.'))
+  })
+
+  it('closes only after an inline confirm', async () => {
+    await open(fixRequested.id)
+    expect(screen.queryByRole('button', { name: 'Merge' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.getByText('Close this change?')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Keep' }))
+    expect(screen.queryByText('Close this change?')).toBeNull()
+    expect(db.changes.find((c) => c.id === fixRequested.id)!.state).toBe('fix_requested')
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(screen.getByRole('complementary', { name: 'Verdict' }).textContent).toContain('Closed without merging.'))
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull()
+  })
+
+  it('offers Validate again for needs_human and goes live', async () => {
+    const verdict = await open(needsHuman.id)
+    expect(verdict.textContent).toContain('A person must look')
+    expect(verdict.textContent).toContain('step build could not run: image golang:1.27 not found')
+    expect(screen.getByText(/^error: step build could not run/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Validate again' }))
+    const notice = await screen.findByRole('status')
+    expect(notice.textContent).toContain('Validating again')
+    await waitFor(() => expect(screen.getByText('Live', { selector: '.change-header .meta' })).toBeTruthy())
+  })
+
+  it('shows a running change with its finished steps and updates from events', async () => {
+    const verdict = await open(running.id)
+    expect(verdict.textContent).toContain('Validating iteration 1')
+    expect(verdict.textContent).toContain('Pipeline')
+    expect(within(verdict).getByText('build')).toBeTruthy()
+    expect(screen.getByText('1 pending')).toBeTruthy()
+    expect(screen.getByText('Waiting for step test')).toBeTruthy()
+    const run = db.runs[running.id][0]
+    run.steps.push({ name: 'test', validator: false, status: 'succeeded', exit_code: 0, duration_ms: 70000 })
+    emit({ type: 'step.finished', change_id: running.id, run_id: run.id, repo_id: running.repo_id, payload: { step: 'test', status: 'succeeded' } })
+    await waitFor(() => expect(within(screen.getByRole('complementary', { name: 'Verdict' })).getByText('test')).toBeTruthy())
+  })
+
+  it('goes back to the list with the back button and Escape', async () => {
+    await open(approved.id)
+    fireEvent.click(screen.getByRole('button', { name: 'Changes' }))
+    expect(window.location.pathname).toBe('/')
+    await screen.findByRole('list', { name: 'Changes' })
+    fireEvent.click(screen.getAllByRole('listitem')[0])
+    await screen.findByRole('complementary', { name: 'Verdict' })
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(window.location.pathname).toBe('/')
+  })
+
+  it('says so when the change does not exist', async () => {
+    window.history.replaceState(null, '', '/changes/c_nope')
+    render(<App />)
+    await screen.findByText('No change c_nope')
+  })
+})

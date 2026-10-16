@@ -328,7 +328,7 @@ func TestFinishedHookSeesEveryStepOnce(t *testing.T) {
 	var mu sync.Mutex
 	seen := map[string][]Status{}
 	o := opts(2)
-	o.Finished = func(st pipeline.Step, res StepResult) {
+	o.Finished = func(_ int, st pipeline.Step, res StepResult) {
 		mu.Lock()
 		defer mu.Unlock()
 		if st.Name != res.Name {
@@ -362,7 +362,7 @@ func TestFinishedHookOnCancel(t *testing.T) {
 	var mu sync.Mutex
 	seen := map[string]Status{}
 	o := opts(1)
-	o.Finished = func(st pipeline.Step, res StepResult) {
+	o.Finished = func(_ int, st pipeline.Step, res StepResult) {
 		mu.Lock()
 		defer mu.Unlock()
 		seen[st.Name] = res.Status

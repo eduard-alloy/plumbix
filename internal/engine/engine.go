@@ -306,18 +306,23 @@ func (e *Engine) schedulerOptions(r run.Run, workspace string, logs map[string]*
 			logs[step] = f
 			return f
 		},
-		Finished: func(st pipeline.Step, res scheduler.StepResult) { e.recordStep(r, st, res) },
+		Finished: func(i int, st pipeline.Step, res scheduler.StepResult) { e.recordStep(r, i, st, res) },
 	}
 }
 
-// recordStep appends a step.finished event. It uses its own context so a
-// cancelled run still announces how its steps ended.
-func (e *Engine) recordStep(r run.Run, st pipeline.Step, res scheduler.StepResult) {
+// recordStep stores a finished step on its run and appends a step.finished
+// event, in that order, so a client reacting to the event finds the step.
+// It uses its own context so a cancelled run still records how its steps
+// ended.
+func (e *Engine) recordStep(r run.Run, position int, st pipeline.Step, res scheduler.StepResult) {
 	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 	defer cancel()
 	p := events.StepFinishedPayload{Step: st.Name, Validator: st.Validator, Status: string(res.Status), ExitCode: res.ExitCode, DurationMS: res.Duration.Milliseconds()}
 	if res.Err != nil {
 		p.Error = res.Err.Error()
+	}
+	if err := e.store.RecordStep(ctx, r.ID, position, run.Step{Name: st.Name, Validator: st.Validator, Status: string(res.Status), ExitCode: res.ExitCode, DurationMS: res.Duration.Milliseconds(), Error: p.Error}); err != nil {
+		e.log.Error("record step", "run", r.ID, "step", st.Name, "err", err)
 	}
 	if _, err := e.store.AppendEvent(ctx, events.Event{Type: events.StepFinished, Time: e.now().UTC(), RepoID: r.RepoID, ChangeID: r.ChangeID, RunID: r.ID, Payload: p}); err != nil {
 		e.log.Error("record step event", "run", r.ID, "step", st.Name, "err", err)

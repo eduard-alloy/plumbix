@@ -48,7 +48,7 @@ Each package lives under `internal/` unless noted.
 | Events | `events` | Append-only event log in the store, published to clients as a Server-Sent Events (SSE) stream. |
 | Store | `store` | SQLite database plus embedded migrations. |
 | Config | `config` | Loads config and secrets, checks file permissions, enforces the local-only bind rule. |
-| Web interface | `web/` | React and TypeScript app built with Vite, embedded into the binary at build time (`web/embed.go`, SPA fallback, CSP). The design handoff lives in `web/design/`. |
+| Web interface | `web/` | React and TypeScript app built with Vite, embedded into the binary at build time (`web/embed.go`, SPA fallback, CSP). One store loaded once and kept fresh by refetching what each event names; pure view models under `web/src/vm`. The design handoff lives in `web/design/`. |
 | Reference validator | `validators/reference/` | Deterministic validator: a small Go program shipped as a container image. It maps criteria to step results and commands. |
 | AI validator | `validators/ai/` | A Go program shipped as a container image. It asks a Claude model to judge the change against its intent and criteria, and writes the same verdict file. |
 

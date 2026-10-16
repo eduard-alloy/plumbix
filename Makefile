@@ -16,8 +16,10 @@ web/node_modules: web/package.json web/package-lock.json
 web: web/node_modules
 	cd web && npm run build
 
-test:
+test: web/node_modules
 	go test ./...
+	cd web && npm test -- --reporter=dot
+
 
 lint:
 	go vet ./...
