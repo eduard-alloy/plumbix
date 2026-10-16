@@ -94,7 +94,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-014 | Event stream: SSE with resumable ids, events contract (split from WU-007) | F-001 | ✅ |
 | WU-016 | Browser session (one-time login link, cookie, Host and Origin checks), diff endpoint, web app served from the binary (split from WU-011) | F-004, F-008 | ✅ |
 | WU-011 | Web interface, core screens: shell, sign-in, changes list, change view with verdict, evidence, merge | F-004 | ✅ |
-| WU-017 | Web interface, the rest: log panel, diff view, alerts, repositories, design-system page | F-004 | ⚪ |
+| WU-017 | Web interface, the rest: log panel, diff view, alerts, repositories, design-system page | F-004 | ✅ |
 | WU-012 | Self-hosting: Plumbix validates its own changes on GitHub, milestone acceptance | All M1 | ⚪ |
 
 ## Milestone 2 candidates

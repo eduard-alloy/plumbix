@@ -144,12 +144,29 @@ export interface Alert {
   resolved_at?: string
 }
 
+export interface DiffLine {
+  type: 'context' | 'add' | 'del'
+  old?: number
+  new?: number
+  text: string
+}
+
+export interface DiffHunk {
+  old_start: number
+  old_lines: number
+  new_start: number
+  new_lines: number
+  header: string
+  lines: DiffLine[]
+}
+
 export interface DiffFile {
   path: string
   status: 'added' | 'modified' | 'deleted'
   binary: boolean
   additions: number
   deletions: number
+  hunks?: DiffHunk[]
 }
 
 export interface Diff {

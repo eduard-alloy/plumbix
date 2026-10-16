@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { App } from '../App'
 import { approved, fixRequested, NOW, running } from '../test/fixtures'
-import { emit, install, type FakeDB } from '../test/server'
+import { emit, install, streamOpen, type FakeDB } from '../test/server'
 
 let db: FakeDB
 
@@ -14,6 +14,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup() // unmount before the stubs go, or a late load would hit the real globals
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
@@ -103,6 +104,7 @@ describe('Changes page', () => {
     const c = db.changes.find((x) => x.id === approved.id)!
     c.state = 'merged'
     c.updated_at = new Date().toISOString()
+    await streamOpen()
     emit({ type: 'change.state_changed', change_id: approved.id, repo_id: approved.repo_id, payload: { from: 'approved', to: 'merged' } })
     await waitFor(() => expect(rowIds(screen.getByRole('list', { name: 'Changes' }))[0]).not.toBe(approved.id))
     expect(within(screen.getByRole('list', { name: 'Changes' })).getByText('Retry failed artifact uploads').closest('[role=listitem]')!.textContent).toContain('Merged')

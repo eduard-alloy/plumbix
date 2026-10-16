@@ -1,7 +1,7 @@
 // A fake server for page tests: fetch answers from fixtures, EventSource is
 // a hand-driven stub. Tests mutate `db` and call `emit` to simulate change.
 import { vi } from 'vitest'
-import type { Alert, Change, PlumbixEvent, Repo, Run } from '../model'
+import type { Alert, Change, Diff, PlumbixEvent, Repo, Run } from '../model'
 import * as fx from './fixtures'
 
 export interface FakeDB {
@@ -26,6 +26,50 @@ export function freshDB(): FakeDB {
     requests: [],
   }
 }
+
+/** diffWithHunks is the approved change's diff: two files, one with a hunk
+ * that holds the minor finding's line 71. */
+export function diffWithHunks(): Diff {
+  return {
+    base: 'a81d7c0bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    head: '9f3c1e2cccccccccccccccccccccccccccccccccc',
+    additions: 4,
+    deletions: 1,
+    truncated: false,
+    files: [
+      {
+        path: 'internal/evidence/upload.go',
+        status: 'modified',
+        binary: false,
+        additions: 3,
+        deletions: 1,
+        hunks: [
+          {
+            old_start: 68,
+            old_lines: 6,
+            new_start: 68,
+            new_lines: 8,
+            header: 'func (u *Uploader) put(ctx context.Context, key string, body []byte) error {',
+            lines: [
+              { type: 'context', old: 68, new: 68, text: '\tfor attempt := 1; ; attempt++ {' },
+              { type: 'context', old: 69, new: 69, text: '\t\terr := u.try(ctx, key, body)' },
+              { type: 'del', old: 70, text: '\t\tif err == nil { return nil }' },
+              { type: 'add', new: 70, text: '\t\tif err == nil {' },
+              { type: 'add', new: 71, text: '\t\t\tdelay = min(delay*2, 8*time.Second)' },
+              { type: 'add', new: 72, text: '\t\t}' },
+              { type: 'context', old: 71, new: 73, text: '\t\tif attempt == 3 {' },
+              { type: 'context', old: 72, new: 74, text: '\t\t\treturn err' },
+              { type: 'context', old: 73, new: 75, text: '\t\t}' },
+            ],
+          },
+        ],
+      },
+      { path: 'CHANGELOG.md', status: 'modified', binary: false, additions: 1, deletions: 0, hunks: [{ old_start: 1, old_lines: 2, new_start: 1, new_lines: 3, header: '', lines: [{ type: 'context', old: 1, new: 1, text: '# Changelog' }, { type: 'add', new: 2, text: '- Retry failed artifact uploads' }, { type: 'context', old: 2, new: 3, text: '' }] }] },
+    ],
+  }
+}
+
+const sampleLog = ['$ go test ./... -count=1', 'ok  \tgithub.com/plumbix/plumbix/internal/config\t0.402s', '--- FAIL: TestImportRejectsUnknownCurrency (0.00s)', '    currency_test.go:27: row 4: "eur" rejected, want accepted', 'FAIL', 'step test failed in 1m 58s (exit 1)'].join('\n') + '\n'
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -60,7 +104,19 @@ export function fakeFetch(db: FakeDB): typeof fetch {
     }
     if (path === '/api/v1/repos') return json(200, { repos: db.repos })
     if (path === '/api/v1/changes') return json(200, { changes: db.changes })
+    const resolve = path.match(/^\/api\/v1\/alerts\/([^/]+)\/resolve$/)
+    if (resolve && method === 'POST') {
+      const a = db.alerts.find((x) => x.id === resolve[1])
+      if (!a) return error(404, 'not_found', 'alert')
+      a.resolved_at ??= new Date().toISOString()
+      return json(200, a)
+    }
     if (path.startsWith('/api/v1/alerts')) return json(200, { alerts: db.alerts.filter((a) => path.includes('include_resolved') || !a.resolved_at) })
+    const log = path.match(/^\/api\/v1\/runs\/([^/]+)\/steps\/([^/]+)\/log$/)
+    if (log) {
+      const text = log[2] === 'test' ? sampleLog : `$ ${log[2]}\nok\nstep ${log[2]} succeeded in 4s (exit 0)\n`
+      return new Response(text, { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
+    }
     const m = path.match(/^\/api\/v1\/changes\/([^/?]+)(?:\/([a-z]+))?(\?.*)?$/)
     if (m) {
       const [, id, sub, query] = m
@@ -69,12 +125,9 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       if (!sub) return json(200, c)
       if (sub === 'runs') return json(200, { runs: db.runs[id] ?? [] })
       if (sub === 'diff') {
-        const stat = (query ?? '').includes('stat=true')
-        const files = [
-          { path: 'internal/evidence/upload.go', status: 'modified', binary: false, additions: 24, deletions: 6, hunks: stat ? undefined : [] },
-          { path: 'CHANGELOG.md', status: 'modified', binary: false, additions: 1, deletions: 0, hunks: stat ? undefined : [] },
-        ]
-        return json(200, { base: 'a81d7c0bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', head: '9f3c1e2cccccccccccccccccccccccccccccccccc', additions: 25, deletions: 6, truncated: false, files })
+        const d = diffWithHunks()
+        if ((query ?? '').includes('stat=true')) for (const f of d.files) delete f.hunks
+        return json(200, d)
       }
       if (sub === 'merge' && method === 'POST') {
         if (c.state !== 'approved') return error(409, 'invalid_state', `change ${id} is ${c.state}`)
@@ -125,6 +178,15 @@ export class FakeEventSource {
 }
 
 let nextEventID = 1000
+
+/** streamOpen resolves once the app has opened its event stream. */
+export async function streamOpen(): Promise<void> {
+  const deadline = Date.now() + 2000
+  while (!FakeEventSource.instances.some((i) => !i.closed)) {
+    if (Date.now() > deadline) throw new Error('the app never opened the event stream')
+    await new Promise((r) => setTimeout(r, 10))
+  }
+}
 
 /** emit sends an event through every open stream. */
 export function emit(partial: Partial<PlumbixEvent> & { type: PlumbixEvent['type'] }): void {

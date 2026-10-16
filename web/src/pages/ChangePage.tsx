@@ -1,11 +1,13 @@
 // The core screen: intent and verdict first, evidence linked everywhere,
 // the diff on demand. Layout and copy follow web/design/README.md.
 import { useEffect, useRef, useState } from 'react'
-import { api, ApiError, stepLogUrl } from '../api'
+import { api, ApiError } from '../api'
 import type { Diff } from '../model'
 import { useRoute } from '../router'
 import { useNow, useStore } from '../store'
 import { StatePill, type PillStatus } from '../ui/StatePill'
+import { LogPanel, type LogTarget } from '../ui/LogPanel'
+import { DiffView, type Highlight } from '../ui/DiffView'
 import { changeView, refusalNotice, type NoticeVM, type StepVM } from '../vm/change'
 
 type Busy = 'merge' | 'close' | 'validate' | null
@@ -25,7 +27,10 @@ export function ChangePage({ id }: { id: string }) {
   const [flash, setFlash] = useState<string | null>(null)
   const [diffStat, setDiffStat] = useState<Diff | null>(null)
   const [diff, setDiff] = useState<{ state: 'closed' | 'loading' | 'open'; data?: Diff }>({ state: 'closed' })
+  const [highlight, setHighlight] = useState<Highlight | null>(null)
+  const [log, setLog] = useState<LogTarget | null>(null)
   const iterationsRef = useRef<HTMLElement>(null)
+  const diffRef = useRef<HTMLElement>(null)
 
   // A change the list did not have yet (deep link): fetch it once.
   useEffect(() => {
@@ -132,18 +137,52 @@ export function ChangePage({ id }: { id: string }) {
     setTimeout(() => setFlash(null), 1600)
   }
 
-  async function toggleDiff() {
-    if (diff.state === 'open') return setDiff({ state: 'closed' })
-    if (diff.state === 'loading') return
+  async function openDiff(): Promise<boolean> {
+    if (diff.state === 'open') return true
+    if (diff.state === 'loading') return false
     setDiff({ state: 'loading' })
     try {
       setDiff({ state: 'open', data: await api.diff(c!.id, false) })
+      return true
     } catch {
       setDiff({ state: 'closed' })
+      return false
     }
   }
 
-  const evidenceRunId = v.evidence.runId
+  async function toggleDiff() {
+    if (diff.state === 'open') {
+      setDiff({ state: 'closed' })
+      setHighlight(null)
+      return
+    }
+    await openDiff()
+  }
+
+  async function goLocation(file: string, line: number) {
+    setHighlight({ file, line })
+    if (await openDiff()) {
+      setTimeout(() => {
+        const el = document.querySelector('[data-diff-hl="1"]') ?? document.querySelector('[data-diff-file-hl="1"]') ?? diffRef.current
+        el?.scrollIntoView?.({ block: 'center' })
+      }, 0)
+    }
+  }
+
+  // Logs open for the run the evidence section shows; evidence paths name
+  // a step of the latest run.
+  const latestRun = runs[runs.length - 1]
+  const evidenceRun = runs.find((r) => r.id === v.evidence.runId)
+  function openLog(run: typeof latestRun | undefined, s: StepVM) {
+    if (run) setLog({ changeId: c!.id, run, step: s })
+  }
+  function openPathLog(path: string) {
+    const stepName = path.split('/')[1] ?? ''
+    const run = latestRun
+    const step = run?.steps.find((s) => s.name === stepName)
+    if (run && step) openLog(run, { name: step.name, validator: step.validator, status: step.status, exit: `exit ${step.exit_code}`, dur: '', hasLog: true })
+  }
+
   const stepRow = (s: StepVM, key: string, className: string) => {
     const inner = (
       <>
@@ -156,14 +195,10 @@ export function ChangePage({ id }: { id: string }) {
         <span className="log">{s.hasLog ? 'Log' : ''}</span>
       </>
     )
-    return s.hasLog ? (
-      <a key={key} className={className} href={stepLogUrl(evidenceRunId, s.name)} target="_blank" rel="noreferrer" aria-label="Log">
+    return (
+      <button key={key} className={className} disabled={!s.hasLog} onClick={() => openLog(evidenceRun, s)}>
         {inner}
-      </a>
-    ) : (
-      <div key={key} className={className} aria-disabled="true">
-        {inner}
-      </div>
+      </button>
     )
   }
   const diffSummary = diffStat ? `${diffStat.files.length} files · +${diffStat.additions} −${diffStat.deletions} · ${v.diffRange}` : v.diffRange
@@ -315,9 +350,9 @@ export function ChangePage({ id }: { id: string }) {
                           <span>{cr.reason}</span>
                           {cr.by && <span className="by">{cr.by}</span>}
                           {cr.evidence.map((p) => (
-                            <a key={p} className="link mono" href={stepLogUrl(evidenceRunId, p.split('/')[1] ?? '')} target="_blank" rel="noreferrer">
+                            <button key={p} className="link mono" onClick={() => openPathLog(p)}>
                               {p}
-                            </a>
+                            </button>
                           ))}
                           {cr.more.length > 0 && (
                             <button className="toggle" aria-expanded={open} onClick={() => setExpanded({ ...expanded, [key]: !open })}>
@@ -332,9 +367,9 @@ export function ChangePage({ id }: { id: string }) {
                               <span>{m.reason}</span>
                               <span className="by">{m.validator}</span>
                               {m.evidence.map((p) => (
-                                <a key={p} className="link mono" href={stepLogUrl(evidenceRunId, p.split('/')[1] ?? '')} target="_blank" rel="noreferrer">
+                                <button key={p} className="link mono" onClick={() => openPathLog(p)}>
                                   {p}
-                                </a>
+                                </button>
                               ))}
                             </div>
                           ))}
@@ -373,21 +408,13 @@ export function ChangePage({ id }: { id: string }) {
               <div className="block">
                 <div className="label">{v.verdict.stepsLabel}</div>
                 <div className="steps">
-                  {v.verdict.steps.map((s) =>
-                    s.hasLog ? (
-                      <a key={s.name} className="vstep" href={stepLogUrl(v.verdict.runId, s.name)} target="_blank" rel="noreferrer">
-                        <StatePill status={s.status as PillStatus} mode="icon" />
-                        <span className="name">{s.name}</span>
-                        <span className="dur">{s.dur}</span>
-                      </a>
-                    ) : (
-                      <div key={s.name} className="vstep">
-                        <StatePill status={s.status as PillStatus} mode="icon" />
-                        <span className="name">{s.name}</span>
-                        <span className="dur">{s.dur}</span>
-                      </div>
-                    ),
-                  )}
+                  {v.verdict.steps.map((s) => (
+                    <button key={s.name} className="vstep" disabled={!s.hasLog} onClick={() => openLog(latestRun, s)}>
+                      <StatePill status={s.status as PillStatus} mode="icon" />
+                      <span className="name">{s.name}</span>
+                      <span className="dur">{s.dur}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -439,7 +466,7 @@ export function ChangePage({ id }: { id: string }) {
                     </span>
                   </div>
                   {f.loc && (
-                    <button className="link mono loc" onClick={() => void toggleDiff()}>
+                    <button className="link mono loc" onClick={() => void goLocation(f.file, f.line)}>
                       {f.loc}
                     </button>
                   )}
@@ -501,7 +528,7 @@ export function ChangePage({ id }: { id: string }) {
           {v.evidence.steps.map((s) => stepRow(s, s.name, 'step'))}
         </section>
 
-        <section className="section">
+        <section className="section" ref={diffRef}>
           <div className="section-header">
             <h2>Diff</h2>
             <span className="count">{diffSummary}</span>
@@ -518,17 +545,10 @@ export function ChangePage({ id }: { id: string }) {
               <span className="bar thin" style={{ width: '55%' }} />
             </div>
           )}
-          {diff.state === 'open' &&
-            diff.data?.files.map((f) => (
-              <div key={f.path} className="diff-file">
-                <span className="path">{f.path}</span>
-                <span className="add">+{f.additions}</span>
-                <span className="del">−{f.deletions}</span>
-              </div>
-            ))}
-          {diff.state === 'open' && diff.data?.truncated && <div className="none">The diff is too large to show inline; counts only.</div>}
+          {diff.state === 'open' && diff.data && <DiffView diff={diff.data} findings={v.findings.flatMap((g) => g.items.filter((f) => f.file).map((f) => ({ validator: f.validator, severity: f.severity, message: f.message, criterion: f.criterion || undefined, file: f.file, line: f.line })))} highlight={highlight} />}
         </section>
       </div>
+      {log && <LogPanel target={log} onClose={() => setLog(null)} />}
     </>
   )
 }

@@ -5,6 +5,7 @@ import { useRoute } from '../router'
 import { useNow, useStore } from '../store'
 import { duration } from '../format'
 import { NEEDS_YOU } from '../model'
+import { CLOSE_LOG } from './LogPanel'
 
 export const FOCUS_SEARCH = 'plumbix:focus-search'
 
@@ -24,9 +25,12 @@ export function Shell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const logOpen = document.querySelector<HTMLInputElement>('.log-panel input')
       if (e.key === '/' && !typing()) {
         e.preventDefault()
-        if (route.screen === 'changes') {
+        if (logOpen) {
+          logOpen.focus()
+        } else if (route.screen === 'changes') {
           window.dispatchEvent(new Event(FOCUS_SEARCH))
         } else {
           go('/')
@@ -38,6 +42,10 @@ export function Shell({ children }: { children: ReactNode }) {
         const el = typing()
         if (el) {
           el.blur()
+          return
+        }
+        if (logOpen) {
+          window.dispatchEvent(new Event(CLOSE_LOG))
           return
         }
         if (route.screen === 'change') go('/')

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { App } from '../App'
 import { approved, fixRequested, needsHuman, NOW, running } from '../test/fixtures'
-import { emit, install, type FakeDB } from '../test/server'
+import { emit, install, streamOpen, type FakeDB } from '../test/server'
 
 let db: FakeDB
 
@@ -13,6 +13,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup() // unmount before the stubs go, or a late load would hit the real globals
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
@@ -33,7 +34,7 @@ describe('Change page', () => {
     const ac1 = screen.getByText('A transient upload error is retried up to three times').closest('.criterion')!
     expect(ac1.textContent).toContain('TestUploadRetriesThrice covers three attempts with backoff')
     expect(ac1.textContent).toContain('ai-review')
-    expect(within(ac1 as HTMLElement).getByRole('link', { name: 'evidence/ai-review/review.json' }).getAttribute('href')).toBe('/api/v1/runs/run_8h2k4m1qz2bb/steps/ai-review/log')
+    expect(within(ac1 as HTMLElement).getByRole('button', { name: 'evidence/ai-review/review.json' })).toBeTruthy()
     fireEvent.click(within(ac1 as HTMLElement).getByRole('button', { name: '+1 validator' }))
     expect(ac1.textContent).toContain('step test succeeded')
     expect(verdict.textContent).toContain('All 3 criteria met. No blockers.')
@@ -49,9 +50,10 @@ describe('Change page', () => {
     expect(screen.getByText('iteration 2 · run_8h2k4m1qz2bb · 9f3c1e2')).toBeTruthy()
     fireEvent.click(iterations[1])
     expect(screen.getByText('iteration 1 · run_3d9x7p2cq1aa · 4c2e8d1')).toBeTruthy()
-    const steps = screen.getAllByRole('link', { name: 'Log' })
+    const steps = document.querySelectorAll('button.step')
     expect(steps).toHaveLength(5)
-    expect(steps[1].getAttribute('href')).toBe('/api/v1/runs/run_3d9x7p2cq1aa/steps/test/log')
+    expect(steps[1].textContent).toContain('test')
+    expect(steps[1].textContent).toContain('Log')
     expect(screen.getByText('Updated 4 min ago')).toBeTruthy()
     expect(screen.getByText(/a81d7c0\.\.9f3c1e2/)).toBeTruthy()
   })
@@ -120,6 +122,7 @@ describe('Change page', () => {
     expect(screen.getByText('Waiting for step test')).toBeTruthy()
     const run = db.runs[running.id][0]
     run.steps.push({ name: 'test', validator: false, status: 'succeeded', exit_code: 0, duration_ms: 70000 })
+    await streamOpen()
     emit({ type: 'step.finished', change_id: running.id, run_id: run.id, repo_id: running.repo_id, payload: { step: 'test', status: 'succeeded' } })
     await waitFor(() => expect(within(screen.getByRole('complementary', { name: 'Verdict' })).getByText('test')).toBeTruthy())
   })

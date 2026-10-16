@@ -52,6 +52,15 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T
 }
 
+async function requestText(path: string): Promise<string> {
+  const res = await fetch(path, { credentials: 'same-origin' })
+  if (!res.ok) {
+    if (res.status === 401) for (const fn of unauthorizedListeners) fn()
+    throw new ApiError(res.status, `http_${res.status}`, `HTTP ${res.status}`)
+  }
+  return res.text()
+}
+
 export interface SessionStatus {
   status: 'signed_in'
   via: 'cookie' | 'token'
@@ -73,6 +82,7 @@ export const api = {
   validate: (id: string) => request<Run>('POST', `/api/v1/changes/${encodeURIComponent(id)}/validate`),
   alerts: (all = false) => request<{ alerts: Alert[] }>('GET', `/api/v1/alerts${all ? '?include_resolved=true' : ''}`).then((r) => r.alerts),
   resolveAlert: (id: string) => request<Alert>('POST', `/api/v1/alerts/${encodeURIComponent(id)}/resolve`),
+  stepLog: (runId: string, step: string) => requestText(stepLogUrl(runId, step)),
 }
 
 /** stepLogUrl is where a step's raw log can be opened. */

@@ -4,7 +4,9 @@ import { Shell } from './ui/Shell'
 import { ChangesPage } from './pages/ChangesPage'
 import { ChangePage } from './pages/ChangePage'
 import { SignInPage } from './pages/SignInPage'
-import { AlertsPage, ReposPage } from './pages/StubPages'
+import { AlertsPage } from './pages/AlertsPage'
+import { ReposPage } from './pages/ReposPage'
+import { DesignPage } from './pages/DesignPage'
 
 export function App() {
   return (
@@ -24,6 +26,7 @@ function Routed() {
       {route.screen === 'change' && <ChangePage id={route.id} />}
       {route.screen === 'alerts' && <AlertsPage />}
       {route.screen === 'repos' && <ReposPage />}
+      {route.screen === 'design' && <DesignPage />}
     </Shell>
   )
 }

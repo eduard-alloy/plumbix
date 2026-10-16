@@ -9,6 +9,7 @@ describe('parseRoute', () => {
     expect(parseRoute('/login')).toEqual({ screen: 'login' })
     expect(parseRoute('/alerts')).toEqual({ screen: 'alerts' })
     expect(parseRoute('/repos')).toEqual({ screen: 'repos' })
+    expect(parseRoute('/design')).toEqual({ screen: 'design' })
     expect(parseRoute('/nope/x')).toEqual({ screen: 'changes' })
   })
   it('builds paths back', () => {
