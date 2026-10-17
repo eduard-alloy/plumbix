@@ -112,7 +112,11 @@ func next(ctx context.Context, o Options) (review.Brief, bool, error) {
 	if o.RepoID != "" {
 		q.Set("repo_id", o.RepoID)
 	}
-	resp, err := o.Client.Do(ctx, http.MethodGet, "/api/v1/reviews/next?"+q.Encode(), nil)
+	// The server holds the request up to wait seconds; the request timeout
+	// of a plain call is shorter and would abandon a claim already made.
+	pollCtx, cancel := context.WithTimeout(ctx, time.Duration(o.Wait)*time.Second+15*time.Second)
+	defer cancel()
+	resp, err := o.Client.Wait(pollCtx, http.MethodGet, "/api/v1/reviews/next?"+q.Encode(), nil)
 	if err != nil {
 		return review.Brief{}, false, err
 	}
@@ -146,7 +150,13 @@ func reviewOne(ctx context.Context, o Options, b review.Brief) error {
 	for _, id := range b.Criteria {
 		criteria = append(criteria, change.Criterion{ID: id})
 	}
-	model := res.model()
+	model := b.Model
+	if o.Model != "" {
+		model = o.Model
+	}
+	if model == "" {
+		model = res.model()
+	}
 	if model == "" {
 		model = "claude-code"
 	}
@@ -223,15 +233,24 @@ type result struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
 	} `json:"usage"`
-	ModelUsage map[string]json.RawMessage `json:"modelUsage"`
+	ModelUsage map[string]struct {
+		OutputTokens      int `json:"outputTokens"`
+		OutputTokensSnake int `json:"output_tokens"`
+	} `json:"modelUsage"`
 }
 
-// model names the model claude reported using, when one is listed.
+// model names the model that did the review: the one with the most output
+// tokens among those claude lists (helper turns may use a smaller one),
+// ties broken by name so the record is stable.
 func (r result) model() string {
-	for name := range r.ModelUsage {
-		return name
+	best, bestTokens := "", -1
+	for name, u := range r.ModelUsage {
+		tokens := max(u.OutputTokens, u.OutputTokensSnake)
+		if tokens > bestTokens || (tokens == bestTokens && name < best) {
+			best, bestTokens = name, tokens
+		}
 	}
-	return ""
+	return best
 }
 
 // runClaude runs claude -p in the worktree with the brief's prompt and

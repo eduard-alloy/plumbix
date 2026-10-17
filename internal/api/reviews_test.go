@@ -86,3 +86,31 @@ func TestExternalReviewsAreClaimedAndAnsweredOverTheAPI(t *testing.T) {
 		t.Errorf("external step = %+v", steps)
 	}
 }
+
+func TestAClaimForAPollerThatHungUpIsReleased(t *testing.T) {
+	a := newRunAPI(t)
+	a.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalPipeline}, "external review")
+	a.repo.Commit("ext", map[string]string{"b.go": "package b\n"}, "feature on the new pipeline")
+	a.do(http.MethodPost, "/api/v1/changes", changeBody(a.repoID, "ext"))
+	// The poller's connection drops between the claim and the write.
+	old := clientGone
+	clientGone = func(*http.Request) bool { return true }
+	rec := a.do(http.MethodGet, "/api/v1/reviews/next?reviewer=kai&wait=20", "")
+	clientGone = old
+	if rec.Code != http.StatusOK || rec.Body.Len() != 0 {
+		t.Fatalf("abandoned claim answered %d %q; want nothing written", rec.Code, rec.Body.String())
+	}
+	// The review is pending again: the next reviewer gets it with a fresh token.
+	again := a.do(http.MethodGet, "/api/v1/reviews/next?reviewer=otto&wait=5", "")
+	if again.Code != http.StatusOK {
+		t.Fatalf("claim after a release: %d %s", again.Code, again.Body.String())
+	}
+	b := decode[review.Brief](t, again)
+	verdict := `{"plumbix":"verdict/v1","outcome":"approve","summary":"Fine.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}]}`
+	if ok := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/verdict", `{"token": "`+b.Token+`", "verdict": `+verdict+`}`); ok.Code != http.StatusOK {
+		t.Errorf("post after re-claim: %d %s", ok.Code, ok.Body.String())
+	}
+	if rec := a.do(http.MethodGet, "/api/v1/runs/"+b.RunID+"/steps/ai-review/log", ""); !strings.Contains(rec.Body.String(), "released") {
+		t.Logf("step log (release may land after the verdict): %s", rec.Body.String())
+	}
+}

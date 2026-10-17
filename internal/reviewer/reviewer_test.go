@@ -201,3 +201,61 @@ func TestFullToolsAllowBashAndAFailedRunPostsNothing(t *testing.T) {
 	}
 	_ = rec
 }
+
+func TestUnstructuredOrGarbledClaudeOutputPostsNothing(t *testing.T) {
+	repo := gittest.New(t)
+	base := repo.Commit("main", map[string]string{"README.md": "# base\n"}, "base")
+	head := repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	for name, result := range map[string]string{
+		"null structured output": `{"type":"result","subtype":"success","is_error":false,"result":"I reviewed it.","structured_output":null}`,
+		"no structured output":   `{"type":"result","subtype":"success","is_error":false,"result":"I reviewed it."}`,
+		"not json":               "Error: something went wrong before any JSON",
+	} {
+		t.Run(name, func(t *testing.T) {
+			fakeClaude(t, result)
+			fs := &fakeServer{brief: newBrief(repo.Remote, head, base)}
+			srv := httptest.NewServer(fs.handler())
+			defer srv.Close()
+			var out, errOut bytes.Buffer
+			err := Run(context.Background(), Options{Client: client.New(strings.TrimPrefix(srv.URL, "http://"), "t"), Reviewer: "kai", Once: true, WorkDir: t.TempDir(), Stdout: &out, Stderr: &errOut})
+			if err == nil || fs.postedID != "" {
+				t.Errorf("err %v, posted %q; want an error and no verdict", err, fs.postedID)
+			}
+		})
+	}
+}
+
+func TestRecordedModelIsTheBriefsOrTheBusiest(t *testing.T) {
+	repo := gittest.New(t)
+	base := repo.Commit("main", map[string]string{"README.md": "# base\n"}, "base")
+	head := repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	twoModels := strings.Replace(approving, `"usage":`, `"modelUsage":{"claude-haiku-5-5":{"inputTokens":50,"outputTokens":10},"claude-opus-5-5":{"inputTokens":1000,"outputTokens":290}},"usage":`, 1)
+	cases := []struct{ name, brief, override, want string }{
+		{"busiest listed model", "", "", "claude-opus-5-5"},
+		{"the brief's model", "claude-sonnet-5-5", "", "claude-sonnet-5-5"},
+		{"the --model override wins", "claude-sonnet-5-5", "claude-fable-5-1", "claude-fable-5-1"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fakeClaude(t, twoModels)
+			b := newBrief(repo.Remote, head, base)
+			b.Model = c.brief
+			fs := &fakeServer{brief: b}
+			srv := httptest.NewServer(fs.handler())
+			defer srv.Close()
+			if err := Run(context.Background(), Options{Client: client.New(strings.TrimPrefix(srv.URL, "http://"), "t"), Reviewer: "kai", Once: true, WorkDir: t.TempDir(), Model: c.override}); err != nil {
+				t.Fatal(err)
+			}
+			var v struct {
+				Usage struct{ Model string } `json:"usage"`
+			}
+			_ = json.Unmarshal(fs.posted.Verdict, &v)
+			if v.Usage.Model != c.want {
+				t.Errorf("recorded %q, want %q", v.Usage.Model, c.want)
+			}
+			if c.override != "" && !strings.Contains(recorded(t, os.Getenv("PLUMBIX_TEST_REC"), "args"), "--model\n"+c.override) {
+				t.Error("the override was not passed to claude")
+			}
+		})
+	}
+}

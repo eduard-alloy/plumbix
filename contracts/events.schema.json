@@ -216,6 +216,22 @@
       ]
     },
     {
+      "description": "A claim on an external review was given back because the reviewer never received the brief (its poll was cut off); the review is pending again and the next claim takes it.",
+      "properties": {
+        "type": {
+          "const": "review.released"
+        },
+        "payload": {
+          "$ref": "#/$defs/reviewClaimed"
+        }
+      },
+      "required": [
+        "repo_id",
+        "change_id",
+        "run_id"
+      ]
+    },
+    {
       "description": "A reviewer took an external review and holds its token; the step's step.finished event follows when the verdict lands or the wait expires.",
       "properties": {
         "type": {

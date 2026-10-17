@@ -34,10 +34,13 @@ const (
 	ReviewRequested Type = "review.requested"
 	// ReviewClaimed: a reviewer took the review and holds its token.
 	ReviewClaimed Type = "review.claimed"
+	// ReviewReleased: a claim was given back because the reviewer never
+	// received the brief; the review is pending again.
+	ReviewReleased Type = "review.released"
 )
 
 // Types lists every event type.
-var Types = []Type{ChangeSubmitted, StateChanged, ChangeMerged, RunStarted, StepFinished, RunFinished, VerdictIssued, AlertRaised, AlertResolved, ApprovedByPerson, ChangeRefreshed, ReviewRequested, ReviewClaimed}
+var Types = []Type{ChangeSubmitted, StateChanged, ChangeMerged, RunStarted, StepFinished, RunFinished, VerdictIssued, AlertRaised, AlertResolved, ApprovedByPerson, ChangeRefreshed, ReviewRequested, ReviewClaimed, ReviewReleased}
 
 // Event is the envelope every event shares. The three optional ids are the
 // filter keys; Payload holds what the type needs and is one of the payload
@@ -94,6 +97,11 @@ type (
 	}
 	// ReviewClaimedPayload: Reviewer took the review.
 	ReviewClaimedPayload struct {
+		ReviewID string `json:"review_id"`
+		Reviewer string `json:"reviewer"`
+	}
+	// ReviewReleasedPayload: Reviewer's claim was given back.
+	ReviewReleasedPayload struct {
 		ReviewID string `json:"review_id"`
 		Reviewer string `json:"reviewer"`
 	}

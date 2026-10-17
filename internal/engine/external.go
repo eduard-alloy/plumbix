@@ -77,16 +77,19 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 
 	ticker := time.NewTicker(reviewPoll)
 	defer ticker.Stop()
-	claimed := false
+	holder := "" // the reviewer last written to the log
 	for {
 		select {
 		case <-ctx.Done():
 			bg, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			// A verdict posted during the last poll interval was accepted
-			// with 200, so it is honoured rather than dropped.
-			if rv, err := e.store.GetReview(bg, b.ID); err == nil && rv.Status == review.Done {
-				return e.takeVerdict(dir, rv, log)
+			// with 200, so a step that merely ran out of time still takes
+			// it; a cancelled run keeps nothing.
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				if rv, err := e.store.GetReview(bg, b.ID); err == nil && rv.Status == review.Done {
+					return e.takeVerdict(dir, rv, log)
+				}
 			}
 			if err := e.store.ExpireReview(bg, b.ID, e.now().UTC()); err != nil {
 				e.log.Warn("expire review", "review", b.ID, "err", err)
@@ -106,10 +109,16 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 			}
 			return errored(err)
 		}
-		// A claim and its verdict can land within one poll, so the claim
-		// line is written whenever it has not been yet.
-		if !claimed && (rv.Status == review.Claimed || rv.Status == review.Done) {
-			claimed = true
+		// The log follows the holder: a claim, a release (the claim went
+		// back because the reviewer never got the brief), a new claim. A
+		// claim and its verdict can land within one poll, so the claim line
+		// is written whenever the holder is new.
+		switch {
+		case holder != "" && rv.Status == review.Pending:
+			fmt.Fprintf(log, "the claim by %s was released; waiting for a reviewer again\n", holder)
+			holder = ""
+		case rv.Reviewer != "" && rv.Reviewer != holder && (rv.Status == review.Claimed || rv.Status == review.Done):
+			holder = rv.Reviewer
 			fmt.Fprintf(log, "claimed by %s at %s\n", rv.Reviewer, rv.ClaimedAt.UTC().Format(time.RFC3339))
 		}
 		if rv.Status == review.Done {
@@ -156,6 +165,16 @@ func (e *Engine) ClaimReview(ctx context.Context, repoID, reviewer string) (revi
 	b.Token = token
 	e.log.Info("review claimed", "review", rv.ID, "reviewer", reviewer)
 	return b, true, nil
+}
+
+// ReleaseReview gives a claimed review back when its reviewer never got the
+// brief, so the claim does not sit unanswered until the step times out.
+func (e *Engine) ReleaseReview(ctx context.Context, id string) error {
+	if err := e.store.ReleaseReview(ctx, id); err != nil {
+		return err
+	}
+	e.log.Info("review released: the reviewer went away before the brief reached it", "review", id)
+	return nil
 }
 
 // PostReviewVerdict accepts a reviewer's verdict for a claimed review: the

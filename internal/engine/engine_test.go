@@ -902,6 +902,7 @@ func TestExternalValidatorPublishesABriefAndTakesThePostedVerdict(t *testing.T) 
 		t.Fatal(err)
 	}
 	b := h.claimSoon("kai")
+	time.Sleep(2 * reviewPoll) // let the step log kai's claim before anything else happens
 	if b.RunID != r.ID || b.ChangeID != c.ID || b.Step != "ai-review" || b.Token == "" || b.Head == "" || b.Base == "" || b.RepoURL != h.repo.Remote || b.Iteration != 1 {
 		t.Errorf("brief = %+v", b)
 	}
@@ -932,7 +933,19 @@ func TestExternalValidatorPublishesABriefAndTakesThePostedVerdict(t *testing.T) 
 	if err := h.eng.PostReviewVerdict(ctx, b.ID, "wrong-token", good); !errors.Is(err, change.ErrConflict) {
 		t.Errorf("wrong token: %v", err)
 	}
-	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); err != nil {
+	// kai's poll was cut off: the claim goes back, otto takes it, kai's token is dead.
+	if err := h.eng.ReleaseReview(ctx, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * reviewPoll) // let the step see the release
+	b2, ok, err := h.eng.ClaimReview(ctx, "", "otto")
+	if err != nil || !ok || b2.ID != b.ID || b2.Token == b.Token {
+		t.Fatalf("re-claim = %+v %v %v", b2, ok, err)
+	}
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("a released token still worked: %v", err)
+	}
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b2.Token, good); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); !errors.Is(err, change.ErrConflict) {
@@ -961,7 +974,7 @@ func TestExternalValidatorPublishesABriefAndTakesThePostedVerdict(t *testing.T) 
 		t.Errorf("validators = %+v; want ai-review approve with the posted summary", done.Result.Validators)
 	}
 	log, _ := os.ReadFile(h.eng.LogPath(r.ID, "ai-review"))
-	for _, want := range []string{"waiting for an external reviewer", "claimed by kai", "verdict posted"} {
+	for _, want := range []string{"waiting for an external reviewer", "claimed by kai", "claim by kai was released", "claimed by otto", "verdict posted by otto"} {
 		if !strings.Contains(string(log), want) {
 			t.Errorf("step log lacks %q:\n%s", want, log)
 		}
@@ -993,5 +1006,75 @@ func TestExternalValidatorTimesOutIntoAValidatorError(t *testing.T) {
 	log, _ := os.ReadFile(h.eng.LogPath(r.ID, "ai-review"))
 	if !strings.Contains(string(log), "no verdict arrived") {
 		t.Errorf("step log lacks the timeout line:\n%s", log)
+	}
+}
+
+func TestAVerdictPostedJustBeforeTheDeadlineIsTaken(t *testing.T) {
+	// Polling every 10s against a 3s step: the only way the step can see
+	// the verdict is the last look it takes when its time runs out.
+	old := reviewPoll
+	reviewPoll = 10 * time.Second
+	t.Cleanup(func() { reviewPoll = old })
+	h := newHarness(t, Config{})
+	slow := strings.Replace(externalYAML, "timeout: 20s", "timeout: 3s", 1)
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": slow}, "external review")
+	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	c := h.submit("feat")
+	r, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := h.claimSoon("kai")
+	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"Fine.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}]}`)
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); err != nil {
+		t.Fatal(err)
+	}
+	done := h.wait(r.ID)
+	if done.Outcome != change.Approved {
+		t.Errorf("outcome = %s; the verdict accepted before the deadline was dropped", done.Outcome)
+	}
+	for _, s := range done.Steps {
+		if s.Name == "ai-review" && s.Status != "succeeded" {
+			t.Errorf("external step = %+v", s)
+		}
+	}
+}
+
+func TestACancelledRunKeepsNoLateVerdict(t *testing.T) {
+	old := reviewPoll
+	reviewPoll = 10 * time.Second
+	t.Cleanup(func() { reviewPoll = old })
+	h := newHarness(t, Config{})
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalYAML}, "external review")
+	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	c := h.submit("feat")
+	first, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := h.claimSoon("kai")
+	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"Fine.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}]}`)
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); err != nil {
+		t.Fatal(err)
+	}
+	// A new iteration supersedes the first run before its next poll: the
+	// accepted verdict belongs to a run that no longer counts.
+	second, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := h.wait(first.ID)
+	if done.Outcome == change.Approved {
+		t.Errorf("the superseded run took the late verdict: %+v", done)
+	}
+	for _, s := range done.Steps {
+		if s.Name == "ai-review" && s.Status == "succeeded" {
+			t.Errorf("external step of a cancelled run = %+v", s)
+		}
+	}
+	// The second run publishes its own review and waits for a fresh verdict.
+	b2 := h.claimSoon("kai")
+	if b2.ID == b.ID || b2.RunID != second.ID {
+		t.Errorf("second review = %+v", b2)
 	}
 }

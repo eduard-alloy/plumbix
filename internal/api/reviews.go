@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -17,6 +18,9 @@ const MaxReviewWait = 55 * time.Second
 
 // reviewPollEvery is how often a long poll looks again.
 var reviewPollEvery = time.Second
+
+// clientGone reports whether the poller hung up; a test overrides it.
+var clientGone = func(r *http.Request) bool { return r.Context().Err() != nil }
 
 // reviewHandlers serve external reviewers (WU-023): the next brief, and the
 // verdict they post back.
@@ -50,6 +54,16 @@ func (h *reviewHandlers) next(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if ok {
+			// The claim happened in the store; if the poller hung up meanwhile
+			// the token would be lost with it, so the claim is given back.
+			if clientGone(r) {
+				bg, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := h.engine.ReleaseReview(bg, b.ID); err != nil {
+					h.log.Warn("release review after the client left", "review", b.ID, "err", err)
+				}
+				return
+			}
 			writeJSON(w, http.StatusOK, b)
 			return
 		}

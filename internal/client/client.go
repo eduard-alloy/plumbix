@@ -76,8 +76,21 @@ func (r Response) Error() APIError {
 	return APIError{Code: body.Error.Code, Message: body.Error.Message, Problems: body.Error.Details.Problems}
 }
 
-// Do sends a request with the bearer token. body may be nil.
+// Do sends a request with the bearer token. body may be nil. Each call is
+// bounded by RequestTimeout; use Wait for a long poll.
 func (c *Client) Do(ctx context.Context, method, path string, body io.Reader) (Response, error) {
+	return c.send(ctx, c.http, method, path, body)
+}
+
+// Wait is Do for long polls such as GET /reviews/next: no client timeout
+// applies, so the caller bounds the call with ctx. A poll cut off by a
+// client timeout would leave a claimed review with nobody holding its
+// token, which is why Do is not used there.
+func (c *Client) Wait(ctx context.Context, method, path string, body io.Reader) (Response, error) {
+	return c.send(ctx, c.stream, method, path, body)
+}
+
+func (c *Client) send(ctx context.Context, hc *http.Client, method, path string, body io.Reader) (Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, body)
 	if err != nil {
 		return Response{}, err
@@ -86,7 +99,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader) (R
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.http.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return Response{}, c.connectError(err)
 	}

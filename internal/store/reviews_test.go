@@ -81,6 +81,16 @@ func TestReviewsAreClaimedOnceAndAnsweredOnce(t *testing.T) {
 	if err != nil || done.Status != review.Done || string(done.Verdict) != string(verdict) || !done.FinishedAt.Equal(at.Add(time.Minute)) {
 		t.Errorf("done review = %+v %v", done, err)
 	}
+	// A claim whose reviewer never got the brief is released and taken again.
+	if err := db.ReleaseReview(ctx, "rv_2"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := db.GetReview(ctx, "rv_2"); got.Status != review.Pending || got.Reviewer != "" || got.TokenHash != "" {
+		t.Errorf("released review = %+v", got)
+	}
+	if again, ok, err := db.ClaimReview(ctx, "", "otto", "h2", at.Add(5*time.Second)); err != nil || !ok || again.ID != "rv_2" {
+		t.Errorf("claim after release = %+v %v %v", again, ok, err)
+	}
 	// Expiry closes a claimed review; a verdict after it is refused.
 	if err := db.ExpireReview(ctx, "rv_2", at.Add(time.Hour)); err != nil {
 		t.Fatal(err)
@@ -105,7 +115,7 @@ func TestReviewsAreClaimedOnceAndAnsweredOnce(t *testing.T) {
 	if _, ok, _ := db.ClaimReview(ctx, "", "kai", "hz", at.Add(4*time.Hour)); ok {
 		t.Error("a review of a recovered run was handed out")
 	}
-	// Events: three requested, two claimed, in order, valid against the schema.
+	// Events: requested twice, claimed twice, released, claimed again, requested once more; all valid against the schema.
 	after, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
 	fresh := after[len(before):]
 	var types []events.Type
@@ -113,7 +123,7 @@ func TestReviewsAreClaimedOnceAndAnsweredOnce(t *testing.T) {
 		types = append(types, e.Type)
 		validateEvent(t, schema, e)
 	}
-	want := []events.Type{events.ReviewRequested, events.ReviewRequested, events.ReviewClaimed, events.ReviewClaimed, events.ReviewRequested}
+	want := []events.Type{events.ReviewRequested, events.ReviewRequested, events.ReviewClaimed, events.ReviewClaimed, events.ReviewReleased, events.ReviewClaimed, events.ReviewRequested}
 	if len(types) != len(want) {
 		t.Fatalf("events = %v, want %v", types, want)
 	}
