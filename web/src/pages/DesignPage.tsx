@@ -2,7 +2,7 @@
 // the components, in light and dark side by side. Reached by URL only.
 import { ENCODING, StatePill, type PillStatus } from '../ui/StatePill'
 
-const TOKENS = ['--bg', '--surface', '--surface-2', '--hover', '--border', '--border-strong', '--text', '--text-2', '--text-3', '--accent', '--accent-bg', '--s-neutral', '--s-blue', '--s-green', '--s-amber', '--s-red', '--s-violet', '--s-teal', '--s-plum', '--diff-add', '--diff-del', '--hit', '--hit-strong']
+const TOKENS = ['--bg', '--surface', '--surface-2', '--hover', '--border', '--border-strong', '--text', '--text-2', '--text-3', '--accent', '--accent-bg', '--s-neutral', '--s-blue', '--s-green', '--s-amber', '--s-red', '--s-violet', '--diff-add', '--diff-del', '--hit', '--hit-strong']
 
 const STATUSES = Object.keys(ENCODING) as PillStatus[]
 
@@ -54,7 +54,7 @@ function Pane({ theme }: { theme: 'light' | 'dark' }) {
               <StatePill status={s} mode="icon" />
               <StatePill status={s} mode="text" />
               <span className="mono dim">{s}</span>
-              <span className="mono dim">{ENCODING[s].tone}</span>
+              <span className="mono dim">{ENCODING[s].palette}</span>
             </div>
           ))}
         </div>

@@ -40,33 +40,33 @@ The logic class at the bottom of `Plumbix.dc.html` has all the sample data (`C`,
 There is one badge shape everywhere: a rounded rect, radius 4, height 20, padding `0 7px 0 4px`, gap 5, 12/500. The icon is a 14px SVG on a 16 viewBox: a circle `r=5.75`, `stroke-width 1.5`, plus one glyph path (see `StatePill.dc.html` for exact paths).
 
 Modes:
-- `pill`: tinted bg plus icon plus label. Used in list rows and headers.
+- `pill`: tinted bg, coloured border, icon plus label. Used in list rows and headers.
 - `plain`: icon plus coloured label, no bg.
 - `icon`: icon only, with the label in a visually hidden span for screen readers. Used in dense rows.
 - `text`: coloured label only, inline before a reason.
 
-| key | label | tone | glyph |
+| key | label | palette | glyph |
 |---|---|---|---|
-| open | Open | neutral | empty circle |
-| running | Running | blue | half-filled circle |
-| approved | Approved | green | check |
-| fix_requested | Fix requested | amber | return arrow |
-| rejected | Rejected | red | × |
-| needs_human | Needs human | violet | ! |
-| escalated | Escalated | violet | ↑ |
-| merged | Merged | ink (`--text` on `--surface-2`) | filled circle, knocked-out check |
-| closed | Closed | neutral | slash |
-| run: finished / errored / cancelled | Finished / Errored / Cancelled | neutral / violet / neutral | check / ! / slash |
-| step: succeeded / failed / timed_out / errored / skipped / cancelled | … | green / red / red / violet / neutral / neutral | check / × / clock / ! / dash / slash |
-| queued (display only) | Queued | neutral | dashed circle |
-| criterion: met / unmet / unknown | … | green / red / neutral | check / × / ? |
-| pending (display only, before verdict) | Pending | neutral | dashed circle |
-| severity: blocker / major / minor | … | red (filled) / amber / neutral | ! / ! / i |
-| human_required | Human required | violet | ! |
-| alert open / resolved | Open / Resolved | violet / neutral | ! / check |
-| info (notices) | Next step | neutral | i |
+| open | Open | open (blue) | empty circle |
+| running | Running | running (indigo) | half-filled circle |
+| approved | Approved | approved (green) | check |
+| fix_requested | Fix requested | fix-requested (yellow) | return arrow |
+| rejected | Rejected | rejected (red) | × |
+| needs_human | Needs human | needs-human (amber) | ! |
+| escalated | Escalated | escalated (orange) | ↑ |
+| merged | Merged | merged (lime, strong fill) | filled circle, knocked-out check |
+| closed | Closed | closed (slate) | slash |
+| run: finished / errored / cancelled | Finished / Errored / Cancelled | finished / errored / cancelled | check / ! / slash |
+| step: succeeded / failed / timed_out / errored / skipped / cancelled | … | succeeded / failed / timed-out / errored / skipped / cancelled | check / × / clock / ! / dash / slash |
+| queued (display only) | Queued | queued | dashed circle |
+| criterion: met / unmet / unknown | … | met / unmet / unknown | check / × / ? |
+| pending (display only, before verdict) | Pending | pending | dashed circle |
+| severity: blocker / major / minor | … | blocker (red, strong fill) / major / minor | ! / ! / i |
+| human_required | Human required | needs-human | ! |
+| alert open / resolved | Open / Resolved | needs-human / closed | ! / check |
+| info (notices) | Next step | minor | i |
 
-Tone → `color: var(--s-<tone>)`, `background: var(--s-<tone>-bg)`. Colour never stands alone: there is always an icon and a label (visible or screen-reader only).
+Palette → `color: var(--status-<key>-fg)`, `background: var(--status-<key>-bg)`, `border: 1.5px solid var(--status-<key>-border)`. The keys, base colours and derivation rules are `status-palette.css` and `status-palette.md` in this folder (handoff of 2026-10-17); `src/tokens.css` carries them as `light-dark()` tokens so the pill follows the system theme. The pill keeps its 20px shape and inline SVG icons; the palette's 38px badge with icon fonts and dark glow was not adopted. Colour never stands alone: there is always an icon and a label (visible or screen-reader only).
 
 ---
 
