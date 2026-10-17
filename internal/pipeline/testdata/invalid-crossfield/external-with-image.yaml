@@ -1,0 +1,11 @@
+# external steps have no image: nothing runs in a container.
+version: 1
+steps:
+  - name: test
+    image: golang:1.27
+    run: go test ./...
+  - name: ai-review
+    image: plumbix-ai-validator:dev
+    validator: true
+    external: true
+    needs: [test]

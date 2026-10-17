@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/eduard-alloy/plumbix/blob/main/contracts/pipeline.schema.json",
   "title": "Plumbix pipeline, format version 1",
-  "description": "Schema for .plumbix/pipeline.yaml. Plumbix also enforces rules that span fields, which this schema cannot express: step names are unique; every name in needs refers to another existing step, appears once, and is not a validator step; needs contain no cycles; a secret name is not also an env key; timeout is above zero and at most 24h; allow_failure and when are not set on validator steps; every step named in stages exists, is not a validator and is in one stage only.",
+  "description": "Schema for .plumbix/pipeline.yaml. Plumbix also enforces rules that span fields, which this schema cannot express: step names are unique; every name in needs refers to another existing step, appears once, and is not a validator step; needs contain no cycles; a secret name is not also an env key; timeout is above zero and at most 24h; allow_failure and when are not set on validator steps; external is set only on validator steps and such a step has no image, run, env or secrets; every step named in stages exists, is not a validator and is in one stage only.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -55,8 +55,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "name",
-        "image"
+        "name"
       ],
       "properties": {
         "name": {
@@ -146,6 +145,10 @@
           "description": "A failed or timed-out step does not fail the run and does not skip the steps that need it. Not for validators.",
           "type": "boolean"
         },
+        "external": {
+          "description": "The validator's verdict comes from a reviewer outside the pipeline: Plumbix publishes a review brief and waits, bounded by timeout (default one hour). Only for validators; no image, run, env or secrets.",
+          "type": "boolean"
+        },
         "when": {
           "description": "Run condition. For a change's run the step runs only if a changed file matches one of the globs; a plain branch run always runs it. Not for validators.",
           "type": "object",
@@ -169,21 +172,42 @@
           }
         }
       },
-      "if": {
-        "required": [
-          "validator"
-        ],
-        "properties": {
-          "validator": {
-            "const": true
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "validator"
+            ],
+            "properties": {
+              "validator": {
+                "const": true
+              }
+            }
+          },
+          "else": {
+            "required": [
+              "run"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "external"
+            ],
+            "properties": {
+              "external": {
+                "const": true
+              }
+            }
+          },
+          "else": {
+            "required": [
+              "image"
+            ]
           }
         }
-      },
-      "else": {
-        "required": [
-          "run"
-        ]
-      }
+      ]
     }
   }
 }

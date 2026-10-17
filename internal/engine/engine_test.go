@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/gitops/gittest"
 	"github.com/eduard-alloy/plumbix/internal/host"
 	"github.com/eduard-alloy/plumbix/internal/refvalidator"
+	"github.com/eduard-alloy/plumbix/internal/review"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/runner"
 	"github.com/eduard-alloy/plumbix/internal/store"
@@ -861,5 +863,131 @@ func TestRefreshRefusesBranchesThatAreNotPlumbixsAndConflicts(t *testing.T) {
 	}
 	if _, err := h.eng.Refresh(ctx, clash.ID); !errors.Is(err, change.ErrInvalidState) {
 		t.Errorf("closed change: %v, want ErrInvalidState", err)
+	}
+}
+
+const externalYAML = `version: 1
+steps:
+  - {name: test, image: "golang:1.27", run: "go test ./..."}
+  - {name: validate, image: "plumbix-reference-validator:dev", validator: true, needs: [test]}
+  - {name: ai-review, validator: true, external: true, needs: [test], timeout: 20s}
+`
+
+// claimSoon polls until a review can be claimed, as plumbix review --watch would.
+func (h *harness) claimSoon(reviewer string) review.Brief {
+	h.t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		b, ok, err := h.eng.ClaimReview(ctx, "", reviewer)
+		if err != nil {
+			h.t.Fatal(err)
+		}
+		if ok {
+			return b
+		}
+		if time.Now().After(deadline) {
+			h.t.Fatal("no review was published")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func TestExternalValidatorPublishesABriefAndTakesThePostedVerdict(t *testing.T) {
+	h := newHarness(t, Config{})
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalYAML}, "external review")
+	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	c := h.submit("feat")
+	r, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := h.claimSoon("kai")
+	if b.RunID != r.ID || b.ChangeID != c.ID || b.Step != "ai-review" || b.Token == "" || b.Head == "" || b.Base == "" || b.RepoURL != h.repo.Remote || b.Iteration != 1 {
+		t.Errorf("brief = %+v", b)
+	}
+	if b.Tools != review.ToolsReadOnly || !strings.Contains(b.Prompt.System, "independent validator") || !strings.Contains(b.Prompt.User, "app.go") || b.Schema["type"] != "object" {
+		t.Errorf("brief content: tools %q, system %d chars, user has app.go %v, schema %v", b.Tools, len(b.Prompt.System), strings.Contains(b.Prompt.User, "app.go"), b.Schema["type"])
+	}
+	if want := []string{"AC-1"}; !reflect.DeepEqual(b.Criteria, want) {
+		t.Errorf("criteria = %v, want %v", b.Criteria, want)
+	}
+	if until := time.Until(b.ExpiresAt); until < 10*time.Second || until > 21*time.Second {
+		t.Errorf("expires in %s, want about the step's 20s timeout", until)
+	}
+	// Nobody else can take it now, and a second reviewer gets nothing.
+	if _, ok, _ := h.eng.ClaimReview(ctx, "", "otto"); ok {
+		t.Error("a claimed review was handed out twice")
+	}
+	// A verdict that fails the checks is refused and the review stays open.
+	bad := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"ok","criteria":[{"id":"AC-9","status":"met","reason":"x","evidence":["app.go"]}]}`)
+	var inv *validation.InvalidVerdictError
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, bad); !errors.As(err, &inv) {
+		t.Errorf("invalid verdict: %v", err)
+	}
+	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"The feature does what the intent says.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}]}`)
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, "wrong-token", good); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("wrong token: %v", err)
+	}
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("second verdict: %v", err)
+	}
+	done := h.wait(r.ID)
+	if done.Outcome != change.Approved {
+		t.Fatalf("outcome = %s, result %+v", done.Outcome, done.Result)
+	}
+	var ext *run.Step
+	for i := range done.Steps {
+		if done.Steps[i].Name == "ai-review" {
+			ext = &done.Steps[i]
+		}
+	}
+	if ext == nil || ext.Status != "succeeded" || !ext.Validator {
+		t.Errorf("external step = %+v", ext)
+	}
+	var found bool
+	for _, v := range done.Result.Validators {
+		if v.Name == "ai-review" && v.Outcome == "approve" && strings.Contains(v.Summary, "intent says") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("validators = %+v; want ai-review approve with the posted summary", done.Result.Validators)
+	}
+	log, _ := os.ReadFile(h.eng.LogPath(r.ID, "ai-review"))
+	for _, want := range []string{"waiting for an external reviewer", "claimed by kai", "verdict posted"} {
+		if !strings.Contains(string(log), want) {
+			t.Errorf("step log lacks %q:\n%s", want, log)
+		}
+	}
+	if rv, err := h.db.GetReview(ctx, b.ID); err != nil || rv.Status != review.Done {
+		t.Errorf("review = %+v %v", rv, err)
+	}
+}
+
+func TestExternalValidatorTimesOutIntoAValidatorError(t *testing.T) {
+	h := newHarness(t, Config{})
+	fast := strings.Replace(externalYAML, "timeout: 20s", "timeout: 2s", 1)
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": fast}, "external review")
+	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	c := h.submit("feat")
+	r := h.validate(c.ID)
+	if r.Outcome != change.NeedsHuman {
+		t.Errorf("outcome = %s, want needs_human after a validator error", r.Outcome)
+	}
+	for _, s := range r.Steps {
+		if s.Name == "ai-review" && s.Status != "timed_out" {
+			t.Errorf("external step = %+v, want timed_out", s)
+		}
+	}
+	// The review is closed: a late claim finds nothing.
+	if _, ok, _ := h.eng.ClaimReview(ctx, "", "late"); ok {
+		t.Error("an expired review was handed out")
+	}
+	log, _ := os.ReadFile(h.eng.LogPath(r.ID, "ai-review"))
+	if !strings.Contains(string(log), "no verdict arrived") {
+		t.Errorf("step log lacks the timeout line:\n%s", log)
 	}
 }

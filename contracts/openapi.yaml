@@ -31,8 +31,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
     put:
       operationId: updateSettings
-      summary: Set the AI model and the global review guidance.
-      description: Fields left out are unchanged; an empty string clears a field. Guidance is handed to every validator as operator instructions; the model reaches validator steps as PLUMBIX_AI_MODEL.
+      summary: Set the AI model, the reviewer tool policy and the global review guidance.
+      description: Fields left out are unchanged; an empty string clears a field. Guidance is handed to every validator as operator instructions; the model reaches validator steps as PLUMBIX_AI_MODEL; ai_tools travels in every review brief and says whether external reviewers may run commands.
       requestBody:
         required: true
         content:
@@ -44,6 +44,9 @@ paths:
                 ai_model:
                   type: string
                   maxLength: 81
+                ai_tools:
+                  type: string
+                  enum: [read-only, full]
                 guidance:
                   type: string
                   maxLength: 4000
@@ -58,6 +61,103 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /reviews/next:
+    get:
+      operationId: claimReview
+      summary: Claim the next review waiting for an external reviewer.
+      description: >
+        For external validator steps (WU-023). Hands the oldest waiting,
+        unexpired review to the named reviewer with a fresh token, emitting
+        review.claimed; a reviewer never receives a change it submitted
+        itself. wait long-polls up to that many seconds (at most 55) before
+        answering 204 when nothing is waiting. The brief carries the AI
+        validator's prompt and schema, the commits, the repository URL and
+        the operator's tool policy and model.
+      parameters:
+        - name: reviewer
+          in: query
+          required: true
+          description: A name for the step log and for the rule that nobody reviews their own change.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - name: repo_id
+          in: query
+          required: false
+          description: Only reviews of this repository.
+          schema:
+            type: string
+        - name: wait
+          in: query
+          required: false
+          description: Seconds to wait for a review before answering 204; 0 answers at once, 55 is the most.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 55
+      responses:
+        "200":
+          description: The claimed review's brief, with the token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewBrief"
+        "204":
+          description: Nothing is waiting.
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /reviews/{id}/verdict:
+    post:
+      operationId: postReviewVerdict
+      summary: Post the verdict of a claimed review.
+      description: >
+        Accepted once, with the token that came with the brief, while the
+        review has not expired. The verdict passes the same checks as a
+        verdict file from a container validator; the waiting step then
+        succeeds with it and the run continues.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, verdict]
+              properties:
+                token:
+                  type: string
+                  minLength: 1
+                verdict:
+                  description: verdict.json as the validator contract defines it (ARCHITECTURE 4.3).
+                  type: object
+      responses:
+        "200":
+          description: The verdict was accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewAccepted"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The token is not the one handed out with the brief, or the review was already answered or expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /settings/secrets/{key}:
     put:
       operationId: setSecret
@@ -1344,14 +1444,88 @@ components:
                 minimum: 1
               text:
                 type: string
+    ReviewBrief:
+      description: >
+        An external validator step waiting for a verdict (WU-023), as handed to
+        the reviewer who claimed it. prompt and schema are the AI validator's
+        own, so a reviewer needs no knowledge of Plumbix's rules; the verdict
+        is posted back with the token.
+      type: object
+      additionalProperties: false
+      required: [id, run_id, change_id, repo_id, repo_url, step, iteration, head, base, token, expires_at, tools, prompt, schema, criteria]
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+        change_id:
+          type: string
+        repo_id:
+          type: string
+        repo_url:
+          description: Where to fetch head from, with the reviewer's own git access.
+          type: string
+        step:
+          type: string
+        iteration:
+          type: integer
+        head:
+          type: string
+        base:
+          type: string
+        token:
+          description: Minted for this claim; POST /reviews/{id}/verdict needs it. Shown once.
+          type: string
+        expires_at:
+          description: When the step times out; a verdict after it is refused.
+          type: string
+          format: date-time
+        tools:
+          description: The operator's policy for the reviewer's tools.
+          type: string
+          enum: [read-only, full]
+        model:
+          description: The operator's model, if one is set.
+          type: string
+        prompt:
+          type: object
+          additionalProperties: false
+          required: [system, user]
+          properties:
+            system:
+              type: string
+            user:
+              type: string
+        schema:
+          description: JSON schema of the verdict the reviewer must produce.
+          type: object
+        criteria:
+          description: The criterion ids a verdict may name.
+          type: array
+          items:
+            type: string
+    ReviewAccepted:
+      type: object
+      additionalProperties: false
+      required: [status, review_id]
+      properties:
+        status:
+          type: string
+          enum: [accepted]
+        review_id:
+          type: string
     Settings:
       type: object
       additionalProperties: false
-      required: [ai_model, guidance, secrets]
+      required: [ai_model, ai_tools, guidance, secrets]
       properties:
         ai_model:
           description: Model handed to validator steps as PLUMBIX_AI_MODEL; empty leaves the validator's default.
           type: string
+        ai_tools:
+          description: Whether external reviewers and the Claude Code validator may run commands (full) or only read (read-only, the default). Travels in every review brief.
+          type: string
+          enum: [read-only, full]
         guidance:
           description: Global operator guidance for validators.
           type: string

@@ -1,0 +1,5 @@
+version: 1
+steps:
+  - name: ai-review
+    validator: true
+    external: "yes"

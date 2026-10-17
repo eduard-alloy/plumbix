@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/eduard-alloy/plumbix/internal/review"
 	"github.com/eduard-alloy/plumbix/internal/store"
 )
 
@@ -19,6 +20,7 @@ const MaxGuidanceChars = 4000
 // Setting keys.
 const (
 	keyModel      = "ai.model"
+	keyTools      = "ai.tools"
 	keyGuidance   = "guidance.global"
 	prefixRepo    = "guidance.repo."
 	prefixSecret  = "secret."
@@ -95,6 +97,27 @@ func (s *Service) setText(ctx context.Context, key, text string) error {
 		return s.db.DeleteSetting(ctx, key)
 	}
 	return s.db.SetSetting(ctx, key, text, s.now().UTC())
+}
+
+// AITools returns the tool policy for external reviewers and the Claude Code
+// validator: review.ToolsReadOnly unless the operator chose review.ToolsFull.
+func (s *Service) AITools(ctx context.Context) (string, error) {
+	v, _, _, err := s.db.GetSetting(ctx, keyTools)
+	if err != nil || v == "" {
+		return review.ToolsReadOnly, err
+	}
+	return v, nil
+}
+
+// SetAITools stores the tool policy: read-only or full.
+func (s *Service) SetAITools(ctx context.Context, tools string) error {
+	switch strings.TrimSpace(tools) {
+	case review.ToolsReadOnly:
+		return s.db.DeleteSetting(ctx, keyTools)
+	case review.ToolsFull:
+		return s.db.SetSetting(ctx, keyTools, review.ToolsFull, s.now().UTC())
+	}
+	return fmt.Errorf("tools %q: must be %s or %s", tools, review.ToolsReadOnly, review.ToolsFull)
 }
 
 // AIModel returns the model validator steps are told to use, or "".

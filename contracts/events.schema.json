@@ -198,9 +198,82 @@
         "repo_id",
         "change_id"
       ]
+    },
+    {
+      "description": "An external validator step is waiting for a verdict from outside the pipeline; GET /api/v1/reviews/next hands out the brief until expires_at.",
+      "properties": {
+        "type": {
+          "const": "review.requested"
+        },
+        "payload": {
+          "$ref": "#/$defs/reviewRequested"
+        }
+      },
+      "required": [
+        "repo_id",
+        "change_id",
+        "run_id"
+      ]
+    },
+    {
+      "description": "A reviewer took an external review and holds its token; the step's step.finished event follows when the verdict lands or the wait expires.",
+      "properties": {
+        "type": {
+          "const": "review.claimed"
+        },
+        "payload": {
+          "$ref": "#/$defs/reviewClaimed"
+        }
+      },
+      "required": [
+        "repo_id",
+        "change_id",
+        "run_id"
+      ]
     }
   ],
   "$defs": {
+    "reviewRequested": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "review_id",
+        "step",
+        "expires_at"
+      ],
+      "properties": {
+        "review_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "reviewClaimed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "review_id",
+        "reviewer"
+      ],
+      "properties": {
+        "review_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "changeRefreshed": {
       "type": "object",
       "additionalProperties": false,

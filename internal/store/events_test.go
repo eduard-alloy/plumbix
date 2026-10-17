@@ -16,6 +16,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/alert"
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/events"
+	"github.com/eduard-alloy/plumbix/internal/review"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/validation"
 )
@@ -185,12 +186,24 @@ func TestLifecycleEmitsEvents(t *testing.T) {
 		Payload: events.ChangeRefreshedPayload{FromHead: "ffff", Head: "abab", TargetHead: "cdcd"}}); err != nil {
 		t.Fatal(err)
 	}
+	// An external validator step of c_2's run publishes a review and a reviewer takes it.
+	if err := db.CreateRun(ctx, run.Run{ID: "run_2", RepoID: "r_1", ChangeID: "c_2", Iteration: 1, Status: run.Running, StartedAt: at.Add(16 * time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateReview(ctx, review.Review{ID: "rv_1", RunID: "run_2", RepoID: "r_1", ChangeID: "c_2", Step: "ai-review", Brief: json.RawMessage(`{}`),
+		CreatedAt: at.Add(17 * time.Second), ExpiresAt: at.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := db.ClaimReview(ctx, "", "reviewer", "h", at.Add(18*time.Second)); err != nil || !ok {
+		t.Fatalf("claim: %v %v", ok, err)
+	}
 
 	want := []events.Type{
 		events.ChangeSubmitted, events.RunStarted, events.StateChanged, events.StepFinished,
 		events.RunFinished, events.VerdictIssued, events.StateChanged, events.ChangeMerged, events.StateChanged,
 		events.AlertRaised, events.AlertResolved, events.AlertRaised, events.AlertResolved,
 		events.ChangeSubmitted, events.StateChanged, events.ApprovedByPerson, events.StateChanged, events.ChangeRefreshed,
+		events.RunStarted, events.ReviewRequested, events.ReviewClaimed,
 	}
 	var got []events.Type
 	for i, e := range notified {

@@ -1,6 +1,7 @@
-// Package aivalidator asks Claude to judge a change against its intent and
-// acceptance criteria. Repository content is always treated as untrusted.
-package aivalidator
+// Package review builds the AI review prompt and checks the model's answer. It holds no
+// model client, so the server can build review briefs for external reviewers (WU-023)
+// and the AI validator can ask a model. Repository content is always treated as untrusted.
+package review
 
 import (
 	"errors"
@@ -27,8 +28,8 @@ var ErrTooLarge = errors.New("change too large for AI review")
 
 // Prompt is the request text.
 type Prompt struct {
-	System string
-	User   string
+	System string `json:"system"`
+	User   string `json:"user"`
 }
 
 const systemPrompt = `You are an independent validator in Plumbix, a system that decides whether a code change may merge. The change was written by someone else, often an AI coding agent. Your job is to judge whether it fulfils its stated intent and each acceptance criterion, using the repository content and pipeline evidence you are given.

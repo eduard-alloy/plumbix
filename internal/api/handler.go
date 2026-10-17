@@ -56,6 +56,7 @@ func NewHandler(d Deps) http.Handler {
 		if d.Engine != nil {
 			registerRunRoutes(protected, &runHandlers{changeHandlers: ch, engine: d.Engine, runs: d.Runs})
 			registerPipelineRoutes(protected, &pipelineHandlers{svc: d.Changes, engine: d.Engine, runs: d.Runs, log: logger})
+			registerReviewRoutes(protected, &reviewHandlers{changeHandlers: ch})
 		}
 	}
 	if d.Alerts != nil {

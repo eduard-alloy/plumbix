@@ -58,7 +58,11 @@ type Step struct {
 	OnlyPaths []string
 	// Stage is the stage the step belongs to, or empty.
 	Stage string
-	Line  int
+	// External marks a validator whose verdict comes from a reviewer outside
+	// the pipeline: nothing runs in a container, Plumbix publishes a brief
+	// and waits (WU-023). Timeout bounds the wait.
+	External bool
+	Line     int
 }
 
 // Script turns a list of commands into one shell script that stops at the
@@ -203,11 +207,13 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 		return st, refs
 	}
 	seen := map[string]bool{}
-	var envNode, secretsNode, whenKey, allowKey *yaml.Node
+	var envNode, secretsNode, whenKey, allowKey, externalKey *yaml.Node
+	keyNodes := map[string]*yaml.Node{}
 	for i := 0; i+1 < len(n.Content); i += 2 {
 		key, val := n.Content[i], n.Content[i+1]
 		fp := p + "." + key.Value
 		seen[key.Value] = true
+		keyNodes[key.Value] = key
 		switch key.Value {
 		case "name":
 			if s, ok := ps.str(fp, val); ok && !stepNameRe.MatchString(s) {
@@ -261,6 +267,13 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 		case "when":
 			whenKey = key
 			st.OnlyPaths = ps.when(fp, val)
+		case "external":
+			externalKey = key
+			if val.Kind != yaml.ScalarNode || val.Tag != "!!bool" {
+				ps.add(fp, val.Line, "must be a boolean")
+			} else {
+				st.External = val.Value == "true"
+			}
 		default:
 			ps.add(fp, key.Line, "unknown field")
 		}
@@ -273,7 +286,21 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 			ps.add(p+".when", whenKey.Line, "is not allowed on a validator step: validators always run")
 		}
 	}
-	for _, req := range []string{"name", "image"} {
+	if st.External && !st.Validator {
+		ps.add(p+".external", externalKey.Line, "is only for validator steps: a plain step has nobody outside the pipeline to answer for it")
+	}
+	if st.External {
+		for _, f := range []string{"image", "run", "secrets", "env"} {
+			if k := keyNodes[f]; k != nil {
+				ps.add(p+"."+f, k.Line, "is not allowed on an external step: nothing runs in a container, a reviewer outside the pipeline posts the verdict")
+			}
+		}
+	}
+	required := []string{"name", "image"}
+	if st.External {
+		required = []string{"name"}
+	}
+	for _, req := range required {
 		if !seen[req] {
 			ps.add(p+"."+req, n.Line, "is required")
 		}

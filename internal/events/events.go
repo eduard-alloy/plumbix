@@ -29,10 +29,15 @@ const (
 	// ChangeRefreshed: Plumbix merged the target branch into a branch it
 	// created and pushed the result; a new run follows.
 	ChangeRefreshed Type = "change.refreshed"
+	// ReviewRequested: an external validator step is waiting for a verdict
+	// from outside the pipeline (WU-023).
+	ReviewRequested Type = "review.requested"
+	// ReviewClaimed: a reviewer took the review and holds its token.
+	ReviewClaimed Type = "review.claimed"
 )
 
 // Types lists every event type.
-var Types = []Type{ChangeSubmitted, StateChanged, ChangeMerged, RunStarted, StepFinished, RunFinished, VerdictIssued, AlertRaised, AlertResolved, ApprovedByPerson, ChangeRefreshed}
+var Types = []Type{ChangeSubmitted, StateChanged, ChangeMerged, RunStarted, StepFinished, RunFinished, VerdictIssued, AlertRaised, AlertResolved, ApprovedByPerson, ChangeRefreshed, ReviewRequested, ReviewClaimed}
 
 // Event is the envelope every event shares. The three optional ids are the
 // filter keys; Payload holds what the type needs and is one of the payload
@@ -79,6 +84,18 @@ type (
 		FromHead   string `json:"from_head"`
 		Head       string `json:"head"`
 		TargetHead string `json:"target_head"`
+	}
+	// ReviewRequestedPayload: the step Step of the run waits for a verdict
+	// until ExpiresAt; GET /reviews/next hands out the brief.
+	ReviewRequestedPayload struct {
+		ReviewID  string    `json:"review_id"`
+		Step      string    `json:"step"`
+		ExpiresAt time.Time `json:"expires_at"`
+	}
+	// ReviewClaimedPayload: Reviewer took the review.
+	ReviewClaimedPayload struct {
+		ReviewID string `json:"review_id"`
+		Reviewer string `json:"reviewer"`
 	}
 	// RunStartedPayload: a pipeline run began; Iteration is set for a change's run.
 	RunStartedPayload struct {

@@ -11,6 +11,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
+	"github.com/eduard-alloy/plumbix/internal/review"
 	"github.com/eduard-alloy/plumbix/internal/validation"
 )
 
@@ -45,7 +46,7 @@ func Validate(ctx context.Context, cfg Config, inDir, workspace string, opts ...
 	if _, err := rand.Read(nonce); err != nil {
 		return validation.Verdict{}, fmt.Errorf("generate tag nonce: %w", err)
 	}
-	prompt, err := BuildPrompt(inDir, workspace, hex.EncodeToString(nonce))
+	prompt, err := review.BuildPrompt(inDir, workspace, hex.EncodeToString(nonce))
 	if err != nil {
 		return validation.Verdict{}, err
 	}
@@ -58,7 +59,7 @@ func Validate(ctx context.Context, cfg Config, inDir, workspace string, opts ...
 		Messages:  []anthropic.BetaMessageParam{anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(prompt.User))},
 		OutputConfig: anthropic.BetaOutputConfigParam{
 			Effort: anthropic.BetaOutputConfigEffort(cfg.Effort),
-			Format: anthropic.BetaJSONOutputFormatParam{Schema: OutputSchema(criterionIDs(in.Change.AcceptanceCriteria))},
+			Format: anthropic.BetaJSONOutputFormatParam{Schema: review.OutputSchema(review.CriterionIDs(in.Change.AcceptanceCriteria))},
 		},
 		Fallbacks: anthropic.BetaFallbacksParamOfDefault(),
 		Betas:     []anthropic.AnthropicBeta{fallbackBeta},
@@ -80,5 +81,5 @@ func Validate(ctx context.Context, cfg Config, inDir, workspace string, opts ...
 		}
 	}
 	usage := validation.Usage{Model: string(resp.Model), InputTokens: int(resp.Usage.InputTokens), OutputTokens: int(resp.Usage.OutputTokens)}
-	return ToVerdict([]byte(text.String()), in.Change.AcceptanceCriteria, usage)
+	return review.ToVerdict([]byte(text.String()), in.Change.AcceptanceCriteria, usage)
 }

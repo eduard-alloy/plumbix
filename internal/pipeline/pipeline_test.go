@@ -256,6 +256,12 @@ func TestExtendedFieldErrors(t *testing.T) {
 		{"stage step twice", "version: 1\nsteps:\n  - {name: a, image: x, run: x}\nstages:\n  s: [a]\n  t: [a]\n", "stages.t[0]", 6, "already in stage"},
 		{"stage with validator", "version: 1\nsteps:\n  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true}\nstages:\n  s: [v]\n", "stages.s[0]", 6, "validator"},
 		{"stage empty", "version: 1\nsteps:\n  - {name: a, image: x, run: x}\nstages:\n  s: []\n", "stages.s", 5, "at least one"},
+		{"external text", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: yes}\n"), "steps[1].external", 4, "boolean"},
+		{"external on plain step", wrap("  - {name: a, external: true}\n"), "steps[0].external", 3, "validator"},
+		{"external with image", wrap("  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true, external: true}\n"), "steps[1].image", 4, "external"},
+		{"external with run", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, run: x}\n"), "steps[1].run", 4, "external"},
+		{"external with secrets", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, secrets: [K]}\n"), "steps[1].secrets", 4, "external"},
+		{"external with env", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, env: {A: b}}\n"), "steps[1].env", 4, "external"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -298,5 +304,19 @@ func TestMatchPath(t *testing.T) {
 		if got := MatchPath(c.pattern, c.path); got != c.want {
 			t.Errorf("MatchPath(%q, %q) = %v, want %v", c.pattern, c.path, got, c.want)
 		}
+	}
+}
+
+func TestExternalValidatorNeedsNoImage(t *testing.T) {
+	p, err := Parse([]byte(wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, needs: [a], timeout: 2h}\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := p.Steps[1]
+	if !v.External || !v.Validator || v.Image != "" || v.Timeout != 2*time.Hour {
+		t.Errorf("external step = %+v", v)
+	}
+	if p.Steps[0].External {
+		t.Error("a plain step reads as external")
 	}
 }

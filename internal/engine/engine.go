@@ -20,6 +20,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/gitops"
 	"github.com/eduard-alloy/plumbix/internal/host"
 	"github.com/eduard-alloy/plumbix/internal/pipeline"
+	"github.com/eduard-alloy/plumbix/internal/review"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/runner"
 	"github.com/eduard-alloy/plumbix/internal/scheduler"
@@ -52,6 +53,7 @@ var (
 type Store interface {
 	change.Store
 	run.Store
+	review.Store
 	events.Appender
 }
 
@@ -73,6 +75,8 @@ type Config struct {
 type Settings interface {
 	Guidance(ctx context.Context, repoID string) (settings.Guidance, error)
 	AIModel(ctx context.Context) (string, error)
+	// AITools is the tool policy external reviewers follow: read-only or full.
+	AITools(ctx context.Context) (string, error)
 }
 
 // Engine runs validations in the background.
@@ -438,6 +442,9 @@ func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([
 			return scheduler.StepSetup{}, nil
 		}
 		return e.setupValidator(r, prep, work, st, finished)
+	}
+	opts.External = func(ctx context.Context, st pipeline.Step, _ scheduler.StepSetup, log io.Writer) scheduler.StepResult {
+		return e.waitExternal(ctx, r, c, prep, work, st, log)
 	}
 	res := scheduler.Execute(ctx, prep.pipeline, e.runner, opts)
 
