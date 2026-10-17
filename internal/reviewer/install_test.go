@@ -107,7 +107,7 @@ func TestInstallWritesASystemdUserUnitOnLinux(t *testing.T) {
 }
 
 func TestSystemdWordsAreQuotedTheSystemdWay(t *testing.T) {
-	cases := map[string]string{"plain": "plain", "--repo": "--repo", "": `""`, "with space": `"with space"`, `say "hi"`: `"say \"hi\""`, `back\slash`: `"back\\slash"`, "a;b": `"a;b"`}
+	cases := map[string]string{"plain": "plain", "--repo": "--repo", "": `""`, "with space": `"with space"`, `say "hi"`: `"say \"hi\""`, `back\slash`: `"back\\slash"`, "a;b": `"a;b"`, "50%": `"50%%"`, "a %h b": `"a %%h b"`}
 	for in, want := range cases {
 		if got := systemdWord(in); got != want {
 			t.Errorf("systemdWord(%q) = %s, want %s", in, got, want)

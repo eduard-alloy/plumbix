@@ -1,7 +1,9 @@
 package api
 
 import (
+	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -95,6 +97,7 @@ func TestAClaimForAPollerThatHungUpIsReleased(t *testing.T) {
 	// The poller's connection drops between the claim and the write.
 	old := clientGone
 	clientGone = func(*http.Request) bool { return true }
+	t.Cleanup(func() { clientGone = old })
 	rec := a.do(http.MethodGet, "/api/v1/reviews/next?reviewer=kai&wait=20", "")
 	clientGone = old
 	if rec.Code != http.StatusOK || rec.Body.Len() != 0 {
@@ -110,8 +113,25 @@ func TestAClaimForAPollerThatHungUpIsReleased(t *testing.T) {
 	if ok := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/verdict", `{"token": "`+b.Token+`", "verdict": `+verdict+`}`); ok.Code != http.StatusOK {
 		t.Errorf("post after re-claim: %d %s", ok.Code, ok.Body.String())
 	}
-	if rec := a.do(http.MethodGet, "/api/v1/runs/"+b.RunID+"/steps/ai-review/log", ""); !strings.Contains(rec.Body.String(), "released") {
-		t.Logf("step log (release may land after the verdict): %s", rec.Body.String())
+}
+
+// brokenWriter fails every write, as a connection that dropped mid-response does.
+type brokenWriter struct{ http.ResponseWriter }
+
+func (brokenWriter) Write([]byte) (int, error) { return 0, errors.New("broken pipe") }
+
+func TestAClaimWhoseBriefCouldNotBeWrittenIsReleased(t *testing.T) {
+	a := newRunAPI(t)
+	a.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalPipeline}, "external review")
+	a.repo.Commit("ext", map[string]string{"b.go": "package b\n"}, "feature on the new pipeline")
+	a.do(http.MethodPost, "/api/v1/changes", changeBody(a.repoID, "ext"))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/reviews/next?reviewer=kai&wait=20", nil)
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	a.h.ServeHTTP(brokenWriter{httptest.NewRecorder()}, req)
+	// The brief never reached kai, so otto gets the same review.
+	again := a.do(http.MethodGet, "/api/v1/reviews/next?reviewer=otto&wait=5", "")
+	if again.Code != http.StatusOK {
+		t.Fatalf("claim after a failed write: %d %s", again.Code, again.Body.String())
 	}
 }
 

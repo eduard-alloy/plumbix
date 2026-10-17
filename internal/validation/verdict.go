@@ -78,6 +78,11 @@ type Usage struct {
 	Model        string `json:"model"`
 	InputTokens  int    `json:"input_tokens"`
 	OutputTokens int    `json:"output_tokens"`
+	// Turns and CostUSD are what an agentic reviewer knows and a one-shot
+	// validator does not: agentic turns taken, and the spend as the
+	// reviewer's tool estimated it (WU-023).
+	Turns   int     `json:"turns,omitempty"`
+	CostUSD float64 `json:"cost_usd,omitempty"`
 }
 
 var severities = map[string]bool{"blocker": true, "major": true, "minor": true}

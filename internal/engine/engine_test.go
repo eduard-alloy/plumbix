@@ -930,7 +930,7 @@ func TestExternalValidatorPublishesABriefAndTakesThePostedVerdict(t *testing.T) 
 	if err := h.eng.PostReviewVerdict(ctx, b.ID, "wrong-token", bad); !errors.Is(err, change.ErrConflict) {
 		t.Errorf("invalid verdict with a wrong token: %v, want ErrConflict", err)
 	}
-	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"The feature does what the intent says.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}]}`)
+	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"The feature does what the intent says.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}],"usage":{"model":"claude-opus-5-5","input_tokens":1200,"output_tokens":300,"turns":13,"cost_usd":3.06}}`)
 	if err := h.eng.PostReviewVerdict(ctx, b.ID, "wrong-token", good); !errors.Is(err, change.ErrConflict) {
 		t.Errorf("wrong token: %v", err)
 	}
@@ -975,7 +975,8 @@ func TestExternalValidatorPublishesABriefAndTakesThePostedVerdict(t *testing.T) 
 		t.Errorf("validators = %+v; want ai-review approve with the posted summary", done.Result.Validators)
 	}
 	log, _ := os.ReadFile(h.eng.LogPath(r.ID, "ai-review"))
-	for _, want := range []string{"waiting for an external reviewer", "claimed by kai", "claim by kai was released", "claimed by otto", "verdict posted by otto"} {
+	for _, want := range []string{"waiting for an external reviewer", "claimed by kai", "claim by kai was released", "claimed by otto", "verdict posted by otto",
+		"verdict: approve", "The feature does what the intent says.", "claude-opus-5-5", "1200 input and 300 output tokens", "13 turns", "$3.06"} {
 		if !strings.Contains(string(log), want) {
 			t.Errorf("step log lacks %q:\n%s", want, log)
 		}

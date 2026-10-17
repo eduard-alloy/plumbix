@@ -154,7 +154,29 @@ func (e *Engine) takeVerdict(dir string, rv review.Review, log io.Writer) schedu
 		return scheduler.StepResult{Status: scheduler.Errored, Err: err}
 	}
 	fmt.Fprintf(log, "verdict posted by %s at %s\n", rv.Reviewer, rv.FinishedAt.UTC().Format(time.RFC3339))
+	// The container validator printed its verdict as its last line; the
+	// external step does the same from the posted verdict.
+	var v validation.Verdict
+	if json.Unmarshal(rv.Verdict, &v) == nil {
+		fmt.Fprintf(log, "verdict: %s — %s%s\n", v.Outcome, strings.TrimSpace(v.Summary), usageNote(v.Usage))
+	}
 	return scheduler.StepResult{Status: scheduler.Succeeded}
+}
+
+// usageNote renders a verdict's usage for the step log: model and tokens,
+// plus turns and cost when the reviewer reported them.
+func usageNote(u *validation.Usage) string {
+	if u == nil {
+		return ""
+	}
+	parts := []string{fmt.Sprintf("%s, %d input and %d output tokens", u.Model, u.InputTokens, u.OutputTokens)}
+	if u.Turns > 0 {
+		parts = append(parts, fmt.Sprintf("%d turns", u.Turns))
+	}
+	if u.CostUSD > 0 {
+		parts = append(parts, fmt.Sprintf("$%.2f estimated", u.CostUSD))
+	}
+	return " (" + strings.Join(parts, ", ") + ")"
 }
 
 // ClaimReview hands the next waiting review to reviewer with a fresh token,
