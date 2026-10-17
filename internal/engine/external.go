@@ -155,10 +155,14 @@ func (e *Engine) takeVerdict(dir string, rv review.Review, log io.Writer) schedu
 	}
 	fmt.Fprintf(log, "verdict posted by %s at %s\n", rv.Reviewer, rv.FinishedAt.UTC().Format(time.RFC3339))
 	// The container validator printed its verdict as its last line; the
-	// external step does the same from the posted verdict.
+	// external step does the same from the posted verdict, on one line.
 	var v validation.Verdict
 	if json.Unmarshal(rv.Verdict, &v) == nil {
-		fmt.Fprintf(log, "verdict: %s — %s%s\n", v.Outcome, strings.TrimSpace(v.Summary), usageNote(v.Usage))
+		summary := strings.TrimSpace(v.Summary)
+		if i := strings.IndexByte(summary, '\n'); i >= 0 {
+			summary = strings.TrimSpace(summary[:i]) + " …"
+		}
+		fmt.Fprintf(log, "verdict: %s — %s%s\n", v.Outcome, summary, usageNote(v.Usage))
 	}
 	return scheduler.StepResult{Status: scheduler.Succeeded}
 }
