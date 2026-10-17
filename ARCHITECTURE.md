@@ -81,7 +81,7 @@ any open state ──(close)──▶ closed
 - Validators start once their needs have finished, whatever the outcome, because failed steps are the evidence they judge. A normal step that errored (could not run) forces `needs_human`: infrastructure failures are never the author's to fix (WU-007).
 - `fix_requested` is the fix loop. The client's agent reads the findings, pushes new commits, and a new iteration starts. After three fix rounds without approval, the change moves to `escalated`.
 - `approved` never merges by itself in v1. A human merges from the web interface or the CLI.
-- `needs_human`, `escalated` and `rejected` mean a person must look, so they are sticky (A21): a push to the branch starts nothing, the new head is only recorded and shown on the change, and a person presses Validate again or closes. Pushes keep starting iterations for `open`, `fix_requested` and `approved`, and a push during `running` supersedes the run.
+- `needs_human`, `escalated` and `rejected` mean a person must look, so they are sticky (A21): a push to the branch starts nothing, the new head is only recorded and shown on the change, and a person presses Validate again, approves with a reason (A23: `needs_human` and `escalated` only; `rejected` is the validators' explicit no) or closes. A person's approval names the validated head and is recorded on the change and as `change.approved_by_person`; the change then merges like any approval, and a later push starts a new run that ends the approval. Pushes keep starting iterations for `open`, `fix_requested` and `approved`, and a push during `running` supersedes the run.
 
 ### Combining verdicts
 
@@ -118,6 +118,7 @@ The base address comes from config `server.listen`, default `127.0.0.1:6400`. Ev
 | GET | `/api/v1/changes/{id}` | One change with its iterations, latest outcome and findings. |
 | GET | `/api/v1/changes/{id}/diff` | The diff the validators judged: base..head of the latest run with a head, parsed into files and hunks; `stat=true` for counts only. |
 | POST | `/api/v1/changes/{id}/merge` | Merge an approved change. Fails if the target branch moved since validation. |
+| POST | `/api/v1/changes/{id}/approve` | A person approves a `needs_human` or `escalated` change with a reason; the change becomes `approved` and merges as usual. |
 | POST | `/api/v1/changes/{id}/close` | Close without merging. |
 | GET | `/api/v1/runs/{id}` | A run with its steps, status, timings and evidence index. |
 | GET | `/api/v1/runs/{id}/steps/{step}/log` | A step's log, streamed while running. |
@@ -357,6 +358,7 @@ These are implementation calls made in this architecture step, with the reasons 
 | A19 | AI tuning from the web is review guidance (global and per repository) plus the model; the effort knob and the full prompt stay out | Guidance is operator instruction to any validator and travels in the validator input, separate from repository content, so the core still holds no AI (Q07). The model is one environment variable the AI validator already reads. Editing the whole prompt would break the verdict format silently. | Full prompt editing, an effort setting (not wanted) |
 | A21 | `needs_human`, `escalated` and `rejected` are sticky: only a person's Validate again or Close moves them, never a push | Those states exist to stop the loop until a person looks. Revalidating on push let an agent push through an escalation, and let an operator's own error be "fixed" without anyone looking. | A separate `blocked` state for infrastructure failures that would retry on push (a missing image or failed fetch is not fixed by pushing code) |
 | A22 | The pipeline editor is one client of the API: the browser builds the YAML, the server owns the commit, the push and the change. Validators it writes need every plain step. | The format's parser stays the single judge of a file, host credentials stay on the server, and a validator that needs every step says in the file when it runs. | A server-side YAML editor (duplicates the browser's model); a browser-side push (needs host credentials in the client) |
+| A23 | A person approves a `needs_human` or `escalated` change with a required reason; merge stays a separate action | Those states exist for a person to look; without a way to say "looked, fine" nothing that edits `.plumbix/` could ever merge through Plumbix. The reason is the audit trail. | Moving the pipeline out of `.plumbix/` (the rule is about editing the policy, not the folder); approve-and-merge in one step; letting a person approve `rejected` |
 
 ## 9. Risks and open items
 

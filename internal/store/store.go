@@ -217,7 +217,7 @@ func (db *DB) CreateChange(ctx context.Context, c change.Change) error {
 }
 
 const changeColumns = `c.id, c.repo_id, c.source_branch, c.target_branch, c.title, c.intent, c.acceptance_criteria, c.constraints, c.submitted_by, c.state, c.created_at, c.updated_at,
-	m.commit_sha, m.previous_sha, m.strategy, m.run_id, m.merged_at, COALESCE(b.head, '')`
+	m.commit_sha, m.previous_sha, m.strategy, m.run_id, m.merged_at, COALESCE(b.head, ''), c.approved_reason, c.approved_head, c.approved_at`
 
 // changeFrom joins each change with its merge, if any, and the last head
 // the poller saw on its source branch.
@@ -260,7 +260,12 @@ func (db *DB) ListChanges(ctx context.Context, f change.Filter) ([]change.Change
 func (db *DB) SetChangeState(ctx context.Context, id string, from, to change.State, at time.Time) error {
 	err := db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
 		var repoID string
-		if err := tx.QueryRowContext(ctx, `UPDATE changes SET state = ?, updated_at = ? WHERE id = ? AND state = ? RETURNING repo_id`,
+		// A new run judges a new head, so a person's approval ends with it.
+		clear := ""
+		if to == change.Running {
+			clear = ", approved_reason = '', approved_head = '', approved_at = ''"
+		}
+		if err := tx.QueryRowContext(ctx, `UPDATE changes SET state = ?, updated_at = ?`+clear+` WHERE id = ? AND state = ? RETURNING repo_id`,
 			string(to), formatTime(at), id, string(from)).Scan(&repoID); err != nil {
 			return mapErr(err) // ErrNotFound: no row in state from
 		}
@@ -277,16 +282,52 @@ func (db *DB) SetChangeState(ctx context.Context, id string, from, to change.Sta
 	return change.ErrConflict
 }
 
+// ApproveByPerson records a person's approval of a change at head and moves
+// it from its current state to approved, emitting the approval and the
+// state change together. ErrConflict when the change left state from.
+func (db *DB) ApproveByPerson(ctx context.Context, id string, from change.State, reason, head string, at time.Time) error {
+	err := db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		var repoID string
+		if err := tx.QueryRowContext(ctx,
+			`UPDATE changes SET state = ?, updated_at = ?, approved_reason = ?, approved_head = ?, approved_at = ? WHERE id = ? AND state = ? RETURNING repo_id`,
+			string(change.Approved), formatTime(at), reason, head, formatTime(at), id, string(from)).Scan(&repoID); err != nil {
+			return mapErr(err)
+		}
+		if _, err := emit(events.Event{Type: events.ApprovedByPerson, Time: at, RepoID: repoID, ChangeID: id,
+			Payload: events.ApprovedByPersonPayload{Reason: reason, Head: head}}); err != nil {
+			return err
+		}
+		_, err := emit(events.Event{Type: events.StateChanged, Time: at, RepoID: repoID, ChangeID: id,
+			Payload: events.StateChangedPayload{From: string(from), To: string(change.Approved)}})
+		return err
+	})
+	if !errors.Is(err, change.ErrNotFound) {
+		return err
+	}
+	if _, err := db.GetChange(ctx, id); err != nil {
+		return err
+	}
+	return change.ErrConflict
+}
+
 func scanChange(s scanner) (change.Change, error) {
 	var c change.Change
 	var criteria, constraints, state, created, updated string
 	var mCommit, mPrevious, mStrategy, mRun, mAt sql.NullString
+	var apReason, apHead, apAt string
 	if err := s.Scan(&c.ID, &c.RepoID, &c.SourceBranch, &c.TargetBranch, &c.Title, &c.Intent,
 		&criteria, &constraints, &c.SubmittedBy, &state, &created, &updated,
-		&mCommit, &mPrevious, &mStrategy, &mRun, &mAt, &c.SourceHead); err != nil {
+		&mCommit, &mPrevious, &mStrategy, &mRun, &mAt, &c.SourceHead, &apReason, &apHead, &apAt); err != nil {
 		return change.Change{}, mapErr(err)
 	}
 	c.State = change.State(state)
+	if apAt != "" {
+		at, err := parseTime(apAt)
+		if err != nil {
+			return change.Change{}, err
+		}
+		c.HumanApproval = &change.HumanApproval{Reason: apReason, Head: apHead, At: at}
+	}
 	if mCommit.Valid {
 		at, err := parseTime(mAt.String)
 		if err != nil {
