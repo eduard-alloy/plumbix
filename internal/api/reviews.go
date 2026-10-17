@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/engine"
 	"github.com/eduard-alloy/plumbix/internal/validation"
 )
 
@@ -31,6 +32,19 @@ type reviewHandlers struct {
 func registerReviewRoutes(mux *http.ServeMux, h *reviewHandlers) {
 	mux.HandleFunc("GET /api/v1/reviews/next", h.next)
 	mux.HandleFunc("POST /api/v1/reviews/{id}/verdict", h.verdict)
+	mux.HandleFunc("GET /api/v1/reviewers", h.reviewers)
+}
+
+// reviewers lists the external reviewers the server has heard from since
+// it started, most recent first (WU-026).
+func (h *reviewHandlers) reviewers(w http.ResponseWriter, _ *http.Request) {
+	list := h.engine.Reviewers()
+	if list == nil {
+		list = []engine.Reviewer{}
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Reviewers []engine.Reviewer `json:"reviewers"`
+	}{list})
 }
 
 // next claims the oldest waiting review for the reviewer, long-polling up

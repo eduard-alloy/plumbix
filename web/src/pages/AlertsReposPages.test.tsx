@@ -19,6 +19,14 @@ afterEach(() => {
 })
 
 describe('Alerts page', () => {
+  it('labels a no_reviewer alert and says how to start a loop', async () => {
+    db.alerts.push({ id: 'al_noreviewer001', kind: 'no_reviewer', key: 'r_plumbix00001', repo_id: 'r_plumbix00001', message: 'Change c_x is waiting for an external review of step ai-review and no reviewer has polled in the last 2m0s. Run plumbix review --watch on a machine with Claude Code, or plumbix review install to keep one running.', details: { change_id: 'c_x', step: 'ai-review' }, created_at: NOW.toISOString() })
+    window.history.replaceState(null, '', '/alerts')
+    render(<App />)
+    await screen.findByText('No reviewer is answering external reviews')
+    expect(document.body.textContent).toContain('plumbix review install')
+  })
+
   it('lists open alerts with their commits, resolves one, and shows resolved ones behind a toggle', async () => {
     window.history.replaceState(null, '', '/alerts')
     render(<App />)

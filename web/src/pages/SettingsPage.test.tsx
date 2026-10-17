@@ -87,6 +87,20 @@ describe('Settings page', () => {
     expect(full.checked).toBe(true)
   })
 
+  it('shows which external reviewers the server has heard from, or how to start one', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Settings' })
+    const section = (await screen.findByRole('heading', { name: 'External reviewers' })).parentElement!
+    await waitFor(() => expect(section.textContent).toContain('No reviewer has polled since the server started'))
+    expect(section.textContent).toContain('plumbix review install')
+    db.reviewers = [{ name: 'eduard@mac', last_seen: new Date(NOW.getTime() - 20_000).toISOString() }, { name: 'ci-box', repo_id: 'r_plumbix00001', last_seen: new Date(NOW.getTime() - 5 * 60_000).toISOString() }]
+    fireEvent.click(within(section).getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(section.textContent).toContain('eduard@mac'))
+    expect(section.textContent).toContain('ci-box')
+    expect(section.textContent).toContain('plumbix only')
+    expect(section.textContent).toContain('just now')
+  })
+
   it('shows a server refusal inline', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'Settings' })

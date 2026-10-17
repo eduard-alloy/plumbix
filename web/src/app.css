@@ -346,3 +346,7 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 .approve-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-3); }
 .approve-form textarea { width: 100%; box-sizing: border-box; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--bg); color: var(--text); font: 13px/1.5 var(--ui); resize: vertical; }
 .approve-form .buttons { display: flex; gap: 6px; }
+
+/* Settings: external reviewers the server has heard from (WU-026) */
+.reviewer-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.reviewer-list li { display: grid; grid-template-columns: minmax(120px, auto) 1fr auto; gap: 14px; align-items: baseline; font-size: 13px; }

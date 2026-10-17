@@ -25,6 +25,8 @@ commands:
   alert list|resolve    bypass commits and token warnings
   events                follow the event stream as JSON lines
   review --watch|--once answer external reviews with Claude Code on this machine
+  review install|uninstall|status
+                        keep the reviewer loop running as a login service
   login                 print a one-time link that signs a browser in
   logout                sign every browser out
   version               print the version

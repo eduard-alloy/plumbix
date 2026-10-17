@@ -17,11 +17,13 @@ interface Commit {
 
 function kindLabel(a: Alert): string {
   if (a.kind === 'bypass_commit') return 'Commits without a verdict'
+  if (a.kind === 'no_reviewer') return 'No reviewer is answering external reviews'
   return /check failed/i.test(a.message) ? 'Token check failed' : 'Token expires soon'
 }
 
 function hint(a: Alert): string {
   if (a.kind === 'bypass_commit') return 'If this was intended, resolve the alert. Otherwise revert the commit and submit it as a change.'
+  if (a.kind === 'no_reviewer') return 'Start plumbix review --watch on a machine with Claude Code, or plumbix review install to keep one running. The alert resolves by itself when a reviewer polls.'
   if (/check failed/i.test(a.message)) return 'Check the token in the secrets file. Plumbix repeats the check daily and resolves this alert when it passes.'
   return 'Create a new token on the git host and put it in the secrets file before then.'
 }

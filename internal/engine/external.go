@@ -78,6 +78,20 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 	ticker := time.NewTicker(reviewPoll)
 	defer ticker.Stop()
 	holder := "" // the reviewer last written to the log
+	silent := false
+	// warn raises the repository's no_reviewer alert while nobody who could
+	// answer has polled recently, and writes the hint once per silence.
+	warn := func() {
+		if e.warnNoReviewer(ctx, c.RepoID, c.ID, r.ID, b.ID, st.Name) {
+			if !silent {
+				fmt.Fprintf(log, "no reviewer has polled in the last %s; run plumbix review --watch somewhere with Claude Code (an alert was raised)\n", presenceWindow)
+			}
+			silent = true
+		} else {
+			silent = false
+		}
+	}
+	warn()
 	for {
 		select {
 		case <-ctx.Done():
@@ -113,6 +127,9 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 		// back because the reviewer never got the brief), a new claim. A
 		// claim and its verdict can land within one poll, so the claim line
 		// is written whenever the holder is new.
+		if rv.Status == review.Pending {
+			warn()
+		}
 		switch {
 		case holder != "" && rv.Status == review.Pending:
 			fmt.Fprintf(log, "the claim by %s was released; waiting for a reviewer again\n", holder)
@@ -150,6 +167,7 @@ func (e *Engine) ClaimReview(ctx context.Context, repoID, reviewer string) (revi
 	case len(reviewer) > MaxReviewerName:
 		return review.Brief{}, false, &change.InvalidError{Problems: []change.Problem{{Field: "reviewer", Message: fmt.Sprintf("is longer than %d characters", MaxReviewerName)}}}
 	}
+	e.noteReviewer(ctx, reviewer, repoID)
 	token, err := randomHex(32)
 	if err != nil {
 		return review.Brief{}, false, err

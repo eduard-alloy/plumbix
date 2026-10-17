@@ -1,6 +1,6 @@
 // The API client. Every call goes to the same origin with the session
 // cookie; a 401 anywhere means the browser is not signed in.
-import type { PipelineFile, Alert, Change, Diff, Repo, RepoSettings, Run, SecretCheck, SettingsView } from './model'
+import type { PipelineFile, Alert, Change, Diff, Repo, RepoSettings, Run, SecretCheck, SettingsView, Reviewer } from './model'
 
 export class ApiError extends Error {
   constructor(
@@ -86,6 +86,7 @@ export const api = {
   resolveAlert: (id: string) => request<Alert>('POST', `/api/v1/alerts/${encodeURIComponent(id)}/resolve`),
   stepLog: (runId: string, step: string) => requestText(stepLogUrl(runId, step)),
   settings: () => request<SettingsView>('GET', '/api/v1/settings'),
+  reviewers: () => request<{ reviewers: Reviewer[] }>('GET', '/api/v1/reviewers'),
   updateSettings: (body: { ai_model?: string; ai_tools?: 'read-only' | 'full'; guidance?: string }) => request<SettingsView>('PUT', '/api/v1/settings', body),
   setSecret: (key: string, value: string) => request<void>('PUT', `/api/v1/settings/secrets/${encodeURIComponent(key)}`, { value }),
   removeSecret: (key: string) => request<void>('DELETE', `/api/v1/settings/secrets/${encodeURIComponent(key)}`),

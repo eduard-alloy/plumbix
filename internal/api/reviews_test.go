@@ -114,3 +114,29 @@ func TestAClaimForAPollerThatHungUpIsReleased(t *testing.T) {
 		t.Logf("step log (release may land after the verdict): %s", rec.Body.String())
 	}
 }
+
+func TestReviewersListsWhoPolled(t *testing.T) {
+	o := loadOpenAPI(t)
+	a := newRunAPI(t)
+	empty := a.do(http.MethodGet, "/api/v1/reviewers", "")
+	o.check("ReviewerList", empty)
+	if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), `"reviewers":[]`) {
+		t.Fatalf("fresh server: %d %s", empty.Code, empty.Body.String())
+	}
+	if rec := a.do(http.MethodGet, "/api/v1/reviews/next?reviewer=kai&wait=0", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("idle poll: %d %s", rec.Code, rec.Body.String())
+	}
+	a.do(http.MethodGet, "/api/v1/reviews/next?reviewer=otto&repo_id="+a.repoID+"&wait=0", "")
+	rec := a.do(http.MethodGet, "/api/v1/reviewers", "")
+	o.check("ReviewerList", rec)
+	got := decode[struct {
+		Reviewers []struct {
+			Name     string `json:"name"`
+			RepoID   string `json:"repo_id"`
+			LastSeen string `json:"last_seen"`
+		} `json:"reviewers"`
+	}](t, rec)
+	if len(got.Reviewers) != 2 || got.Reviewers[0].Name != "otto" || got.Reviewers[0].RepoID != a.repoID || got.Reviewers[1].Name != "kai" || got.Reviewers[1].LastSeen == "" {
+		t.Errorf("reviewers = %+v", got.Reviewers)
+	}
+}

@@ -180,6 +180,9 @@ func TestCLIFlow(t *testing.T) {
 	if code, _, errOut := c.run("", "review", "--once", "--tools", "everything"); code != 2 || !strings.Contains(errOut, "read-only or full") {
 		t.Errorf("review with bad tools: exit %d, stderr %q", code, errOut)
 	}
+	if code, _, errOut := c.run("", "review", "install", "--watch"); code != 2 || !strings.Contains(errOut, "review install") {
+		t.Errorf("install with a mode flag: exit %d, stderr %q", code, errOut)
+	}
 	if closed := c.mustRun("", "change", "close", id); closed["state"] != "closed" {
 		t.Errorf("close = %v", closed)
 	}
