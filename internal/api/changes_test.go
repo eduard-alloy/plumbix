@@ -123,6 +123,8 @@ func TestSubmitErrors(t *testing.T) {
 	}{
 		{"not json", `{"repo_id":`, 400, "invalid_request", ""},
 		{"unknown field", `{"repo_id": "x", "colour": "red"}`, 400, "invalid_request", "colour"},
+		// plumbix_branch is the server's to set (WU-022): a client claiming it is refused, not ignored.
+		{"plumbix_branch claimed", `{"repo_id": "x", "plumbix_branch": true}`, 400, "invalid_request", "plumbix_branch"},
 		{"wrong type", `{"title": 5}`, 400, "invalid_request", "title"},
 		{"two objects", `{} {}`, 400, "invalid_request", ""},
 		{"rules", `{}`, 400, "invalid_request", "acceptance_criteria"},

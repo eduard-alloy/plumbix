@@ -380,6 +380,8 @@ export function refreshNotice(code: string, ctx: NoticeCtx, message = ''): Notic
       return { title: `Not updated: ${ctx.src} moved during the update`, body: 'Nothing was pushed. Reload the change and try again.', ...none }
     case 'invalid_state':
       return { title: 'Not updated: the change moved on', body: 'The change is running, merged or closed. Reload the page to see where it stands.', ...none }
+    case 'failed':
+      return { title: 'Not updated: Plumbix did not answer', body: `The request did not reach the server or no answer came back. Nothing is known about the branch; reload the change to see whether ${ctx.src} moved.`, ...none }
     default:
       return { title: 'Not updated', body: message || 'The server refused the update. Reload the change and try again.', ...none }
   }

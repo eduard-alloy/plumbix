@@ -138,10 +138,11 @@ export function ChangePage({ id }: { id: string }) {
       setNotice(refreshNotice('refreshing', ctx))
       void actions.refreshChange(c!.id)
     } catch (e) {
-      if (e instanceof ApiError) {
-        setNotice(refreshNotice(e.code, ctx, e.message))
-        void actions.refreshChange(c!.id)
-      }
+      // A refusal explains itself; anything else (the server unreachable,
+      // a dropped connection) still deserves a notice, since the push may
+      // or may not have happened.
+      setNotice(e instanceof ApiError ? refreshNotice(e.code, ctx, e.message) : refreshNotice('failed', ctx))
+      void actions.refreshChange(c!.id)
     } finally {
       setBusy(null)
     }

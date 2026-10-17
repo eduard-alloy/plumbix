@@ -236,5 +236,8 @@ describe('refreshNotice', () => {
     expect(refreshNotice('push_denied', ctx)).toMatchObject({ title: 'Not updated: the host refused the push', action: 'settings' })
     expect(refreshNotice('invalid_state', ctx)).toMatchObject({ title: 'Not updated: the change moved on', action: null })
     expect(refreshNotice('something_else', ctx)).toMatchObject({ title: 'Not updated', action: null })
+    const failed = refreshNotice('failed', ctx)
+    expect(failed).toMatchObject({ title: 'Not updated: Plumbix did not answer', action: null })
+    expect(failed.body).toContain('Nothing is known about the branch')
   })
 })
