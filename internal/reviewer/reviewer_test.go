@@ -230,22 +230,32 @@ func TestRecordedModelIsTheBriefsOrTheBusiest(t *testing.T) {
 	base := repo.Commit("main", map[string]string{"README.md": "# base\n"}, "base")
 	head := repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
 	twoModels := strings.Replace(approving, `"usage":`, `"modelUsage":{"claude-haiku-5-5":{"inputTokens":50,"outputTokens":10},"claude-opus-5-5":{"inputTokens":1000,"outputTokens":290}},"usage":`, 1)
-	for brief, want := range map[string]string{"": "claude-opus-5-5", "claude-sonnet-5-5": "claude-sonnet-5-5"} {
-		fakeClaude(t, twoModels)
-		b := newBrief(repo.Remote, head, base)
-		b.Model = brief
-		fs := &fakeServer{brief: b}
-		srv := httptest.NewServer(fs.handler())
-		if err := Run(context.Background(), Options{Client: client.New(strings.TrimPrefix(srv.URL, "http://"), "t"), Reviewer: "kai", Once: true, WorkDir: t.TempDir()}); err != nil {
-			t.Fatal(err)
-		}
-		srv.Close()
-		var v struct {
-			Usage struct{ Model string } `json:"usage"`
-		}
-		_ = json.Unmarshal(fs.posted.Verdict, &v)
-		if v.Usage.Model != want {
-			t.Errorf("brief model %q: recorded %q, want %q", brief, v.Usage.Model, want)
-		}
+	cases := []struct{ name, brief, override, want string }{
+		{"busiest listed model", "", "", "claude-opus-5-5"},
+		{"the brief's model", "claude-sonnet-5-5", "", "claude-sonnet-5-5"},
+		{"the --model override wins", "claude-sonnet-5-5", "claude-fable-5-1", "claude-fable-5-1"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fakeClaude(t, twoModels)
+			b := newBrief(repo.Remote, head, base)
+			b.Model = c.brief
+			fs := &fakeServer{brief: b}
+			srv := httptest.NewServer(fs.handler())
+			defer srv.Close()
+			if err := Run(context.Background(), Options{Client: client.New(strings.TrimPrefix(srv.URL, "http://"), "t"), Reviewer: "kai", Once: true, WorkDir: t.TempDir(), Model: c.override}); err != nil {
+				t.Fatal(err)
+			}
+			var v struct {
+				Usage struct{ Model string } `json:"usage"`
+			}
+			_ = json.Unmarshal(fs.posted.Verdict, &v)
+			if v.Usage.Model != c.want {
+				t.Errorf("recorded %q, want %q", v.Usage.Model, c.want)
+			}
+			if c.override != "" && !strings.Contains(recorded(t, os.Getenv("PLUMBIX_TEST_REC"), "args"), "--model\n"+c.override) {
+				t.Error("the override was not passed to claude")
+			}
+		})
 	}
 }

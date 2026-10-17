@@ -1026,3 +1026,42 @@ func TestAVerdictPostedJustBeforeTheDeadlineIsTaken(t *testing.T) {
 		}
 	}
 }
+
+func TestACancelledRunKeepsNoLateVerdict(t *testing.T) {
+	old := reviewPoll
+	reviewPoll = 10 * time.Second
+	t.Cleanup(func() { reviewPoll = old })
+	h := newHarness(t, Config{})
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalYAML}, "external review")
+	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	c := h.submit("feat")
+	first, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := h.claimSoon("kai")
+	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"Fine.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}]}`)
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); err != nil {
+		t.Fatal(err)
+	}
+	// A new iteration supersedes the first run before its next poll: the
+	// accepted verdict belongs to a run that no longer counts.
+	second, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := h.wait(first.ID)
+	if done.Outcome == change.Approved {
+		t.Errorf("the superseded run took the late verdict: %+v", done)
+	}
+	for _, s := range done.Steps {
+		if s.Name == "ai-review" && s.Status == "succeeded" {
+			t.Errorf("external step of a cancelled run = %+v", s)
+		}
+	}
+	// The second run publishes its own review and waits for a fresh verdict.
+	b2 := h.claimSoon("kai")
+	if b2.ID == b.ID || b2.RunID != second.ID {
+		t.Errorf("second review = %+v", b2)
+	}
+}
