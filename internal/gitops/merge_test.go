@@ -188,3 +188,73 @@ func TestPushErrorsAreClassified(t *testing.T) {
 		t.Errorf("unrelated error was rewritten: %v", err)
 	}
 }
+
+func TestCommitFileReplacesOneBlobOnTheParent(t *testing.T) {
+	r := gittest.New(t)
+	base := r.Commit("main", map[string]string{"a.txt": "a\n", "dir/keep.txt": "keep\n", ".plumbix/pipeline.yaml": "version: 1\n"}, "base")
+	m := mirrorOf(t, r.Remote)
+	sha, err := m.CommitFile(ctx, base, ".plumbix/pipeline.yaml", []byte("version: 1\nsteps: []\n"), "Pipeline: add a step")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := m.Show(ctx, sha, ".plumbix/pipeline.yaml")
+	if err != nil || !ok || string(got) != "version: 1\nsteps: []\n" {
+		t.Fatalf("file at new commit = %q %v %v", got, ok, err)
+	}
+	for _, p := range []string{"a.txt", "dir/keep.txt"} {
+		if _, ok, _ := m.Show(ctx, sha, p); !ok {
+			t.Errorf("%s missing from the new commit", p)
+		}
+	}
+	files, err := m.ChangedFiles(ctx, base, sha)
+	if err != nil || len(files) != 1 || files[0] != ".plumbix/pipeline.yaml" {
+		t.Errorf("changed files = %v %v, want only the pipeline", files, err)
+	}
+	c, err := m.Commit(ctx, sha)
+	if err != nil || c.Subject != "Pipeline: add a step" || c.Author != CommitterName || len(c.Parents) != 1 || c.Parents[0] != base {
+		t.Errorf("commit = %+v %v", c, err)
+	}
+	if h, _ := m.Head(ctx, "main"); h != base {
+		t.Errorf("main moved to %s", h)
+	}
+	// A path that did not exist is added.
+	added, err := m.CommitFile(ctx, base, "new/file.txt", []byte("x"), "add")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok, _ := m.Show(ctx, added, "new/file.txt"); !ok || string(got) != "x" {
+		t.Errorf("new file = %q %v", got, ok)
+	}
+	if _, err := m.CommitFile(ctx, base, "../escape", []byte("x"), "bad"); err == nil {
+		t.Error("a path outside the tree was accepted")
+	}
+}
+
+func TestPushBranchCreatesAndNeverOverwrites(t *testing.T) {
+	r := gittest.New(t)
+	base := r.Commit("main", map[string]string{"a.txt": "a\n"}, "base")
+	m := mirrorOf(t, r.Remote)
+	sha, err := m.CommitFile(ctx, base, "f.txt", []byte("f"), "f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.PushBranch(ctx, "pipeline/new", sha); err != nil {
+		t.Fatal(err)
+	}
+	if got := remoteHead(t, m, "pipeline/new"); got != sha {
+		t.Errorf("remote branch = %s, want %s", got, sha)
+	}
+	if got, _ := m.Head(ctx, "pipeline/new"); got != sha {
+		t.Errorf("mirror branch = %s, want %s", got, sha)
+	}
+	other, _ := m.CommitFile(ctx, base, "g.txt", []byte("g"), "g")
+	if err := m.PushBranch(ctx, "pipeline/new", other); !errors.Is(err, ErrBranchExists) {
+		t.Errorf("push onto an existing branch: err = %v, want ErrBranchExists", err)
+	}
+	if got := remoteHead(t, m, "pipeline/new"); got != sha {
+		t.Errorf("existing branch was changed to %s", got)
+	}
+	if err := m.PushBranch(ctx, "main", other); !errors.Is(err, ErrBranchExists) {
+		t.Errorf("push onto main: err = %v", err)
+	}
+}

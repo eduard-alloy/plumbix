@@ -250,3 +250,49 @@ export interface ApiError {
   message: string
   details?: Record<string, unknown>
 }
+
+/** PipelineStep is one step of the parsed pipeline file, as the API serves it. */
+export interface PipelineStep {
+  name: string
+  image: string
+  commands: string[]
+  needs: string[]
+  env: Record<string, string>
+  secrets: string[]
+  artifacts: string[]
+  timeout?: string
+  validator: boolean
+  retries: number
+  allow_failure: boolean
+  paths: string[]
+  stage?: string
+}
+
+export interface PipelineModel {
+  version: number
+  steps: PipelineStep[]
+  stages: { name: string; steps: string[] }[]
+}
+
+export interface PipelineProblem {
+  path: string
+  line: number
+  message: string
+}
+
+/** PipelineFile is a repository's pipeline file at a branch head. */
+export interface PipelineFile {
+  file: string
+  branch: string
+  sha: string
+  content: string
+  pipeline: PipelineModel | null
+  problems: PipelineProblem[]
+  last_run?: { run_id: string; head: string; steps: Record<string, { status: string; duration_ms: number }> }
+}
+
+export interface PipelineCheck {
+  valid: boolean
+  order?: string[]
+  errors?: PipelineProblem[]
+}

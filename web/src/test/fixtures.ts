@@ -1,6 +1,6 @@
 // API-shaped sample data for tests, modelled on the design handoff. Times
 // are relative to NOW so ages are stable.
-import type { Alert, Change, Repo, Run, Step } from '../model'
+import type { Alert, Change, PipelineFile, Repo, Run, Step } from '../model'
 
 export const NOW = new Date('2026-10-16T09:30:00Z')
 
@@ -292,3 +292,39 @@ export const alerts: Alert[] = [
     created_at: at(27),
   },
 ]
+
+export const pipelineFile: PipelineFile = {
+  file: '.plumbix/pipeline.yaml',
+  branch: 'main',
+  sha: '4f81c2a0000000000000000000000000deadbeef',
+  content: 'version: 1\nsteps: []\n',
+  pipeline: {
+    version: 1,
+    steps: [
+      { name: 'build', image: 'golang:1.27', commands: ['go build ./...'], needs: [], env: {}, secrets: [], artifacts: [], timeout: '10m', validator: false, retries: 0, allow_failure: false, paths: [] },
+      { name: 'test', image: 'golang:1.27', commands: ['go test ./...'], needs: ['build'], env: { GOFLAGS: '-mod=readonly' }, secrets: [], artifacts: ['coverage.out'], timeout: '15m', validator: false, retries: 1, allow_failure: false, paths: [], stage: 'checks' },
+      { name: 'contract', image: 'golang:1.27', commands: ['go run ./cmd/openapi-diff'], needs: ['build'], env: {}, secrets: ['API_TOKEN'], artifacts: [], validator: false, retries: 0, allow_failure: true, paths: ['api/**'], stage: 'checks' },
+      { name: 'deploy-check', image: 'alpine:3', commands: ['echo ok'], needs: ['test', 'contract'], env: {}, secrets: [], artifacts: [], validator: false, retries: 0, allow_failure: false, paths: [] },
+      { name: 'validate', image: 'plumbix-reference-validator:dev', commands: [], needs: ['test', 'contract', 'deploy-check'], env: {}, secrets: [], artifacts: [], validator: true, retries: 0, allow_failure: false, paths: [] },
+    ],
+    stages: [{ name: 'checks', steps: ['test', 'contract'] }],
+  },
+  problems: [],
+  last_run: { run_id: 'run_1', head: '4f81c2a', steps: { build: { status: 'succeeded', duration_ms: 42000 }, test: { status: 'succeeded', duration_ms: 118000 }, validate: { status: 'succeeded', duration_ms: 4000 } } },
+}
+
+export const pipelineFiles: Record<string, PipelineFile> = {
+  [repos[0].id]: pipelineFile,
+  [repos[1].id]: {
+    file: '.plumbix/pipeline.yaml',
+    branch: 'main',
+    sha: 'a1b2c3d4000000000000000000000000deadbeef',
+    content: 'version: 1\nsteps:\n  - {name: test, image: node:24, run: npm test}\n',
+    pipeline: {
+      version: 1,
+      steps: [{ name: 'test', image: 'node:24', commands: ['npm test'], needs: [], env: {}, secrets: [], artifacts: [], validator: false, retries: 0, allow_failure: false, paths: [] }],
+      stages: [],
+    },
+    problems: [],
+  },
+}

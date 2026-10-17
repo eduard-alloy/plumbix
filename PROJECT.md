@@ -98,7 +98,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-012 | Self-hosting: Plumbix validates its own changes on GitHub, milestone acceptance | All M1 | ✅ |
 | WU-018 | Settings page: tokens and secrets written by the server, review guidance for validators, AI model | F-004, F-005, F-015 | ✅ |
 | WU-019 | Pipeline format: run lists, retries, allow_failure, path conditions, stages (the editor design needs them) | F-002, F-003 | ✅ |
-| WU-020 | Pipeline editor: edit `.plumbix/pipeline.yaml` in the browser (design handoff 2, layout 2a) and propose it as a change | F-002, F-004 | ⚪ |
+| WU-020 | Pipeline editor: edit `.plumbix/pipeline.yaml` in the browser (design handoff 2, layout 2a) and propose it as a change | F-002, F-004 | ✅ |
 
 ## Milestone 2 candidates
 

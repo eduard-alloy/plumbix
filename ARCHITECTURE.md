@@ -135,6 +135,8 @@ The base address comes from config `server.listen`, default `127.0.0.1:6400`. Ev
 | PUT, DELETE | `/api/v1/settings/secrets/{key}` | Set or remove a secret in the server's secrets file; used from the next fetch on. |
 | POST | `/api/v1/settings/secrets/{key}/check` | Run a git host's token check now. |
 | GET, PUT | `/api/v1/repos/{id}/settings` | One repository's review guidance. |
+| GET | `/api/v1/repos/{id}/pipeline` | The pipeline file at a branch head, parsed for the editor, with parse problems and last-run step durations. |
+| POST | `/api/v1/repos/{id}/pipeline/changes` | Commit an edited pipeline file on a new branch and open a change for it (409 `branch_exists`, `push_denied`). |
 
 ### 4.2 Pipeline file, version 1
 
@@ -197,6 +199,8 @@ stages:
 Unknown fields are errors. There are no triggers, matrices or reusable templates in version 1. Every push runs the whole pipeline, minus steps whose paths did not change.
 
 **Policy source**: for a change, the list of required validators comes from the **target branch's** version of the pipeline file, not the change's version. An agent cannot remove or swap a validator in the same change it wants approved. A change that edits `.plumbix/` always ends in `needs_human`.
+
+**Editing the file** (WU-020, A22): the web app's Pipelines screen edits a repository's file visually and saves it as a change. The server reads the file at the branch head (`GET /repos/{id}/pipeline`), the browser builds the YAML, and `POST /repos/{id}/pipeline/changes` makes Plumbix commit that one file on the target head, push a new branch without force (an existing branch is refused) and submit the change, which validates with the target's pipeline and waits for a person like every `.plumbix/` change. The editor writes validators with `needs` of every non-validator step, so "validators run last" is literal in the file.
 
 ### 4.3 Validator contract
 
@@ -352,6 +356,7 @@ These are implementation calls made in this architecture step, with the reasons 
 | A18 | Tokens and other secrets are set from the browser into the server-owned secrets file, write-only, and reloaded live | After install everything is configured in one place; the server rewrites the dotenv file with mode 0600, never returns a value, and reads secrets and host adapters through a manager on every use, so no restart is needed. A browser session can already merge code, so this widens nothing. | Encrypted storage in SQLite (more code, little extra safety on one machine), restart after editing the file by hand |
 | A19 | AI tuning from the web is review guidance (global and per repository) plus the model; the effort knob and the full prompt stay out | Guidance is operator instruction to any validator and travels in the validator input, separate from repository content, so the core still holds no AI (Q07). The model is one environment variable the AI validator already reads. Editing the whole prompt would break the verdict format silently. | Full prompt editing, an effort setting (not wanted) |
 | A21 | `needs_human`, `escalated` and `rejected` are sticky: only a person's Validate again or Close moves them, never a push | Those states exist to stop the loop until a person looks. Revalidating on push let an agent push through an escalation, and let an operator's own error be "fixed" without anyone looking. | A separate `blocked` state for infrastructure failures that would retry on push (a missing image or failed fetch is not fixed by pushing code) |
+| A22 | The pipeline editor is one client of the API: the browser builds the YAML, the server owns the commit, the push and the change. Validators it writes need every plain step. | 2026-10-17 | A server-side YAML editor would duplicate the browser's model; a browser-side push would need host credentials in the client. Making validators need every step keeps the file honest about when they run. |
 
 ## 9. Risks and open items
 

@@ -156,6 +156,76 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /repos/{id}/pipeline:
+    get:
+      operationId: getRepoPipeline
+      summary: The repository's pipeline file at a branch head, parsed for the editor.
+      description: >
+        Fetches the repository and reads .plumbix/pipeline.yaml at the head of
+        the branch (default: the first protected branch). A missing or invalid
+        file is still a 200: pipeline is null and problems says why. last_run
+        is the newest finished run on that branch, for step durations.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+        - name: branch
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The pipeline file and its parsed model.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineFile"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Unknown repository or branch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /repos/{id}/pipeline/changes:
+    post:
+      operationId: proposePipeline
+      summary: Commit an edited pipeline file on a new branch and open a change for it.
+      description: >
+        Plumbix parses the content, commits it as the only change on the
+        target branch's head (default: the first protected branch), pushes the
+        new branch with the repository's credentials, never forcing, and
+        submits a change whose validation runs with the pipeline on the
+        target branch. Because the change edits .plumbix/, it ends in
+        needs_human: a person approves every pipeline change.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineProposal"
+      responses:
+        "201":
+          description: The change that was opened.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Change"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Codes branch_exists (the host already has the branch) and push_denied (the host refused the credentials; set a token for the repository).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /repos/{id}/token:
     put:
       operationId: setRepoToken
@@ -1483,6 +1553,143 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PipelineProblem"
+    PipelineFile:
+      type: object
+      additionalProperties: false
+      required: [file, branch, sha, content, pipeline, problems]
+      properties:
+        file:
+          type: string
+        branch:
+          type: string
+        sha:
+          type: string
+        content:
+          description: The file as it is on the branch; empty when missing.
+          type: string
+        pipeline:
+          oneOf:
+            - $ref: "#/components/schemas/PipelineModel"
+            - type: "null"
+        problems:
+          description: Why pipeline is null, when it is; empty otherwise.
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineProblem"
+        last_run:
+          $ref: "#/components/schemas/PipelineLastRun"
+    PipelineModel:
+      description: The parsed file in the editor's shape. Lists are never null.
+      type: object
+      additionalProperties: false
+      required: [version, steps, stages]
+      properties:
+        version:
+          type: integer
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineStep"
+        stages:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, steps]
+            properties:
+              name:
+                type: string
+              steps:
+                type: array
+                items:
+                  type: string
+    PipelineStep:
+      type: object
+      additionalProperties: false
+      required: [name, image, commands, needs, env, secrets, artifacts, validator, retries, allow_failure, paths]
+      properties:
+        name:
+          type: string
+        image:
+          type: string
+        commands:
+          description: The run script as a list of commands; one entry when the file had a string.
+          type: array
+          items:
+            type: string
+        needs:
+          type: array
+          items:
+            type: string
+        env:
+          type: object
+          additionalProperties:
+            type: string
+        secrets:
+          type: array
+          items:
+            type: string
+        artifacts:
+          type: array
+          items:
+            type: string
+        timeout:
+          description: Go duration string; absent for the server default.
+          type: string
+        validator:
+          type: boolean
+        retries:
+          type: integer
+        allow_failure:
+          type: boolean
+        paths:
+          description: when.paths globs; empty when the step always runs.
+          type: array
+          items:
+            type: string
+        stage:
+          type: string
+    PipelineLastRun:
+      type: object
+      additionalProperties: false
+      required: [run_id, head, steps]
+      properties:
+        run_id:
+          type: string
+        head:
+          type: string
+        steps:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: false
+            required: [status, duration_ms]
+            properties:
+              status:
+                type: string
+              duration_ms:
+                type: integer
+    PipelineProposal:
+      type: object
+      additionalProperties: false
+      required: [branch, title, content]
+      properties:
+        branch:
+          description: The new branch; must not exist on the host.
+          type: string
+        target_branch:
+          description: The branch to build on and merge into; default the first protected branch.
+          type: string
+        title:
+          type: string
+          maxLength: 200
+        intent:
+          type: string
+          maxLength: 4000
+        content:
+          description: The whole pipeline file.
+          type: string
+          maxLength: 1048576
     PipelineProblem:
       type: object
       additionalProperties: false
