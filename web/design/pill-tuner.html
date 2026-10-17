@@ -19,7 +19,6 @@ body { margin: 0; font: 13px/1.45 var(--ui); -webkit-font-smoothing: antialiased
 .dim { color: var(--text-3); }
 .dim2 { color: var(--text-2); }
 .right { text-align: right; }
-.red { color: var(--s-red); }
 
 .page { display: grid; grid-template-columns: 1fr 1fr; min-height: 100vh; margin-right: 360px; }
 .theme { background: var(--bg); color: var(--text); padding: 0 0 48px; }
@@ -32,6 +31,14 @@ body { margin: 0; font: 13px/1.45 var(--ui); -webkit-font-smoothing: antialiased
 .strip { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
 .strip .pill { cursor: pointer; }
 .strip .pill.sel { outline: 2px solid var(--accent); outline-offset: 2px; }
+.families { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px 18px; }
+.family h4 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.family .strip { flex-direction: column; align-items: flex-start; gap: 6px; }
+.modes { display: grid; grid-template-columns: auto auto auto auto; gap: 6px 18px; align-items: center; justify-content: start; }
+.modes .dim { font-size: 11px; }
+.card { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 12px 14px; }
+.card .strip { gap: 8px; }
+.ref img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; display: block; }
 
 .row-grid { display: grid; grid-template-columns: 116px minmax(120px, 1.3fr) minmax(110px, 1fr) 100px 28px 44px; gap: 12px; align-items: center; padding: 0 20px; }
 .cols { height: 28px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-3); }
@@ -41,13 +48,14 @@ body { margin: 0; font: 13px/1.45 var(--ui); -webkit-font-smoothing: antialiased
 .group-header .count { font-size: 12px; color: var(--text-3); }
 .row { width: 100%; height: 36px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); font-size: 13px; text-align: left; font-family: inherit; cursor: pointer; }
 .row:hover { background: var(--hover); }
+.row .cell { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .title { font-weight: 500; }
 .row .mono { font-size: 12px; }
 
 .steps { display: grid; gap: 6px; }
 .vstep { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; height: 24px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm, 4px); background: var(--bg); color: var(--text); font: inherit; text-align: left; }
 .vstep .dur { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
-.verdict { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 12px 14px; display: grid; gap: 10px; }
+.verdict { display: grid; gap: 10px; }
 .verdict .head { display: flex; align-items: center; justify-content: space-between; }
 .verdict .head b { font-size: 14px; font-weight: 600; }
 .criteria { display: grid; gap: 6px; font-size: 12px; }
@@ -58,7 +66,10 @@ body { margin: 0; font: 13px/1.45 var(--ui); -webkit-font-smoothing: antialiased
 .tuner { position: fixed; top: 0; right: 0; bottom: 0; width: 360px; overflow: auto; box-sizing: border-box; padding: 14px 16px 24px; border-left: 1px solid var(--border-strong); background: var(--bg); color: var(--text); color-scheme: light; font-size: 12px; }
 .tuner h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
 .tuner h3 { margin: 14px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
-.states { display: flex; flex-wrap: wrap; gap: 4px; }
+.tuner h3 small { font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text-3); }
+.states { display: grid; gap: 6px; }
+.states .fam { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.states .fam span { width: 58px; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
 .states button { font: 500 11px/1 var(--ui); padding: 5px 7px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--bg); color: var(--text); cursor: pointer; }
 .states button[aria-pressed='true'] { background: var(--text); color: var(--bg); border-color: var(--text); }
 .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 5px; overflow: hidden; }
@@ -74,7 +85,7 @@ body { margin: 0; font: 13px/1.45 var(--ui); -webkit-font-smoothing: antialiased
 .field.colour .hex { width: 76px; font: 11px var(--mono); padding: 5px 6px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text); }
 .contrast { font-family: var(--mono); font-size: 11px; color: var(--text-3); margin-top: 4px; }
 .contrast b { color: var(--text); font-weight: 500; }
-.contrast .bad { color: var(--s-red); }
+.contrast .bad { color: #b42318; }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .actions button { font: 500 12px/1 var(--ui); padding: 7px 10px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text); cursor: pointer; }
 .actions button.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
@@ -89,13 +100,13 @@ textarea { width: 100%; box-sizing: border-box; height: 170px; margin-top: 8px; 
 
 <aside class="tuner" aria-label="Pill tuner">
   <h2>Pill tuner</h2>
-  <p class="hint" style="margin:0 0 8px">Click any pill on the left, or pick a state. Both themes update live. Colours are plain RGB; settings stay in this browser until you reset.</p>
-  <h3>State</h3>
+  <p class="hint" style="margin:0 0 8px">Click any pill on the left, or pick a status. Both themes update live. The defaults are the live tokens from <code>src/tokens.css</code>, which are the colours of the reference renders at the bottom. Settings stay in this browser until you reset.</p>
+  <h3>Status</h3>
   <div class="states" id="states"></div>
   <h3>Style</h3>
   <div class="seg" id="style"></div>
-  <div class="field" id="borderField" style="margin-top:8px">
-    <label for="border">Border</label><input id="border" type="range" min="0" max="100" step="5"><output id="border-out"></output>
+  <div class="field" id="widthField" style="margin-top:8px">
+    <label for="width">Ring</label><input id="width" type="range" min="0" max="3" step="0.5"><output id="width-out"></output>
   </div>
   <div style="margin-top:8px; display:flex; gap:14px; align-items:center">
     <span class="dim2">Label</span>
@@ -110,67 +121,101 @@ textarea { width: 100%; box-sizing: border-box; height: 170px; margin-top: 8px; 
   <div class="actions">
     <button id="copyLD">Light → dark</button>
     <button id="copyDL">Dark → light</button>
-    <button id="resetOne">Reset this state</button>
+    <button id="resetOne">Reset this status</button>
     <button id="resetAll">Reset all</button>
   </div>
-  <h3>Export</h3>
+  <h3>Export <small>· changed statuses only</small></h3>
   <div class="actions" style="margin-top:0">
     <button class="primary" id="copy">Copy CSS</button>
     <button id="copyJSON">Copy JSON</button>
   </div>
   <textarea id="out" readonly spellcheck="false"></textarea>
-  <p class="hint">The CSS keys on <code>data-state</code>; the JSON is the per-state table. Paste either into the chat and I wire it into StatePill and tokens.css.</p>
+  <p class="hint">The CSS is a block of <code>--status-&lt;key&gt;</code> tokens in the shape of <code>src/tokens.css</code>; the JSON is the per-status table. Paste either into the chat and I wire it in.</p>
 </aside>
 
 <script>
-// ---- the app's encoding table and glyphs, copied from web/src/ui/StatePill.tsx and web/src/tokens.css at commit 4930708 ----
+// ---- the app's encoding table and glyphs, copied from web/src/ui/StatePill.tsx at commit b97903f ----
 const PATHS = {
   check: 'M5.4 8.3l1.8 1.8 3.4-3.8', x: 'M6 6l4 4M10 6l-4 4', bang: 'M8 4.9v3.5M8 11v.01', up: 'M8 11V5.4M5.8 7.5 8 5.3l2.2 2.2',
   ret: 'M10.6 10.8V9.4a2 2 0 0 0-2-2H5.6M7.3 5.6 5.5 7.4l1.8 1.8', slash: 'M5.5 10.5l5-5', clock: 'M8 5v3.2l2 1.3', dash: 'M5.4 8h5.2',
   q: 'M6.5 6.6a1.5 1.5 0 1 1 2.1 1.4c-.4.2-.6.5-.6 1v.3M8 11v.01', info: 'M8 7.4v3.3M8 5.1v.01',
 }
 const ENCODING = {
-  open: { label: 'Open', tone: 'blue', glyph: 'none' },
-  running: { label: 'Running', tone: 'blue', glyph: 'half' },
-  approved: { label: 'Approved', tone: 'green', glyph: 'check' },
-  fix_requested: { label: 'Fix requested', tone: 'amber', glyph: 'ret' },
-  rejected: { label: 'Rejected', tone: 'red', glyph: 'x' },
-  needs_human: { label: 'Needs human', tone: 'violet', glyph: 'bang' },
-  escalated: { label: 'Escalated', tone: 'violet', glyph: 'up' },
-  merged: { label: 'Merged', tone: 'teal', glyph: 'check', filled: true },
-  closed: { label: 'Closed', tone: 'plum', glyph: 'slash' },
-  finished: { label: 'Finished', tone: 'neutral', glyph: 'check' },
-  errored: { label: 'Errored', tone: 'violet', glyph: 'bang' },
-  cancelled: { label: 'Cancelled', tone: 'neutral', glyph: 'slash' },
-  succeeded: { label: 'Succeeded', tone: 'green', glyph: 'check' },
-  failed: { label: 'Failed', tone: 'red', glyph: 'x' },
-  timed_out: { label: 'Timed out', tone: 'red', glyph: 'clock' },
-  skipped: { label: 'Skipped', tone: 'neutral', glyph: 'dash' },
-  queued: { label: 'Queued', tone: 'neutral', glyph: 'none', dashed: true },
-  met: { label: 'Met', tone: 'green', glyph: 'check' },
-  unmet: { label: 'Unmet', tone: 'red', glyph: 'x' },
-  unknown: { label: 'Unknown', tone: 'neutral', glyph: 'q' },
-  pending: { label: 'Pending', tone: 'neutral', glyph: 'none', dashed: true },
-  blocker: { label: 'Blocker', tone: 'red', glyph: 'bang', filled: true },
-  major: { label: 'Major', tone: 'amber', glyph: 'bang' },
-  minor: { label: 'Minor', tone: 'neutral', glyph: 'info' },
+  open: { label: 'Open', palette: 'open', glyph: 'none' },
+  running: { label: 'Running', palette: 'running', glyph: 'half' },
+  approved: { label: 'Approved', palette: 'approved', glyph: 'check' },
+  fix_requested: { label: 'Fix requested', palette: 'fix-requested', glyph: 'ret' },
+  rejected: { label: 'Rejected', palette: 'rejected', glyph: 'x' },
+  needs_human: { label: 'Needs human', palette: 'needs-human', glyph: 'bang' },
+  escalated: { label: 'Escalated', palette: 'escalated', glyph: 'up' },
+  merged: { label: 'Merged', palette: 'merged', glyph: 'check', filled: true },
+  closed: { label: 'Closed', palette: 'closed', glyph: 'slash' },
+  finished: { label: 'Finished', palette: 'finished', glyph: 'check' },
+  errored: { label: 'Errored', palette: 'errored', glyph: 'bang' },
+  cancelled: { label: 'Cancelled', palette: 'cancelled', glyph: 'slash' },
+  succeeded: { label: 'Succeeded', palette: 'succeeded', glyph: 'check' },
+  failed: { label: 'Failed', palette: 'failed', glyph: 'x' },
+  timed_out: { label: 'Timed out', palette: 'timed-out', glyph: 'clock' },
+  skipped: { label: 'Skipped', palette: 'skipped', glyph: 'dash' },
+  queued: { label: 'Queued', palette: 'queued', glyph: 'none', dashed: true },
+  met: { label: 'Met', palette: 'met', glyph: 'check' },
+  unmet: { label: 'Unmet', palette: 'unmet', glyph: 'x' },
+  unknown: { label: 'Unknown', palette: 'unknown', glyph: 'q' },
+  pending: { label: 'Pending', palette: 'pending', glyph: 'none', dashed: true },
+  blocker: { label: 'Blocker', palette: 'blocker', glyph: 'bang', filled: true },
+  major: { label: 'Major', palette: 'major', glyph: 'bang' },
+  minor: { label: 'Minor', palette: 'minor', glyph: 'info' },
+  human_required: { label: 'Human required', palette: 'needs-human', glyph: 'bang' },
+  alert: { label: 'Open', palette: 'needs-human', glyph: 'bang' },
+  resolved: { label: 'Resolved', palette: 'closed', glyph: 'check' },
+  info: { label: 'Next step', palette: 'minor', glyph: 'info' },
 }
-// Tone colours as in tokens.css (OKLCH there); converted to RGB hex once at load.
-const TONES_OKLCH = {
-  neutral: { light: { fg: [0.46, 0.012, 265], bg: [0.945, 0.004, 265] }, dark: { fg: [0.74, 0.008, 265], bg: [0.245, 0.008, 265] } },
-  blue:    { light: { fg: [0.49, 0.12, 230],  bg: [0.95, 0.03, 230] },   dark: { fg: [0.78, 0.11, 230],  bg: [0.27, 0.045, 230] } },
-  green:   { light: { fg: [0.48, 0.12, 152],  bg: [0.95, 0.035, 152] },  dark: { fg: [0.79, 0.13, 152],  bg: [0.265, 0.045, 152] } },
-  amber:   { light: { fg: [0.5, 0.11, 70],    bg: [0.955, 0.04, 80] },   dark: { fg: [0.81, 0.12, 75],   bg: [0.27, 0.045, 70] } },
-  red:     { light: { fg: [0.5, 0.17, 25],    bg: [0.95, 0.025, 25] },   dark: { fg: [0.75, 0.14, 25],   bg: [0.27, 0.05, 25] } },
-  violet:  { light: { fg: [0.5, 0.17, 320],   bg: [0.95, 0.03, 320] },   dark: { fg: [0.77, 0.13, 320],  bg: [0.27, 0.05, 320] } },
-  teal:    { light: { fg: [0.47, 0.10, 190],  bg: [0.95, 0.03, 190] },   dark: { fg: [0.78, 0.11, 190],  bg: [0.265, 0.045, 190] } },
-  plum:    { light: { fg: [0.49, 0.12, 350],  bg: [0.95, 0.025, 350] },  dark: { fg: [0.77, 0.11, 350],  bg: [0.27, 0.045, 350] } },
-}
-const STORE = 'plumbix-pill-tuner-v2'
-const STATES = Object.keys(ENCODING)
+// The palette, in the families of web/design/status-palette.md. One tuner entry per palette key;
+// the statuses that share a key (see ENCODING) follow it.
+const FAMILIES = [
+  ['Active', ['open', 'running', 'queued', 'pending']],
+  ['Success', ['approved', 'succeeded', 'met', 'finished', 'merged']],
+  ['Attention', ['needs_human', 'escalated', 'errored']],
+  ['Caution', ['fix_requested', 'major']],
+  ['Failure', ['rejected', 'failed', 'unmet', 'timed_out', 'blocker']],
+  ['Stopped', ['closed', 'cancelled', 'skipped']],
+  ['Neutral', ['unknown', 'minor']],
+]
+const STATES = FAMILIES.flatMap(([, list]) => list)
+const ALIASES = ['human_required', 'alert', 'resolved', 'info']
 const CHANGE_STATES = ['open', 'running', 'approved', 'fix_requested', 'rejected', 'needs_human', 'escalated', 'merged', 'closed']
+const STORE = 'plumbix-pill-tuner-v3'
 
-// ---- colour maths: OKLCH → sRGB hex (for defaults) and hex → luminance (for contrast) ----
+// Fallback defaults: the colours sampled from status-palette-{light,dark}.png, as in tokens.css at b97903f.
+// They are used only when the live tokens cannot be read (for example when the page is opened without the stylesheet).
+const MEASURED = {
+  open: ['#224B8F', '#EBF3FE', '#6CA1F8', '#72A5F9', '#13233E', '#3B82F6'],
+  running: ['#393B8C', '#EFF0FE', '#8A8CF5', '#8F91F5', '#191F3D', '#6366F1'],
+  queued: ['#3A4351', '#F0F1F3', '#8B97A8', '#8F9BAB', '#19212D', '#64748B'],
+  pending: ['#565F6B', '#F4F6F8', '#AFBACA', '#B2BDCC', '#212834', '#94A3B8'],
+  approved: ['#147237', '#E9F9EF', '#59D486', '#60D58B', '#0F2E26', '#22C55E'],
+  succeeded: ['#147237', '#E9F9EF', '#59D486', '#60D58B', '#0F2E26', '#22C55E'],
+  met: ['#147237', '#E9F9EF', '#59D486', '#60D58B', '#0F2E26', '#22C55E'],
+  finished: ['#2B814A', '#EDFCF2', '#77E6A0', '#7DE7A4', '#15322B', '#4ADE80'],
+  merged: ['#3B5C0A', '#DAF0B9', '#84CC16', '#E0F2C5', '#3E6019', '#84CC16'],
+  'needs-human': ['#8E5C06', '#FEF5E7', '#F8B648', '#F8B94F', '#302818', '#F59E0B'],
+  escalated: ['#90430D', '#FEF1E8', '#FB9650', '#FB9A57', '#31211A', '#F97316'],
+  errored: ['#8B2727', '#FDECEC', '#F37373', '#F37878', '#2F1922', '#EF4444'],
+  'fix-requested': ['#886805', '#FDF7E6', '#EFC646', '#F0C84D', '#2F2B18', '#EAB308'],
+  major: ['#91760C', '#FFFAE8', '#FBD950', '#FBDA57', '#312F1A', '#FACC15'],
+  rejected: ['#8B2727', '#FDECEC', '#F37373', '#F37878', '#2F1922', '#EF4444'],
+  failed: ['#8B2727', '#FDECEC', '#F37373', '#F37878', '#2F1922', '#EF4444'],
+  unmet: ['#8B2727', '#FDECEC', '#F37373', '#F37878', '#2F1922', '#EF4444'],
+  'timed-out': ['#90430D', '#FEF1E8', '#FB9650', '#FB9A57', '#31211A', '#F97316'],
+  blocker: ['#631111', '#F5BEBE', '#DC2626', '#F6C9C9', '#631A20', '#DC2626'],
+  closed: ['#3A4351', '#F0F1F3', '#8B97A8', '#8F9BAB', '#19212D', '#64748B'],
+  cancelled: ['#565F6B', '#F4F6F8', '#AFBACA', '#B2BDCC', '#212834', '#94A3B8'],
+  skipped: ['#767C83', '#FAFBFC', '#D8E0E9', '#DAE1E9', '#2A303B', '#CBD5E1'],
+  unknown: ['#565F6B', '#F4F6F8', '#AFBACA', '#B2BDCC', '#212834', '#94A3B8'],
+  minor: ['#5D5D63', '#F6F6F7', '#B9B9BF', '#BBBBC2', '#232832', '#A1A1AA'],
+}
+
+// ---- colour maths: hex → luminance (for contrast), OKLCH → hex (for the page background) ----
 function oklchToHex([L, C, H]) {
   const a = C * Math.cos((H * Math.PI) / 180), b = C * Math.sin((H * Math.PI) / 180)
   const l_ = L + 0.3963377774 * a + 0.2158037573 * b, m_ = L - 0.1055613458 * a - 0.0638541728 * b, s_ = L - 0.0894841775 * a - 1.291485548 * b
@@ -189,34 +234,49 @@ function luminance(h) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 function contrast(a, b) { const la = luminance(a), lb = luminance(b); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05) }
-// --bg from tokens.css, converted the same way as the tones.
+// --bg from tokens.css, converted the same way as before.
 const PAGE_BG = { light: oklchToHex([0.992, 0.002, 265]), dark: oklchToHex([0.165, 0.006, 265]) }
 
+// ---- defaults: read the live --status-<key>-{fg,bg,border} tokens; fall back to MEASURED ----
+const rootStyle = getComputedStyle(document.documentElement)
+function liveToken(name) {
+  // A custom property comes back as written: "light-dark(#AAAAAA, #BBBBBB)" or a single hex.
+  const v = rootStyle.getPropertyValue(name).trim()
+  let m = /^light-dark\(\s*(#[0-9a-fA-F]{6})\s*,\s*(#[0-9a-fA-F]{6})\s*\)$/.exec(v)
+  if (m) return { light: m[1].toLowerCase(), dark: m[2].toLowerCase() }
+  m = /^(#[0-9a-fA-F]{6})$/.exec(v)
+  if (m) return { light: m[1].toLowerCase(), dark: m[1].toLowerCase() }
+  return null
+}
 const DEFAULTS = {}
 function defaults(state) {
-  if (DEFAULTS[state]) return JSON.parse(JSON.stringify(DEFAULTS[state]))
-  const e = ENCODING[state], t = TONES_OKLCH[e.tone]
-  const c = (x) => oklchToHex(x)
-  return (DEFAULTS[state] = {
-    style: e.filled ? 'filled' : 'tint', label: 'tone', glyph: e.filled ? 'filled' : 'outline', border: 100,
-    gradient: 'off', angle: 135,
-    light: { fg: c(t.light.fg), bg: c(t.light.bg), fg2: c(t.light.fg), bg2: c(t.light.bg), css: '' },
-    dark: { fg: c(t.dark.fg), bg: c(t.dark.bg), fg2: c(t.dark.fg), bg2: c(t.dark.bg), css: '' },
-  }) && defaults(state)
+  if (!DEFAULTS[state]) {
+    const e = ENCODING[state], key = e.palette
+    const fg = liveToken(`--status-${key}-fg`), bg = liveToken(`--status-${key}-bg`), bd = liveToken(`--status-${key}-border`)
+    const m = MEASURED[key].map((h) => h.toLowerCase())
+    const L = { fg: fg?.light ?? m[0], bg: bg?.light ?? m[1], border: bd?.light ?? m[2] }
+    const D = { fg: fg?.dark ?? m[3], bg: bg?.dark ?? m[4], border: bd?.dark ?? m[5] }
+    DEFAULTS[state] = {
+      style: 'tint', width: 1.5, label: 'colour', glyph: e.filled ? 'disc' : 'ring',
+      gradient: 'off', angle: 135,
+      light: { ...L, fg2: L.fg, bg2: L.bg, css: '' },
+      dark: { ...D, fg2: D.fg, bg2: D.bg, css: '' },
+    }
+  }
+  return JSON.parse(JSON.stringify(DEFAULTS[state]))
 }
 let settings = {}
 try { settings = JSON.parse(localStorage.getItem(STORE) || '{}') } catch { settings = {} }
-for (const s of STATES) {
-  if (!settings[s]) settings[s] = defaults(s)
-  for (const sc of ['light', 'dark']) if (settings[s][sc].css === undefined) settings[s][sc].css = ''
-}
-let current = 'open'
+for (const s of STATES) if (!settings[s]) settings[s] = defaults(s)
+let current = 'merged'
 function save() { try { localStorage.setItem(STORE, JSON.stringify(settings)) } catch {} }
+// tunerState maps any status (aliases included) to the entry the tuner edits.
+const tunerState = (st) => STATES.includes(st) ? st : STATES.find((s) => ENCODING[s].palette === ENCODING[st].palette)
 
-// ---- markup identical to StatePill ----
+// ---- markup identical to StatePill, keyed by data-status like the app ----
 function pill(state, mode = 'pill', label) {
-  const e = ENCODING[state], s = settings[state], text = label ?? e.label
-  const filled = s.glyph === 'filled'
+  const e = ENCODING[state], s = settings[tunerState(state)], text = label ?? e.label
+  const filled = s.glyph === 'disc'
   let svg = ''
   if (mode !== 'text') {
     const circle = `<circle cx="8" cy="8" r="5.75" stroke="currentColor" stroke-width="1.5" fill="${filled ? 'currentColor' : 'none'}"${e.dashed ? ' stroke-dasharray="2.1 2.1"' : ''}/>`
@@ -225,63 +285,65 @@ function pill(state, mode = 'pill', label) {
     else if (e.glyph !== 'none') g = `<path d="${PATHS[e.glyph]}" stroke="${filled ? 'var(--pill-paper)' : 'currentColor'}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`
     svg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">${circle}${g}</svg>`
   }
-  return `<span class="pill" data-state="${state}" data-tone="${e.tone}" data-mode="${mode}" title="${text}">${svg}<span>${text}</span></span>`
+  return `<span class="pill" data-status="${e.palette}" data-state="${state}" data-mode="${mode}" title="${text}">${svg}<span>${text}</span></span>`
 }
 
-// ---- live stylesheet ----
+// ---- live stylesheet: sets the same three variables StatePill sets inline ----
 const live = document.createElement('style'); document.head.appendChild(live)
-const ld = (s, k) => `light-dark(${s.light[k]}, ${s.dark[k]})`
+const ld = (s, k) => s.light[k] === s.dark[k] ? s.light[k] : `light-dark(${s.light[k]}, ${s.dark[k]})`
 // customFor returns the pasted CSS gradient for a theme, or '' when none applies.
 function customFor(s, scheme) { return s.gradient === 'css' ? (s[scheme].css.trim() || s.light.css.trim()) : '' }
 // gradientLayer is the two-stop or pasted gradient as a background layer, per theme.
-function gradientLayer(s, k, k2) {
-  if (s.gradient === 'css') return { light: customFor(s, 'light') || ld(s, k), dark: customFor(s, 'dark') || ld(s, k) }
-  return { light: `linear-gradient(${s.angle}deg, ${s.light[k]}, ${s.light[k2]})`, dark: `linear-gradient(${s.angle}deg, ${s.dark[k]}, ${s.dark[k2]})` }
+function gradientLayer(s, k, k2, scheme) {
+  if (s.gradient === 'css') return customFor(s, scheme) || s[scheme][k]
+  return `linear-gradient(${s.angle}deg, ${s[scheme][k]}, ${s[scheme][k2]})`
 }
+// fillFor is the pill's background in pill mode for one theme, given style and gradient.
 function fillFor(s, scheme) {
-  // What the pill's background is in pill mode, given style and gradient, for one theme.
   const grad = s.gradient !== 'off'
-  if (s.style === 'tint') return grad ? gradientLayer(s, 'bg', 'bg2')[scheme] : s[scheme].bg
-  if (s.style === 'filled') return grad ? gradientLayer(s, 'fg', 'fg2')[scheme] : s[scheme].fg
+  if (s.style === 'tint') return grad ? gradientLayer(s, 'bg', 'bg2', scheme) : s[scheme].bg
+  if (s.style === 'filled') return grad ? gradientLayer(s, 'fg', 'fg2', scheme) : s[scheme].fg
   return 'transparent'
 }
 function render() {
   let css = ''
   for (const st of STATES) {
-    const s = settings[st], grad = s.gradient !== 'off'
-    css += `.pill[data-state='${st}'] { color: ${ld(s, 'fg')}; background: ${ld(s, 'bg')}; --pill-paper: ${ld(s, 'bg')}; }\n`
-    const p = `.pill[data-state='${st}'][data-mode='pill']`
-    // Gradients are written per theme: light-dark() takes colours, not whole gradients.
+    const s = settings[st], grad = s.gradient !== 'off', key = ENCODING[st].palette
+    const sel = `.pill[data-status='${key}']`, p = `${sel}[data-mode='pill']`
     const perTheme = (rule) => `.theme[data-scheme='light'] ${p} { ${rule('light')} }\n.theme[data-scheme='dark'] ${p} { ${rule('dark')} }\n`
-    if (s.style === 'tint') css += perTheme((t) => `background: ${fillFor(s, t)};${s.border < 100 ? ` box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor ${100 - s.border}%, transparent);` : ''}`)
-    if (s.style === 'outline' && !grad) css += `${p} { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor ${s.border}%, transparent); }\n`
-    if (s.style === 'outline' && grad) {
-      const edge = (t) => s.gradient === 'css' && customFor(s, t)
-        ? customFor(s, t)
-        : `linear-gradient(${s.angle}deg, color-mix(in srgb, ${s[t].fg} ${s.border}%, var(--bg)), color-mix(in srgb, ${s[t].fg2} ${s.border}%, var(--bg)))`
-      css += perTheme((t) => `box-sizing: border-box; border: 1px solid transparent; background: linear-gradient(var(--bg), var(--bg)) padding-box, ${edge(t)} border-box;`)
+    // Colour, tint and ring exactly as the app reads them.
+    const ring = s.style === 'tint' || s.style === 'outline' ? ld(s, 'border') : s.style === 'filled' ? ld(s, 'fg') : 'transparent'
+    const bg = s.style === 'tint' ? ld(s, 'bg') : s.style === 'filled' ? ld(s, 'fg') : 'transparent'
+    css += `${sel} { --pill-fg: ${ld(s, 'fg')}; --pill-bg: ${bg}; --pill-border: ${ring}; --pill-paper: ${s.style === 'filled' ? ld(s, 'fg') : ld(s, 'bg')}; }\n`
+    css += `${p} { border-width: ${s.width}px; }\n`
+    // Gradients are written per theme: light-dark() takes colours, not whole gradients.
+    if (grad && (s.style === 'tint' || s.style === 'filled')) css += perTheme((t) => `background: ${fillFor(s, t)};`)
+    if (grad && s.style === 'outline') {
+      const edge = (t) => customFor(s, t) || `linear-gradient(${s.angle}deg, ${s[t].border}, ${s[t].fg2})`
+      css += perTheme((t) => `border-color: transparent; background: linear-gradient(var(--bg), var(--bg)) padding-box, ${edge(t)} border-box;`)
     }
-    if (s.style === 'plain') css += `${p} { background: transparent; }\n`
-    if (s.style === 'filled') css += perTheme((t) => `background: ${fillFor(s, t)}; color: var(--bg); --pill-paper: ${s[t].fg};`)
+    if (s.style === 'filled') css += `${p} { color: var(--bg); }\n`
     if (s.label === 'ink' && s.style !== 'filled') css += `${p} > span { color: var(--text); }\n`
   }
   live.textContent = css
-  document.querySelectorAll('.strip .pill').forEach((el) => el.classList.toggle('sel', el.dataset.state === current))
+  const cur = ENCODING[current].palette
+  document.querySelectorAll('.strip .pill').forEach((el) => el.classList.toggle('sel', el.dataset.status === cur))
   renderTuner()
   save()
 }
 
 // ---- preview content ----
 const rows = [
-  ['needs_human', 'Repository tokens: one token per repository, host token as fallback', 'plumbix', 'repo-tokens', '0 unmet · 1 unknown', '2', '4m'],
+  ['needs_human', 'Pipeline: group build, test, lint and web as stage checks', 'plumbix', 'pipeline/stage-checks', '0 unmet · 1 unknown', '1', '4m'],
   ['fix_requested', 'Retry uploads with backoff', 'ledger-api', 'feat/retry-uploads', '1 unmet', '1', '12m'],
   ['escalated', 'Replace the session store', 'ledger-api', 'feat/sessions', '2 unmet', '3', '1h'],
-  ['approved', 'Sticky human states: a push never moves needs_human', 'plumbix', 'sticky-human-states', 'all met', '2', '6m'],
+  ['approved', 'Status palette: take the pill colours from the reference renders', 'plumbix', 'status-palette-measured', 'all met', '2', '6m'],
   ['running', 'Pipeline format: stages, retries, path conditions', 'plumbix', 'pipeline-format', 'step 3 of 6', '1', 'now'],
   ['open', 'Merge refused by the host is push_denied', 'plumbix', 'push-denied', '', '', '1m'],
-  ['merged', 'Open, merged and closed pills carry a colour of their own', 'plumbix', 'pill-colours', 'all met', '1', '3h'],
-  ['merged', 'AI validator: only the change’s criteria can be judged', 'plumbix', 'ai-criterion-ids', 'all met', '2', '5h'],
-  ['closed', 'Docs: self-hosting notes', 'plumbix', 'docs-selfhost', 'closed by you', '2', '1d'],
+  ['merged', 'Status palette: one colour per status, tint plus coloured border', 'plumbix', 'status-palette', 'all met', '2', '3h'],
+  ['merged', 'WU-021: a person approves a needs_human or escalated change', 'plumbix', 'human-approval', 'all met', '1', '5h'],
+  ['merged', 'WU-020: pipeline editor', 'plumbix', 'pipeline-editor', 'all met', '2', '7h'],
+  ['closed', 'Outline pills', 'plumbix', 'pill-outline', 'closed by you', '2', '1d'],
   ['rejected', 'Drop the audit log', 'ledger-api', 'chore/no-audit', '3 unmet', '1', '2d'],
 ]
 function row(r) {
@@ -300,15 +362,20 @@ function theme(scheme) {
   const rest = rows.filter((r) => !needs.includes(r))
   return `<section class="theme" data-scheme="${scheme}">
     <h1>${scheme === 'light' ? 'Light' : 'Dark'} <span>click a pill to tune it</span></h1>
-    <div class="block"><h2>Change states</h2><div class="strip">${CHANGE_STATES.map((s) => pill(s)).join('')}</div></div>
-    <div class="block"><h2>Icon and text modes</h2><div class="strip">${CHANGE_STATES.map((s) => pill(s, 'icon')).join('')}<span class="dim">·</span>${CHANGE_STATES.map((s) => pill(s, 'text')).join('')}</div></div>
+    <div class="block"><h2>All statuses, by family</h2>
+      <div class="families">${FAMILIES.map(([name, list]) => `<div class="family"><h4 style="color:${settings[list[0]][scheme].fg}">${name}</h4><div class="strip">${list.map((s) => pill(s)).join('')}</div></div>`).join('')}</div>
+      <p class="hint">Aliases share a palette entry: ${ALIASES.map((a) => `${pill(a, 'plain')} <span class="dim">→ ${ENCODING[a].palette}</span>`).join(' &nbsp; ')}</p>
+    </div>
+    <div class="block"><h2>Modes · pill, plain, icon, text</h2>
+      <div class="modes">${CHANGE_STATES.map((s) => `${pill(s)}${pill(s, 'plain')}${pill(s, 'icon')}${pill(s, 'text')}`).join('')}</div>
+    </div>
     <div class="block" style="padding-bottom:0"><h2>Changes list</h2></div>
     <div class="row-grid cols"><span>State</span><span>Title</span><span>Repository · branch</span><span>Verdict</span><span class="right">It.</span><span class="right">Moved</span></div>
     <div class="group needs"><div class="group-header"><h3>Needs you</h3><span class="count">${needs.length}</span></div>${needs.map(row).join('')}</div>
     <div class="group"><div class="group-header"><h3>Everything else</h3><span class="count">${rest.length}</span></div>${rest.map(row).join('')}</div>
     <div class="block"><h2>Change page</h2>
-      <div class="pill-head">${pill('merged')} <span>Open, merged and closed pills carry a colour of their own</span></div>
-      <div class="verdict" style="margin-top:12px">
+      <div class="pill-head">${pill('merged')} <span>Status palette: one colour per status, tint plus coloured border</span></div>
+      <div class="card verdict" style="margin-top:12px">
         <div class="head"><b>Verdict</b>${pill('approved')}</div>
         <div class="criteria">
           <div>${pill('met', 'icon')}<span class="mono dim2">AC-1</span><span>The web tests pass and the web app builds</span></div>
@@ -321,16 +388,16 @@ function theme(scheme) {
           <button class="vstep">${pill('skipped', 'icon')}<span class="mono">web</span><span class="dur">—</span></button>
           <button class="vstep">${pill('queued', 'icon')}<span class="mono">ai-review</span><span class="dur">queued</span></button>
         </div>
-        <div class="strip">${['blocker', 'major', 'minor'].map((s) => pill(s)).join('')}</div>
+        <div class="strip">${['blocker', 'major', 'minor', 'human_required'].map((s) => pill(s)).join('')}</div>
       </div>
     </div>
-    <div class="block"><h2>Step and criterion states</h2><div class="strip">${['succeeded', 'failed', 'timed_out', 'errored', 'skipped', 'cancelled', 'queued', 'finished', 'met', 'unmet', 'unknown', 'pending'].map((s) => pill(s)).join('')}</div></div>
+    <div class="block ref"><h2>Reference render (status-palette-${scheme}.png)</h2><img src="status-palette-${scheme}.png" alt="The designer's ${scheme} reference render of the status palette"></div>
   </section>`
 }
 function build() {
   document.getElementById('page').innerHTML = theme('light') + theme('dark')
-  document.querySelectorAll('.strip .pill').forEach((el) => el.addEventListener('click', () => { current = el.dataset.state; render() }))
-  document.querySelectorAll('.row').forEach((el) => el.addEventListener('click', () => { current = el.querySelector('.pill').dataset.state; render() }))
+  document.querySelectorAll('.strip .pill, .modes .pill, .hint .pill').forEach((el) => el.addEventListener('click', () => { current = tunerState(el.dataset.state); render() }))
+  document.querySelectorAll('.row').forEach((el) => el.addEventListener('click', () => { current = tunerState(el.querySelector('.pill').dataset.state); render() }))
   render()
 }
 
@@ -352,30 +419,31 @@ function colourField(box, s, scheme, key, name) {
 function renderTuner() {
   const s = settings[current], grad = s.gradient === 'on'
   const states = document.getElementById('states')
-  states.innerHTML = STATES.map((st) => `<button data-v="${st}" aria-pressed="${st === current}">${ENCODING[st].label}</button>`).join('')
+  states.innerHTML = FAMILIES.map(([name, list]) => `<div class="fam"><span>${name}</span>${list.map((st) => `<button data-v="${st}" aria-pressed="${st === current}">${ENCODING[st].label}</button>`).join('')}</div>`).join('')
   states.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { current = b.dataset.v; render() }))
   seg('style', [['tint', 'Tint'], ['outline', 'Outline'], ['filled', 'Filled'], ['plain', 'Plain']], () => s.style, (v) => { s.style = v })
-  seg('label', [['tone', 'Colour'], ['ink', 'Ink']], () => s.label, (v) => { s.label = v })
-  seg('glyph', [['outline', 'Ring'], ['filled', 'Disc']], () => s.glyph, (v) => { s.glyph = v })
+  seg('label', [['colour', 'Colour'], ['ink', 'Ink']], () => s.label, (v) => { s.label = v })
+  seg('glyph', [['ring', 'Ring'], ['disc', 'Disc']], () => s.glyph, (v) => { s.glyph = v })
   seg('gradient', [['off', 'Off'], ['on', 'Two colours'], ['css', 'Custom CSS']], () => s.gradient, (v) => { s.gradient = v })
-  const bf = document.getElementById('borderField'), b = document.getElementById('border')
-  bf.style.display = s.style === 'filled' || s.style === 'plain' ? 'none' : ''
-  bf.querySelector('label').textContent = s.style === 'outline' ? 'Border' : 'Edge'
-  b.value = s.border; document.getElementById('border-out').textContent = s.border + '%'
-  b.oninput = () => { s.border = +b.value; render() }
+  const wf = document.getElementById('widthField'), w = document.getElementById('width')
+  wf.style.display = s.style === 'plain' ? 'none' : ''
+  w.value = s.width; document.getElementById('width-out').textContent = s.width + 'px'
+  w.oninput = () => { s.width = +w.value; render() }
 
-  // Base colours: the text/icon colour always; the tint only for the tint style.
+  // Colours per theme: the label and icon colour always; tint and ring for the tint style; ring for outline; fill for filled.
   const box = document.getElementById('colours'); box.innerHTML = ''
   for (const scheme of ['light', 'dark']) {
     const h = document.createElement('h3'); h.textContent = scheme; box.appendChild(h)
     colourField(box, s, scheme, 'fg', s.style === 'filled' ? 'Fill' : 'Colour')
     if (s.style === 'tint') colourField(box, s, scheme, 'bg', 'Tint')
+    if (s.style === 'tint' || s.style === 'outline') colourField(box, s, scheme, 'border', 'Ring')
     const c = document.createElement('div'); c.className = 'contrast'
-    const fmt = (r) => `<b class="${r < 4.5 ? 'bad' : ''}">${r.toFixed(2)}:1</b>`
-    let txt = `colour on page ${fmt(contrast(s[scheme].fg, PAGE_BG[scheme]))}`
-    if (s.style === 'tint') txt += ` · on tint ${fmt(contrast(s[scheme].fg, s[scheme].bg))}`
-    if (s.style === 'filled') txt += ` · page on fill ${fmt(contrast(PAGE_BG[scheme], s[scheme].fg))}`
-    c.innerHTML = txt + ' · AA needs 4.5'
+    const fmt = (r, min) => `<b class="${r < min ? 'bad' : ''}">${r.toFixed(2)}:1</b>`
+    let txt = `colour on page ${fmt(contrast(s[scheme].fg, PAGE_BG[scheme]), 4.5)}`
+    if (s.style === 'tint') txt += ` · on tint ${fmt(contrast(s[scheme].fg, s[scheme].bg), 4.5)} · ring on page ${fmt(contrast(s[scheme].border, PAGE_BG[scheme]), 3)}`
+    if (s.style === 'outline') txt += ` · ring on page ${fmt(contrast(s[scheme].border, PAGE_BG[scheme]), 3)}`
+    if (s.style === 'filled') txt += ` · page on fill ${fmt(contrast(PAGE_BG[scheme], s[scheme].fg), 4.5)}`
+    c.innerHTML = txt + ' · text needs 4.5, a ring 3'
     box.appendChild(c)
   }
 
@@ -383,8 +451,8 @@ function renderTuner() {
   const gb = document.getElementById('gradientBox'); gb.innerHTML = ''
   if (s.gradient === 'css') {
     const intro = document.createElement('p'); intro.className = 'hint'; intro.style.margin = '0 0 6px'
-    intro.textContent = s.style === 'plain' ? 'The plain style has no fill or border to paint. Pick tint, outline or filled.'
-      : `Paste any CSS gradient. It paints the ${s.style === 'outline' ? 'border' : s.style === 'tint' ? 'tint' : 'fill'}. Dark falls back to light when empty.`
+    intro.textContent = s.style === 'plain' ? 'The plain style has no fill or ring to paint. Pick tint, outline or filled.'
+      : `Paste any CSS gradient. It paints the ${s.style === 'outline' ? 'ring' : s.style === 'tint' ? 'tint' : 'fill'}. Dark falls back to light when empty.`
     gb.appendChild(intro)
     for (const scheme of ['light', 'dark']) {
       const h = document.createElement('h3'); h.textContent = scheme; gb.appendChild(h)
@@ -400,12 +468,13 @@ function renderTuner() {
     }
   } else if (grad) {
     if (s.style === 'plain') {
-      gb.innerHTML = '<p class="hint" style="margin:0">The plain style has no fill or border to paint. Pick tint, outline or filled.</p>'
+      gb.innerHTML = '<p class="hint" style="margin:0">The plain style has no fill or ring to paint. Pick tint, outline or filled.</p>'
     } else {
-      const what = s.style === 'tint' ? 'tint' : s.style === 'filled' ? 'fill' : 'border'
+      const what = s.style === 'tint' ? 'tint' : s.style === 'filled' ? 'fill' : 'ring'
+      const from = s.style === 'tint' ? 'bg' : s.style === 'filled' ? 'fg' : 'border'
       const key = s.style === 'tint' ? 'bg2' : 'fg2'
       const intro = document.createElement('p'); intro.className = 'hint'; intro.style.margin = '0 0 6px'
-      intro.textContent = `The ${what} fades from the ${s.style === 'tint' ? 'tint' : s.style === 'filled' ? 'fill' : 'colour'} above to the second colour below, along the angle.`
+      intro.textContent = `The ${what} fades from the ${what} colour above to the second colour below, along the angle.`
       gb.appendChild(intro)
       const af = document.createElement('div'); af.className = 'field'
       af.innerHTML = `<label>Angle</label><input type="range" min="0" max="360" step="5" value="${s.angle}"><output>${s.angle}°</output>`
@@ -414,23 +483,21 @@ function renderTuner() {
       gb.appendChild(af)
       for (const scheme of ['light', 'dark']) {
         const h = document.createElement('h3'); h.textContent = scheme + ' · second colour'; gb.appendChild(h)
-        colourField(gb, s, scheme, key, s.style === 'tint' ? 'Tint 2' : s.style === 'filled' ? 'Fill 2' : 'Colour 2')
+        colourField(gb, s, scheme, key, s.style === 'tint' ? 'Tint 2' : s.style === 'filled' ? 'Fill 2' : 'Ring 2')
         const pre = document.createElement('div'); pre.className = 'sw'
-        // The outline border mixes each colour with the page at the border strength, so preview the same mix.
-        const stop = (k) => s.style === 'outline' ? `color-mix(in srgb, ${s[scheme][k]} ${s.border}%, ${PAGE_BG[scheme]})` : s[scheme][k]
-        pre.style.cssText = `margin:4px 0 2px; color-scheme:${scheme}; background: linear-gradient(${s.angle}deg, ${stop(s.style === 'tint' ? 'bg' : 'fg')}, ${stop(key)})`
+        pre.style.cssText = `margin:4px 0 2px; color-scheme:${scheme}; background: linear-gradient(${s.angle}deg, ${s[scheme][from]}, ${s[scheme][key]})`
         gb.appendChild(pre)
       }
     }
   } else {
-    gb.innerHTML = '<p class="hint" style="margin:0">Off: one colour. Turn it on to fade the fill or border between two colours.</p>'
+    gb.innerHTML = '<p class="hint" style="margin:0">Off: one colour. Turn it on to fade the fill or ring between two colours.</p>'
   }
 
-  // Swatches summarise the current state in both themes.
+  // Swatches summarise the current status in both themes.
   for (const sc of ['light', 'dark']) {
     const fill = s.style === 'plain' || s.style === 'outline' ? PAGE_BG[sc] : fillFor(s, sc)
-    const edge = s.style === 'outline' ? `box-shadow: inset 0 0 0 1px color-mix(in srgb, ${s[sc].fg} ${s.border}%, transparent);` : ''
-    document.getElementById('sw-' + sc).style.cssText = `color-scheme:${sc}; color:${s.style === 'filled' ? (sc === 'light' ? 'white' : 'black') : s[sc].fg}; background:${fill}; ${edge}`
+    const ring = s.style === 'plain' ? 'transparent' : s.style === 'filled' ? s[sc].fg : s[sc].border
+    document.getElementById('sw-' + sc).style.cssText = `color-scheme:${sc}; color:${s.style === 'filled' ? PAGE_BG[sc] : s[sc].fg}; background:${fill}; border: ${Math.max(s.width, 1)}px solid ${ring};`
   }
   document.getElementById('out').value = exportCSS()
 }
@@ -438,30 +505,33 @@ function renderTuner() {
 // ---- export ----
 function changedStates() { return STATES.filter((st) => JSON.stringify(settings[st]) !== JSON.stringify(defaults(st))) }
 function exportCSS() {
-  const list = changedStates().length ? changedStates() : CHANGE_STATES
-  let css = `/* Pill tuner export, ${new Date().toISOString().slice(0, 16)}. States: ${list.join(', ')} */\n`
+  const list = changedStates().length ? changedStates() : ['merged']
+  let css = `/* Pill tuner export, ${new Date().toISOString().slice(0, 16)}. Statuses: ${list.map((st) => ENCODING[st].palette).join(', ')}.\n   Paste the tokens into src/tokens.css; the notes say what else changed. */\n`
   for (const st of list) {
-    const s = settings[st]
-    const notes = [`style: ${s.style}`, `label: ${s.label}`, `glyph: ${s.glyph}`, `border: ${s.border}%`]
-    if (s.gradient === 'on') notes.push(`gradient: ${s.angle}deg to ${s.style === 'tint' ? `tint2 ${ld(s, 'bg2')}` : `colour2 ${ld(s, 'fg2')}`}`)
-    css += `.pill[data-state='${st}'] { color: ${ld(s, 'fg')}; background: ${ld(s, 'bg')}; } /* ${notes.join(', ')} */\n`
+    const s = settings[st], key = ENCODING[st].palette
+    const notes = [`style ${s.style}`, `ring ${s.width}px`, `label ${s.label}`, `glyph ${s.glyph}`]
+    if (s.gradient === 'on') notes.push(`gradient ${s.angle}deg to ${s.style === 'tint' ? `tint2 ${ld(s, 'bg2')}` : `colour2 ${ld(s, 'fg2')}`}`)
+    css += `/* ${key}: ${notes.join(', ')} */\n`
+    css += `--status-${key}-fg: ${ld(s, 'fg')};\n`
+    css += `--status-${key}-bg: ${s.style === 'tint' ? ld(s, 'bg') : s.style === 'filled' ? ld(s, 'fg') : 'transparent'};\n`
+    css += `--status-${key}-border: ${s.style === 'filled' ? ld(s, 'fg') : s.style === 'plain' ? 'transparent' : ld(s, 'border')};\n`
     if (s.gradient === 'css') {
-      for (const t of ['light', 'dark']) if (customFor(s, t)) css += `  /* ${t} ${s.style === 'outline' ? 'border' : 'fill'}: */ ${customFor(s, t)}\n`
+      for (const t of ['light', 'dark']) if (customFor(s, t)) css += `/* ${t} ${s.style === 'outline' ? 'ring' : 'fill'} gradient: ${customFor(s, t)} */\n`
     }
   }
   return css
 }
 document.getElementById('copy').onclick = () => navigator.clipboard?.writeText(exportCSS())
-document.getElementById('copyJSON').onclick = () => navigator.clipboard?.writeText(JSON.stringify(Object.fromEntries(changedStates().map((st) => [st, settings[st]])), null, 2))
+document.getElementById('copyJSON').onclick = () => navigator.clipboard?.writeText(JSON.stringify(Object.fromEntries(changedStates().map((st) => [ENCODING[st].palette, settings[st]])), null, 2))
 document.getElementById('copyLD').onclick = () => { settings[current].dark = { ...settings[current].light }; render() }
 document.getElementById('copyDL').onclick = () => { settings[current].light = { ...settings[current].dark }; render() }
 document.getElementById('resetOne').onclick = () => { settings[current] = defaults(current); render() }
 document.getElementById('resetAll').onclick = () => { for (const st of STATES) settings[st] = defaults(st); render() }
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-  const i = CHANGE_STATES.indexOf(current)
-  if (e.key === 'ArrowRight' && i >= 0) { current = CHANGE_STATES[(i + 1) % CHANGE_STATES.length]; render() }
-  if (e.key === 'ArrowLeft' && i >= 0) { current = CHANGE_STATES[(i + CHANGE_STATES.length - 1) % CHANGE_STATES.length]; render() }
+  const i = STATES.indexOf(current)
+  if (e.key === 'ArrowRight') { current = STATES[(i + 1) % STATES.length]; render() }
+  if (e.key === 'ArrowLeft') { current = STATES[(i + STATES.length - 1) % STATES.length]; render() }
 })
 build()
 </script>
