@@ -511,3 +511,80 @@ func TestFetchUsesHostCredentials(t *testing.T) {
 		})
 	}
 }
+
+const richPipelineYAML = `version: 1
+steps:
+  - {name: test, image: "golang:1.27", run: ["go build ./...", "go test ./..."]}
+  - {name: flaky, image: "golang:1.27", run: "flaky", retries: 2, allow_failure: true}
+  - {name: api, image: "golang:1.27", run: "check api", when: {paths: ["api/**"]}}
+  - {name: after, image: "golang:1.27", run: "after", needs: [flaky, api]}
+  - {name: validate, image: "plumbix-reference-validator:dev", validator: true, needs: [test, after]}
+stages:
+  checks: [flaky, api, after]
+`
+
+func TestChangeRunRecordsRetriesAllowancesSkipsAndStages(t *testing.T) {
+	h := newHarness(t, Config{})
+	h.fake.exit["flaky"] = 1
+	h.repo.Commit("feat", map[string]string{".plumbix/pipeline.yaml": richPipelineYAML, "app.go": "package app\n"}, "feature")
+	c := h.submit("feat")
+	r := h.wait(h.validate(c.ID).ID)
+	by := map[string]run.Step{}
+	for _, s := range r.Steps {
+		by[s.Name] = s
+	}
+	if s := by["flaky"]; s.Status != "failed" || s.Attempts != 3 || !s.AllowedFailure || s.Stage != "checks" {
+		t.Errorf("flaky = %+v", s)
+	}
+	if s := by["api"]; s.Status != "skipped" || s.Reason != "paths" || s.Stage != "checks" {
+		t.Errorf("api = %+v", s)
+	}
+	if s := by["after"]; s.Status != "succeeded" || s.Stage != "checks" {
+		t.Errorf("after = %+v: an allowed failure and a path skip must not skip dependents", s)
+	}
+	if s := by["test"]; s.Status != "succeeded" || s.Attempts != 0 || s.Stage != "" {
+		t.Errorf("test = %+v", s)
+	}
+	ran := 0
+	for _, j := range h.fake.jobs {
+		if j.Name == "flaky" {
+			ran++
+		}
+		if j.Name == "test" && j.Script != "set -e\ngo build ./...\ngo test ./..." {
+			t.Errorf("test script = %q", j.Script)
+		}
+		if j.Name == "api" {
+			t.Error("api ran although no api/ file changed")
+		}
+	}
+	if ran != 3 {
+		t.Errorf("flaky ran %d times, want 3", ran)
+	}
+	log, _ := os.ReadFile(h.eng.LogPath(r.ID, "flaky"))
+	if !strings.Contains(string(log), "attempt 3 of 3") {
+		t.Errorf("flaky log = %q", log)
+	}
+	if len(h.fake.inputs) == 0 {
+		t.Fatal("the validator did not run")
+	}
+}
+
+func TestBranchRunRunsConditionalSteps(t *testing.T) {
+	h := newHarness(t, Config{})
+	h.repo.Commit("ci-only", map[string]string{".plumbix/pipeline.yaml": richPipelineYAML, "x.go": "package x\n"}, "push without a change")
+	r, err := h.eng.RunBranch(ctx, h.repoID, "ci-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := h.wait(r.ID)
+	by := map[string]run.Step{}
+	for _, s := range got.Steps {
+		by[s.Name] = s
+	}
+	if s := by["api"]; s.Status != "succeeded" || s.Reason != "" {
+		t.Errorf("api = %+v: a plain branch run has no changed files to compare, so conditional steps run", s)
+	}
+	if s := by["flaky"]; s.Status != "succeeded" || s.Attempts != 0 {
+		t.Errorf("flaky = %+v", s)
+	}
+}

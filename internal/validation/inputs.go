@@ -73,20 +73,32 @@ type Commits struct {
 
 // StepStatus is the content of /plumbix/in/evidence/<step>/status.json.
 type StepStatus struct {
-	Plumbix    string `json:"plumbix"`
-	Step       string `json:"step"`
-	Status     string `json:"status"`
-	ExitCode   int    `json:"exit_code"`
-	DurationMS int64  `json:"duration_ms"`
+	Plumbix        string `json:"plumbix"`
+	Step           string `json:"step"`
+	Status         string `json:"status"`
+	ExitCode       int    `json:"exit_code"`
+	DurationMS     int64  `json:"duration_ms"`
+	Attempts       int    `json:"attempts,omitempty"`        // above one after retries
+	AllowedFailure bool   `json:"allowed_failure,omitempty"` // the failure was tolerated
+	Reason         string `json:"reason,omitempty"`          // why a skipped step did not run
 }
+
+// Reasons a step was skipped, as written in status.json.
+const (
+	ReasonNeeds = "needs"
+	ReasonPaths = "paths"
+)
 
 // StepEvidence is one earlier step's outcome and log.
 type StepEvidence struct {
-	Step       string
-	Status     string
-	ExitCode   int
-	DurationMS int64
-	Log        []byte
+	Step           string
+	Status         string
+	ExitCode       int
+	DurationMS     int64
+	Attempts       int
+	AllowedFailure bool
+	Reason         string
+	Log            []byte
 }
 
 // NewInput builds a validator input for one iteration of a change.
@@ -118,7 +130,10 @@ func PrepareInputs(dir string, in Input, evidence []StepEvidence) error {
 	}
 	for _, e := range evidence {
 		stepDir := filepath.Join(dir, EvidenceDir, e.Step)
-		status := StepStatus{Plumbix: StepStatusVersion, Step: e.Step, Status: e.Status, ExitCode: e.ExitCode, DurationMS: e.DurationMS}
+		status := StepStatus{Plumbix: StepStatusVersion, Step: e.Step, Status: e.Status, ExitCode: e.ExitCode, DurationMS: e.DurationMS, AllowedFailure: e.AllowedFailure, Reason: e.Reason}
+		if e.Attempts > 1 {
+			status.Attempts = e.Attempts
+		}
 		if err := writeJSON(filepath.Join(stepDir, StatusFile), status); err != nil {
 			return err
 		}

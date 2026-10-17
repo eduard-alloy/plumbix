@@ -101,7 +101,7 @@ func TestParseErrors(t *testing.T) {
 		{"image with space", wrap("  - {name: a, image: 'go lang', run: x}\n"), "steps[0].image", 3, "whitespace"},
 		{"missing run", wrap("  - {name: a, image: x}\n"), "steps[0].run", 3, "required"},
 		{"empty run", wrap("  - {name: a, image: x, run: ''}\n"), "steps[0].run", 3, "required"},
-		{"run not string", wrap("  - {name: a, image: x, run: [x]}\n"), "steps[0].run", 3, "string"},
+		{"run not string", wrap("  - {name: a, image: x, run: {sh: x}}\n"), "steps[0].run", 3, "string"},
 		{"validator not bool", wrap("  - {name: a, image: x, validator: yes-please}\n"), "steps[0].validator", 3, "boolean"},
 		{"env value not string", wrap("  - name: a\n    image: x\n    run: x\n    env:\n      PORT: 8080\n"), "steps[0].env.PORT", 7, "string"},
 		{"env bad key", wrap("  - name: a\n    image: x\n    run: x\n    env:\n      1BAD: v\n"), "steps[0].env.1BAD", 7, "name"},
@@ -164,5 +164,139 @@ func TestWithoutValidators(t *testing.T) {
 	}
 	if len(p.Steps) != 4 {
 		t.Error("original pipeline was modified")
+	}
+}
+
+const extended = `version: 1
+steps:
+  - name: build
+    image: golang:1.27
+    run:
+      - go build ./...
+      - go vet ./...
+  - name: test
+    image: golang:1.27
+    run: go test ./...
+    needs: [build]
+    retries: 2
+  - name: contract
+    image: golang:1.27
+    run: go run ./cmd/openapi-diff
+    needs: [build]
+    allow_failure: true
+    when:
+      paths: ["api/**", "internal/http/*.go"]
+  - name: validate
+    image: plumbix-reference-validator:dev
+    validator: true
+    needs: [test, contract]
+    retries: 1
+stages:
+  checks: [test, contract]
+`
+
+func TestParseExtendedFields(t *testing.T) {
+	p, err := Parse([]byte(extended))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	build, test, contract, validate := p.Steps[0], p.Steps[1], p.Steps[2], p.Steps[3]
+	if want := []string{"go build ./...", "go vet ./..."}; !reflect.DeepEqual(build.Commands, want) {
+		t.Errorf("build commands = %q", build.Commands)
+	}
+	if build.Run != "set -e\ngo build ./...\ngo vet ./..." {
+		t.Errorf("build script = %q", build.Run)
+	}
+	if test.Commands != nil || test.Run != "go test ./..." {
+		t.Errorf("string run = %+v", test)
+	}
+	if test.Retries != 2 || build.Retries != 0 || validate.Retries != 1 {
+		t.Errorf("retries = %d %d %d", test.Retries, build.Retries, validate.Retries)
+	}
+	if !contract.AllowFailure || test.AllowFailure {
+		t.Errorf("allow_failure = %v %v", contract.AllowFailure, test.AllowFailure)
+	}
+	if want := []string{"api/**", "internal/http/*.go"}; !reflect.DeepEqual(contract.OnlyPaths, want) || test.OnlyPaths != nil {
+		t.Errorf("when.paths = %q %q", contract.OnlyPaths, test.OnlyPaths)
+	}
+	if build.Stage != "" || test.Stage != "checks" || contract.Stage != "checks" || validate.Stage != "" {
+		t.Errorf("stages = %q %q %q %q", build.Stage, test.Stage, contract.Stage, validate.Stage)
+	}
+	if want := []Stage{{Name: "checks", Steps: []string{"test", "contract"}}}; !reflect.DeepEqual(p.Stages, want) {
+		t.Errorf("Stages = %+v", p.Stages)
+	}
+	if want := []string{"build", "test", "contract", "validate"}; !reflect.DeepEqual(p.Order(), want) {
+		t.Errorf("order = %v", p.Order())
+	}
+}
+
+func TestExtendedFieldErrors(t *testing.T) {
+	cases := []struct {
+		name, src, path string
+		line            int
+		msg             string
+	}{
+		{"run empty list", wrap("  - {name: a, image: x, run: []}\n"), "steps[0].run", 3, "at least one command"},
+		{"run list item empty", wrap("  - {name: a, image: x, run: ['']}\n"), "steps[0].run[0]", 3, "must not be empty"},
+		{"run list item not string", wrap("  - {name: a, image: x, run: [1]}\n"), "steps[0].run[0]", 3, "string"},
+		{"retries text", wrap("  - {name: a, image: x, run: x, retries: two}\n"), "steps[0].retries", 3, "integer"},
+		{"retries negative", wrap("  - {name: a, image: x, run: x, retries: -1}\n"), "steps[0].retries", 3, "between 0 and 5"},
+		{"retries too many", wrap("  - {name: a, image: x, run: x, retries: 6}\n"), "steps[0].retries", 3, "between 0 and 5"},
+		{"allow_failure text", wrap("  - {name: a, image: x, run: x, allow_failure: yes}\n"), "steps[0].allow_failure", 3, "boolean"},
+		{"allow_failure on validator", wrap("  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true, allow_failure: true}\n"), "steps[1].allow_failure", 4, "validator"},
+		{"when not mapping", wrap("  - {name: a, image: x, run: x, when: always}\n"), "steps[0].when", 3, "mapping"},
+		{"when unknown key", wrap("  - {name: a, image: x, run: x, when: {branch: main}}\n"), "steps[0].when.branch", 3, "unknown field"},
+		{"when paths empty", wrap("  - {name: a, image: x, run: x, when: {paths: []}}\n"), "steps[0].when.paths", 3, "at least one"},
+		{"when path absolute", wrap("  - {name: a, image: x, run: x, when: {paths: [/etc/*]}}\n"), "steps[0].when.paths[0]", 3, "relative"},
+		{"when path bad glob", wrap("  - {name: a, image: x, run: x, when: {paths: ['a/[']}}\n"), "steps[0].when.paths[0]", 3, "glob"},
+		{"when on validator", wrap("  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true, when: {paths: [a]}}\n"), "steps[1].when", 4, "validator"},
+		{"stages not mapping", "version: 1\nsteps:\n  - {name: a, image: x, run: x}\nstages: [a]\n", "stages", 4, "mapping"},
+		{"stage bad name", "version: 1\nsteps:\n  - {name: a, image: x, run: x}\nstages:\n  Big Stage: [a]\n", "stages.Big Stage", 5, "lowercase"},
+		{"stage unknown step", "version: 1\nsteps:\n  - {name: a, image: x, run: x}\nstages:\n  s: [b]\n", "stages.s[0]", 5, "unknown step"},
+		{"stage step twice", "version: 1\nsteps:\n  - {name: a, image: x, run: x}\nstages:\n  s: [a]\n  t: [a]\n", "stages.t[0]", 6, "already in stage"},
+		{"stage with validator", "version: 1\nsteps:\n  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true}\nstages:\n  s: [v]\n", "stages.s[0]", 6, "validator"},
+		{"stage empty", "version: 1\nsteps:\n  - {name: a, image: x, run: x}\nstages:\n  s: []\n", "stages.s", 5, "at least one"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := Parse([]byte(c.src))
+			var ve *ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("err = %v, want a ValidationError", err)
+			}
+			for _, e := range ve.Errors {
+				if e.Path == c.path && e.Line == c.line && strings.Contains(e.Message, c.msg) {
+					return
+				}
+			}
+			t.Errorf("no error at %s line %d containing %q; got %v", c.path, c.line, c.msg, err)
+		})
+	}
+}
+
+func TestMatchPath(t *testing.T) {
+	cases := []struct {
+		pattern, path string
+		want          bool
+	}{
+		{"api/**", "api/openapi.yaml", true},
+		{"api/**", "api/v1/spec.yaml", true},
+		{"api/**", "api", false},
+		{"api/**", "apix/spec.yaml", false},
+		{"**/*.go", "main.go", true},
+		{"**/*.go", "internal/http/server.go", true},
+		{"**/*.go", "internal/http/server.ts", false},
+		{"internal/http/*.go", "internal/http/server.go", true},
+		{"internal/http/*.go", "internal/http/deep/server.go", false},
+		{"docs/*.md", "docs/a.md", true},
+		{"README.md", "README.md", true},
+		{"README.md", "docs/README.md", false},
+		{"web/**/*.tsx", "web/src/pages/ChangePage.tsx", true},
+		{"web/**/*.tsx", "web/App.tsx", true},
+	}
+	for _, c := range cases {
+		if got := MatchPath(c.pattern, c.path); got != c.want {
+			t.Errorf("MatchPath(%q, %q) = %v, want %v", c.pattern, c.path, got, c.want)
+		}
 	}
 }

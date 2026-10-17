@@ -48,6 +48,14 @@ type Step struct {
 	ExitCode   int    `json:"exit_code"`
 	DurationMS int64  `json:"duration_ms"`
 	Error      string `json:"error,omitempty"`
+	// Attempts is how many times the step ran; above one after retries.
+	Attempts int `json:"attempts,omitempty"`
+	// AllowedFailure marks a failure the step's allow_failure tolerated.
+	AllowedFailure bool `json:"allowed_failure,omitempty"`
+	// Reason says why a step was skipped: needs or paths.
+	Reason string `json:"reason,omitempty"`
+	// Stage is the pipeline stage the step belongs to, if any.
+	Stage string `json:"stage,omitempty"`
 }
 
 // Finish is what a finished run records.

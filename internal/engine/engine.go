@@ -334,11 +334,14 @@ func (e *Engine) secrets() map[string]string {
 func (e *Engine) recordStep(r run.Run, position int, st pipeline.Step, res scheduler.StepResult) {
 	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 	defer cancel()
-	p := events.StepFinishedPayload{Step: st.Name, Validator: st.Validator, Status: string(res.Status), ExitCode: res.ExitCode, DurationMS: res.Duration.Milliseconds()}
+	p := events.StepFinishedPayload{Step: st.Name, Validator: st.Validator, Status: string(res.Status), ExitCode: res.ExitCode, DurationMS: res.Duration.Milliseconds(), AllowedFailure: res.Allowed, Reason: res.Reason}
+	if res.Attempts > 1 {
+		p.Attempts = res.Attempts
+	}
 	if res.Err != nil {
 		p.Error = res.Err.Error()
 	}
-	if err := e.store.RecordStep(ctx, r.ID, position, run.Step{Name: st.Name, Validator: st.Validator, Status: string(res.Status), ExitCode: res.ExitCode, DurationMS: res.Duration.Milliseconds(), Error: p.Error}); err != nil {
+	if err := e.store.RecordStep(ctx, r.ID, position, toStep(st, res)); err != nil {
 		e.log.Error("record step", "run", r.ID, "step", st.Name, "err", err)
 	}
 	if _, err := e.store.AppendEvent(ctx, events.Event{Type: events.StepFinished, Time: e.now().UTC(), RepoID: r.RepoID, ChangeID: r.ChangeID, RunID: r.ID, Payload: p}); err != nil {
@@ -356,12 +359,22 @@ func closeLogs(logs map[string]*os.File) {
 func toSteps(p *pipeline.Pipeline, res scheduler.Result) []run.Step {
 	steps := make([]run.Step, len(res.Steps))
 	for i, s := range res.Steps {
-		steps[i] = run.Step{Name: s.Name, Validator: p.Steps[i].Validator, Status: string(s.Status), ExitCode: s.ExitCode, DurationMS: s.Duration.Milliseconds()}
-		if s.Err != nil {
-			steps[i].Error = s.Err.Error()
-		}
+		steps[i] = toStep(p.Steps[i], s)
 	}
 	return steps
+}
+
+// toStep is the run record of one step's outcome.
+func toStep(st pipeline.Step, s scheduler.StepResult) run.Step {
+	out := run.Step{Name: s.Name, Validator: st.Validator, Status: string(s.Status), ExitCode: s.ExitCode, DurationMS: s.Duration.Milliseconds(),
+		AllowedFailure: s.Allowed, Reason: s.Reason, Stage: st.Stage}
+	if s.Attempts > 1 {
+		out.Attempts = s.Attempts
+	}
+	if s.Err != nil {
+		out.Error = s.Err.Error()
+	}
+	return out
 }
 
 // Shutdown cancels every run, waits for them to record their state, and
@@ -416,6 +429,10 @@ func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([
 	logs := map[string]*os.File{}
 	defer closeLogs(logs)
 	opts := e.schedulerOptions(r, prep.workspace, logs)
+	// A change's run compares base to head, so when.paths can be judged.
+	// Plain branch runs go through runBranch, which never sets this, and a
+	// missing base leaves conditional steps running here too.
+	opts.ChangedFiles, opts.ChangesKnown = prep.changed, prep.base != ""
 	opts.Setup = func(st pipeline.Step, finished []scheduler.StepResult) (scheduler.StepSetup, error) {
 		if !st.Validator {
 			return scheduler.StepSetup{}, nil
@@ -531,7 +548,8 @@ func (e *Engine) setupValidator(r run.Run, p prepared, work string, st pipeline.
 	var evidence []validation.StepEvidence
 	for _, f := range finished {
 		log, _ := os.ReadFile(e.LogPath(r.ID, f.Name))
-		evidence = append(evidence, validation.StepEvidence{Step: f.Name, Status: string(f.Status), ExitCode: f.ExitCode, DurationMS: f.Duration.Milliseconds(), Log: log})
+		evidence = append(evidence, validation.StepEvidence{Step: f.Name, Status: string(f.Status), ExitCode: f.ExitCode, DurationMS: f.Duration.Milliseconds(),
+			Attempts: f.Attempts, AllowedFailure: f.Allowed, Reason: f.Reason, Log: log})
 	}
 	input := validation.NewInput(c, p.base, p.head, p.changed, r.Iteration, p.previous)
 	setup := scheduler.StepSetup{WorkspaceReadOnly: true}

@@ -30,9 +30,11 @@ export interface StepVM {
   name: string
   validator: boolean
   status: Step['status'] | 'queued'
+  /** Exit code plus notes: 'exit 1 · allowed · attempt 3'; for a skipped step, why it did not run. */
   exit: string
   dur: string
   hasLog: boolean
+  stage?: string
   /** What a validator decided: approve, fix, reject, or 'none' when it produced no verdict. Absent for normal steps. */
   outcome?: ValidatorDecision | 'none'
   summary?: string
@@ -120,8 +122,18 @@ function checkLabel(c: Change['acceptance_criteria'][number]): string {
   return 'no check'
 }
 
+/** exitNote is the exit code with what else the run recorded about the step. */
+function exitNote(s: Step): string {
+  if (s.status === 'skipped') return s.reason === 'paths' ? 'paths unchanged' : 'not run'
+  const parts = [`exit ${s.exit_code}`]
+  if (s.allowed_failure) parts.push('allowed')
+  if (s.attempts && s.attempts > 1) parts.push(`attempt ${s.attempts}`)
+  return parts.join(' · ')
+}
+
 function stepVM(s: Step, outcomes?: ValidatorOutcome[]): StepVM {
-  const vm: StepVM = { name: s.name, validator: s.validator, status: s.status, exit: `exit ${s.exit_code}`, dur: duration(s.duration_ms / 1000), hasLog: s.status !== 'skipped' }
+  const vm: StepVM = { name: s.name, validator: s.validator, status: s.status, exit: exitNote(s), dur: duration(s.duration_ms / 1000), hasLog: s.status !== 'skipped' }
+  if (s.stage) vm.stage = s.stage
   if (s.validator && outcomes) {
     const o = outcomes.find((x) => x.name === s.name)
     if (o) {

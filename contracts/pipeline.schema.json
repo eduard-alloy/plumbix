@@ -2,10 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/eduard-alloy/plumbix/blob/main/contracts/pipeline.schema.json",
   "title": "Plumbix pipeline, format version 1",
-  "description": "Schema for .plumbix/pipeline.yaml. Plumbix also enforces rules that span fields, which this schema cannot express: step names are unique; every name in needs refers to another existing step, appears once, and is not a validator step; needs contain no cycles; a secret name is not also an env key; timeout is above zero and at most 24h.",
+  "description": "Schema for .plumbix/pipeline.yaml. Plumbix also enforces rules that span fields, which this schema cannot express: step names are unique; every name in needs refers to another existing step, appears once, and is not a validator step; needs contain no cycles; a secret name is not also an env key; timeout is above zero and at most 24h; allow_failure and when are not set on validator steps; every step named in stages exists, is not a validator and is in one stage only.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "steps"],
+  "required": [
+    "version",
+    "steps"
+  ],
   "properties": {
     "version": {
       "description": "Pipeline format version. Must be 1.",
@@ -15,7 +18,24 @@
     "steps": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/step" }
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "stages": {
+      "description": "Named groups of steps, for display and run evidence. A step is in at most one stage; validators are never in a stage.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/stepName"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": {
+          "$ref": "#/$defs/stepName"
+        }
+      }
     }
   },
   "$defs": {
@@ -27,40 +47,67 @@
       "description": "Environment variable or secret name. Names starting with PLUMBIX_ are reserved.",
       "type": "string",
       "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
-      "not": { "pattern": "^PLUMBIX_" }
+      "not": {
+        "pattern": "^PLUMBIX_"
+      }
     },
     "step": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "image"],
+      "required": [
+        "name",
+        "image"
+      ],
       "properties": {
-        "name": { "$ref": "#/$defs/stepName" },
+        "name": {
+          "$ref": "#/$defs/stepName"
+        },
         "image": {
           "description": "Container image the step runs in.",
           "type": "string",
           "pattern": "^\\S+$"
         },
         "run": {
-          "description": "Shell script run with sh -c. Required unless the step is a validator.",
-          "type": "string",
-          "minLength": 1
+          "description": "Shell script run with sh -c, or a list of commands run in order as one script that stops at the first failure. Required unless the step is a validator.",
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          ]
         },
         "needs": {
           "description": "Steps that must succeed before this one starts.",
           "type": "array",
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/stepName" }
+          "items": {
+            "$ref": "#/$defs/stepName"
+          }
         },
         "env": {
           "type": "object",
-          "propertyNames": { "$ref": "#/$defs/varName" },
-          "additionalProperties": { "type": "string" }
+          "propertyNames": {
+            "$ref": "#/$defs/varName"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "secrets": {
           "description": "Names of secrets exposed to this step only, as environment variables.",
           "type": "array",
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/varName" }
+          "items": {
+            "$ref": "#/$defs/varName"
+          }
         },
         "artifacts": {
           "description": "Workspace-relative paths kept as evidence after the step.",
@@ -70,8 +117,12 @@
             "minLength": 1,
             "not": {
               "anyOf": [
-                { "pattern": "^[/\\\\]" },
-                { "pattern": "(^|[/\\\\])\\.\\.([/\\\\]|$)" }
+                {
+                  "pattern": "^[/\\\\]"
+                },
+                {
+                  "pattern": "(^|[/\\\\])\\.\\.([/\\\\]|$)"
+                }
               ]
             }
           }
@@ -84,13 +135,55 @@
         "validator": {
           "description": "Marks a validator step, which receives validator inputs and must write a verdict.",
           "type": "boolean"
+        },
+        "retries": {
+          "description": "How many more times a failed or timed-out step is run. Only the last attempt counts.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "allow_failure": {
+          "description": "A failed or timed-out step does not fail the run and does not skip the steps that need it. Not for validators.",
+          "type": "boolean"
+        },
+        "when": {
+          "description": "Run condition. For a change's run the step runs only if a changed file matches one of the globs; a plain branch run always runs it. Not for validators.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "paths"
+          ],
+          "properties": {
+            "paths": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Relative glob; * and ? match within a segment, ** matches any number of segments.",
+                "not": {
+                  "pattern": "^[/\\\\]"
+                }
+              }
+            }
+          }
         }
       },
       "if": {
-        "required": ["validator"],
-        "properties": { "validator": { "const": true } }
+        "required": [
+          "validator"
+        ],
+        "properties": {
+          "validator": {
+            "const": true
+          }
+        }
       },
-      "else": { "required": ["run"] }
+      "else": {
+        "required": [
+          "run"
+        ]
+      }
     }
   }
 }

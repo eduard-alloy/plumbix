@@ -1,0 +1,26 @@
+version: 1
+steps:
+  - name: build
+    image: golang:1.27
+    run:
+      - go build ./...
+      - go vet ./...
+  - name: test
+    image: golang:1.27
+    run: go test ./...
+    needs: [build]
+    retries: 2
+  - name: contract
+    image: golang:1.27
+    run: go run ./cmd/openapi-diff
+    needs: [build]
+    allow_failure: true
+    when:
+      paths: ["api/**", "internal/http/*.go"]
+  - name: validate
+    image: plumbix-reference-validator:dev
+    validator: true
+    needs: [test, contract]
+    retries: 1
+stages:
+  checks: [test, contract]

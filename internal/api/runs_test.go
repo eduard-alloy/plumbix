@@ -32,6 +32,9 @@ type approvingRunner struct{}
 
 func (approvingRunner) Run(_ context.Context, job runner.Job) (runner.Result, error) {
 	_, _ = io.WriteString(job.Log, "hello from "+job.Name+"\n")
+	if job.Script == "fail" {
+		return runner.Result{ExitCode: 1}, nil
+	}
 	for _, m := range job.Mounts {
 		if m.Target != validation.OutPath {
 			continue
@@ -80,6 +83,48 @@ func newRunAPI(t *testing.T) *runAPI {
 	t.Cleanup(hub.Close)
 	h := NewHandler(Deps{Version: "dev", Token: testToken, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub, Settings: settings.New(db), Secrets: sec, Hosts: host.Live(sec.Values)})
 	return &runAPI{testAPI: &testAPI{t: t, h: h}, repoID: repoID, db: db, repo: repo, hub: hub}
+}
+
+func TestRunStepsCarryRetriesAllowancesReasonsAndStages(t *testing.T) {
+	o := loadOpenAPI(t)
+	a := newRunAPI(t)
+	a.repo.Commit("rich", map[string]string{".plumbix/pipeline.yaml": `version: 1
+steps:
+  - {name: test, image: x, run: x}
+  - {name: flaky, image: x, run: fail, retries: 1, allow_failure: true}
+  - {name: api, image: x, run: x, when: {paths: ["api/**"]}}
+  - {name: after, image: x, run: x, needs: [flaky, api]}
+  - {name: validate, image: v, validator: true, needs: [test, after]}
+stages:
+  checks: [flaky, api, after]
+`}, "rich pipeline")
+	c := decode[change.Change](t, a.do(http.MethodPost, "/api/v1/changes", changeBody(a.repoID, "rich")))
+	first := decode[struct{ Runs []run.Run }](t, a.do(http.MethodGet, "/api/v1/changes/"+c.ID+"/runs", "")).Runs[0]
+	a.waitRun(first.ID)
+	rec := a.do(http.MethodGet, "/api/v1/runs/"+first.ID, "")
+	o.check("Run", rec)
+	body := rec.Body.String()
+	for _, want := range []string{`"attempts":2`, `"allowed_failure":true`, `"reason":"paths"`, `"stage":"checks"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("run JSON lacks %s:\n%s", want, body)
+		}
+	}
+	by := map[string]run.Step{}
+	for _, s := range decode[run.Run](t, rec).Steps {
+		by[s.Name] = s
+	}
+	if s := by["flaky"]; s.Status != "failed" || s.Attempts != 2 || !s.AllowedFailure || s.Stage != "checks" {
+		t.Errorf("flaky = %+v", s)
+	}
+	if s := by["api"]; s.Status != "skipped" || s.Reason != "paths" {
+		t.Errorf("api = %+v", s)
+	}
+	if s := by["after"]; s.Status != "succeeded" {
+		t.Errorf("after = %+v", s)
+	}
+	if s := by["test"]; s.Attempts != 0 || s.Stage != "" || s.Reason != "" || s.AllowedFailure {
+		t.Errorf("test carries fields it should omit: %+v", s)
+	}
 }
 
 // waitRun returns the run once it ended and its change, if any, has left

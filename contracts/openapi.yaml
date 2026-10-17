@@ -1292,6 +1292,20 @@ components:
           minimum: 0
         error:
           type: string
+        attempts:
+          description: How many times the step ran; present when above one (retries).
+          type: integer
+          minimum: 1
+        allowed_failure:
+          description: The failure was tolerated by the step's allow_failure.
+          type: boolean
+        reason:
+          description: Why a skipped step did not run.
+          type: string
+          enum: [needs, paths]
+        stage:
+          description: The pipeline stage the step belongs to.
+          type: string
     Assessment:
       type: object
       additionalProperties: false

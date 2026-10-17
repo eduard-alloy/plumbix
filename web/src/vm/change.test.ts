@@ -63,6 +63,24 @@ describe('changeView for an approved change', () => {
     expect(earlier.iterations[1].selected).toBe(true)
   })
 
+  it('says when a failure was allowed, a step was retried or skipped by its paths', () => {
+    const steps = approvedRuns[1].steps
+    const runs = [approvedRuns[0], { ...approvedRuns[1], steps: [
+      { ...steps[0], name: 'flaky', status: 'failed' as const, exit_code: 1, attempts: 3, allowed_failure: true, stage: 'checks' },
+      { ...steps[0], name: 'api', status: 'skipped' as const, exit_code: 0, duration_ms: 0, reason: 'paths' as const },
+      { ...steps[0], name: 'after', status: 'skipped' as const, exit_code: 0, duration_ms: 0, reason: 'needs' as const },
+      { ...steps[0], name: 'retried', attempts: 2 },
+      ...steps,
+    ] }]
+    const v = changeView(approved, runs, plumbix, undefined, NOW)
+    const by = Object.fromEntries(v.evidence.steps.map((s) => [s.name, s]))
+    expect(by.flaky).toMatchObject({ exit: 'exit 1 · allowed · attempt 3', stage: 'checks' })
+    expect(by.api).toMatchObject({ exit: 'paths unchanged', hasLog: false })
+    expect(by.after).toMatchObject({ exit: 'not run', hasLog: false })
+    expect(by.retried.exit).toBe('exit 0 · attempt 2')
+    expect(by.build.exit).toBe('exit 0')
+  })
+
   it('offers Merge and Close', () => {
     expect(v.actions).toEqual({ primary: 'merge', close: true })
     expect(v.diffRange).toBe('a81d7c0..9f3c1e2')

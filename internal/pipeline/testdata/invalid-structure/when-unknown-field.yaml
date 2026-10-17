@@ -1,0 +1,3 @@
+version: 1
+steps:
+  - {name: a, image: x, run: x, when: {branch: main}}

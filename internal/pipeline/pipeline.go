@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,25 +19,52 @@ const FormatVersion = 1
 // MaxTimeout is the longest timeout a step may declare.
 const MaxTimeout = 24 * time.Hour
 
+// MaxRetries is the most times a step may be run again after a failure.
+const MaxRetries = 5
+
 // Pipeline is a validated pipeline file.
 type Pipeline struct {
 	Version int
 	Steps   []Step
+	Stages  []Stage // in file order; display grouping only
 	order   []string
+}
+
+// Stage is a named group of steps, for display and run evidence.
+type Stage struct {
+	Name  string
+	Steps []string
 }
 
 // Step is one validated pipeline step.
 type Step struct {
 	Name      string
 	Image     string
-	Run       string
+	Run       string   // the script the step runs
+	Commands  []string // the commands as listed, when run was a list; nil for a string
 	Needs     []string
 	Env       map[string]string
 	Secrets   []string
 	Artifacts []string
 	Timeout   time.Duration // zero means the server default
 	Validator bool
-	Line      int
+	// Retries is how many more times a failed or timed-out step is run.
+	Retries int
+	// AllowFailure keeps a failed step from failing the run or skipping
+	// the steps that need it.
+	AllowFailure bool
+	// OnlyPaths, when set, runs the step only if a changed file matches one
+	// of these globs (when.paths).
+	OnlyPaths []string
+	// Stage is the stage the step belongs to, or empty.
+	Stage string
+	Line  int
+}
+
+// Script turns a list of commands into one shell script that stops at the
+// first failing command.
+func Script(commands []string) string {
+	return "set -e\n" + strings.Join(commands, "\n")
 }
 
 // Order returns step names so that every step comes after the steps it
@@ -108,7 +136,7 @@ func Parse(src []byte) (*Pipeline, error) {
 	}
 
 	p := &Pipeline{}
-	var stepsKey, stepsNode *yaml.Node
+	var stepsKey, stepsNode, stagesNode *yaml.Node
 	var sawVersion bool
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		key, val := root.Content[i], root.Content[i+1]
@@ -118,6 +146,8 @@ func Parse(src []byte) (*Pipeline, error) {
 			p.Version = ps.version(val)
 		case "steps":
 			stepsKey, stepsNode = key, val
+		case "stages":
+			stagesNode = val
 		default:
 			ps.add(key.Value, key.Line, "unknown field")
 		}
@@ -142,6 +172,9 @@ func Parse(src []byte) (*Pipeline, error) {
 		}
 		ps.crossCheck(p.Steps, refs)
 		p.order = ps.order(p.Steps, stepsKey.Line)
+		if stagesNode != nil {
+			p.Stages = ps.stages(stagesNode, p.Steps)
+		}
 	}
 
 	if len(ps.errs) > 0 {
@@ -170,7 +203,7 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 		return st, refs
 	}
 	seen := map[string]bool{}
-	var envNode, secretsNode *yaml.Node
+	var envNode, secretsNode, whenKey, allowKey *yaml.Node
 	for i := 0; i+1 < len(n.Content); i += 2 {
 		key, val := n.Content[i], n.Content[i+1]
 		fp := p + "." + key.Value
@@ -192,12 +225,7 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 				st.Image = s
 			}
 		case "run":
-			if s, ok := ps.str(fp, val); ok {
-				if s == "" {
-					ps.add(fp, val.Line, "is required and must not be empty")
-				}
-				st.Run = s
-			}
+			st.Run, st.Commands = ps.run(fp, val)
 		case "validator":
 			if val.Kind != yaml.ScalarNode || val.Tag != "!!bool" {
 				ps.add(fp, val.Line, "must be a boolean")
@@ -221,8 +249,28 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 			st.Artifacts = ps.artifacts(fp, val)
 		case "timeout":
 			st.Timeout = ps.timeout(fp, val)
+		case "retries":
+			st.Retries = ps.retries(fp, val)
+		case "allow_failure":
+			allowKey = key
+			if val.Kind != yaml.ScalarNode || val.Tag != "!!bool" {
+				ps.add(fp, val.Line, "must be a boolean")
+			} else {
+				st.AllowFailure = val.Value == "true"
+			}
+		case "when":
+			whenKey = key
+			st.OnlyPaths = ps.when(fp, val)
 		default:
 			ps.add(fp, key.Line, "unknown field")
+		}
+	}
+	if st.Validator {
+		if allowKey != nil {
+			ps.add(p+".allow_failure", allowKey.Line, "is not allowed on a validator step: a validator without a verdict is handled by the verdict rules")
+		}
+		if whenKey != nil {
+			ps.add(p+".when", whenKey.Line, "is not allowed on a validator step: validators always run")
 		}
 	}
 	for _, req := range []string{"name", "image"} {
@@ -356,6 +404,188 @@ func (ps *parser) timeout(p string, n *yaml.Node) time.Duration {
 		return d
 	}
 	return 0
+}
+
+// run accepts a script string or a list of commands. A list becomes a
+// script that stops at the first failing command.
+func (ps *parser) run(p string, n *yaml.Node) (string, []string) {
+	if n.Kind == yaml.SequenceNode {
+		if len(n.Content) == 0 {
+			ps.add(p, n.Line, "must contain at least one command")
+			return "", nil
+		}
+		var cmds []string
+		for j, item := range n.Content {
+			fp := fmt.Sprintf("%s[%d]", p, j)
+			s, ok := ps.str(fp, item)
+			if !ok {
+				continue
+			}
+			if strings.TrimSpace(s) == "" {
+				ps.add(fp, item.Line, "must not be empty")
+				continue
+			}
+			cmds = append(cmds, s)
+		}
+		if len(cmds) == 0 {
+			return "", nil
+		}
+		return Script(cmds), cmds
+	}
+	s, ok := ps.str(p, n)
+	if ok && s == "" {
+		ps.add(p, n.Line, "is required and must not be empty")
+	}
+	return s, nil
+}
+
+func (ps *parser) retries(p string, n *yaml.Node) int {
+	if n.Kind != yaml.ScalarNode || n.Tag != "!!int" {
+		ps.add(p, n.Line, "must be an integer between 0 and %d", MaxRetries)
+		return 0
+	}
+	v, err := strconv.Atoi(n.Value)
+	if err != nil || v < 0 || v > MaxRetries {
+		ps.add(p, n.Line, "must be between 0 and %d", MaxRetries)
+		return 0
+	}
+	return v
+}
+
+// when parses the run condition: a mapping with paths, a non-empty list of
+// relative globs.
+func (ps *parser) when(p string, n *yaml.Node) []string {
+	if n.Kind != yaml.MappingNode {
+		ps.add(p, n.Line, "must be a mapping with paths")
+		return nil
+	}
+	var out []string
+	sawPaths := false
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		key, val := n.Content[i], n.Content[i+1]
+		fp := p + "." + key.Value
+		if key.Value != "paths" {
+			ps.add(fp, key.Line, "unknown field")
+			continue
+		}
+		sawPaths = true
+		items := ps.list(fp, val)
+		if val.Kind == yaml.SequenceNode && len(items) == 0 {
+			ps.add(fp, val.Line, "must contain at least one glob")
+		}
+		for j, item := range items {
+			ip := fmt.Sprintf("%s[%d]", fp, j)
+			s, ok := ps.str(ip, item)
+			if !ok {
+				continue
+			}
+			switch {
+			case s == "":
+				ps.add(ip, item.Line, "must not be empty")
+			case path.IsAbs(s) || strings.HasPrefix(s, `\`):
+				ps.add(ip, item.Line, "must be a relative glob inside the workspace")
+			case !validGlob(s):
+				ps.add(ip, item.Line, "is not a valid glob")
+			default:
+				out = append(out, s)
+			}
+		}
+	}
+	if !sawPaths {
+		ps.add(p+".paths", n.Line, "is required")
+	}
+	return out
+}
+
+// stages parses the top-level stages mapping and marks each step's stage.
+func (ps *parser) stages(n *yaml.Node, steps []Step) []Stage {
+	if n.Kind != yaml.MappingNode {
+		ps.add("stages", n.Line, "must be a mapping of stage names to step lists")
+		return nil
+	}
+	index := map[string]int{}
+	for i, st := range steps {
+		index[st.Name] = i
+	}
+	var out []Stage
+	seenStage := map[string]bool{}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		key, val := n.Content[i], n.Content[i+1]
+		fp := "stages." + key.Value
+		if !stepNameRe.MatchString(key.Value) {
+			ps.add(fp, key.Line, "must be lowercase letters, digits and dashes, start and end with a letter or digit, at most 63 characters")
+			continue
+		}
+		if seenStage[key.Value] {
+			ps.add(fp, key.Line, "duplicate stage %q", key.Value)
+			continue
+		}
+		seenStage[key.Value] = true
+		items := ps.list(fp, val)
+		if val.Kind == yaml.SequenceNode && len(items) == 0 {
+			ps.add(fp, val.Line, "must contain at least one step")
+		}
+		stage := Stage{Name: key.Value}
+		for j, item := range items {
+			ip := fmt.Sprintf("%s[%d]", fp, j)
+			s, ok := ps.str(ip, item)
+			if !ok {
+				continue
+			}
+			k, known := index[s]
+			switch {
+			case !known:
+				ps.add(ip, item.Line, "unknown step %q", s)
+			case steps[k].Validator:
+				ps.add(ip, item.Line, "validator step %q cannot be in a stage: validators always run last", s)
+			case steps[k].Stage != "":
+				ps.add(ip, item.Line, "step %q is already in stage %q", s, steps[k].Stage)
+			default:
+				steps[k].Stage = key.Value
+				stage.Steps = append(stage.Steps, s)
+			}
+		}
+		out = append(out, stage)
+	}
+	return out
+}
+
+// validGlob reports whether a when.paths pattern is well formed.
+func validGlob(pattern string) bool {
+	_, err := path.Match(strings.ReplaceAll(pattern, "**", "*"), "x")
+	return err == nil
+}
+
+// MatchPath reports whether a workspace path matches a when.paths glob.
+// Segments match with path.Match rules; a "**" segment matches any number
+// of segments, including none.
+func MatchPath(pattern, p string) bool {
+	return matchSegments(strings.Split(pattern, "/"), strings.Split(p, "/"))
+}
+
+func matchSegments(pat, segs []string) bool {
+	for len(pat) > 0 {
+		if pat[0] == "**" {
+			if len(pat) == 1 {
+				// A trailing ** names what is under a directory, not the directory itself.
+				return len(segs) > 0
+			}
+			for i := 0; i <= len(segs); i++ {
+				if matchSegments(pat[1:], segs[i:]) {
+					return true
+				}
+			}
+			return false
+		}
+		if len(segs) == 0 {
+			return false
+		}
+		if ok, _ := path.Match(pat[0], segs[0]); !ok {
+			return false
+		}
+		pat, segs = pat[1:], segs[1:]
+	}
+	return len(segs) == 0
 }
 
 // crossCheck enforces rules that span steps: unique names and valid needs.
