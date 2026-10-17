@@ -5,7 +5,7 @@ Plumbix is a self-hosted, single-binary tool (listens on `127.0.0.1:6400`) that 
 
 The UI serves one developer who supervises several agents and checks in a few times an hour. On every change, the first screenful shows the intent, the verdict and the evidence. The diff is one click away and never above the fold.
 
-Screens: Sign-in landing · Changes (home) · Change (core) · Step log panel · Alerts · Repositories · plus a Design System reference.
+Screens: Sign-in landing · Changes (home) · Change (core) · Step log panel · Alerts · Repositories · **Pipelines (see `PIPELINE.md`)** · plus a Design System reference.
 
 ## About the design files
 The files in `design/` are **design references built in HTML**. They are working prototypes of the intended look and behaviour, not production code. Recreate them in the target stack: **React + TypeScript + plain CSS variables, served from a Go binary**. Do not use a heavy component library. `tokens.css` is production-ready and can be used as is.
@@ -250,4 +250,5 @@ None. No images or illustrations. Icons are tiny inline SVGs (circle plus one st
 - `design/StatePill.dc.html`: the state encoding component (icons, tones, labels, modes).
 - `design/Design System.dc.html`: the token and component reference in light and dark.
 - `design/Sign-in.dc.html`: sign-in landing, three variants.
+- `PIPELINE.md` + `design/Pipeline.dc.html`: pipeline definition editor. Build layout **2a**; 1a–1c are earlier explorations.
 - `design/support.js`: runtime needed only to open the prototypes in a browser. Not part of the build.
