@@ -74,6 +74,19 @@ describe('Settings page', () => {
     expect(row('MY_DEPLOY_KEY').textContent).toContain('Named by a pipeline step')
   })
 
+  it('lets the operator allow external reviewers to run commands', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Settings' })
+    const readOnly = screen.getByLabelText('Read only') as HTMLInputElement
+    const full = screen.getByLabelText('Full, including commands') as HTMLInputElement
+    expect(readOnly.checked).toBe(true)
+    fireEvent.click(full)
+    fireEvent.click(screen.getByRole('button', { name: 'Save guidance' }))
+    await waitFor(() => expect(db.settings.ai_tools).toBe('full'))
+    await screen.findByText('Saved')
+    expect(full.checked).toBe(true)
+  })
+
   it('shows a server refusal inline', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'Settings' })

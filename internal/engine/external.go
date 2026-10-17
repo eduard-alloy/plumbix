@@ -83,6 +83,11 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 		case <-ctx.Done():
 			bg, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
+			// A verdict posted during the last poll interval was accepted
+			// with 200, so it is honoured rather than dropped.
+			if rv, err := e.store.GetReview(bg, b.ID); err == nil && rv.Status == review.Done {
+				return e.takeVerdict(dir, rv, log)
+			}
 			if err := e.store.ExpireReview(bg, b.ID, e.now().UTC()); err != nil {
 				e.log.Warn("expire review", "review", b.ID, "err", err)
 			}
@@ -108,17 +113,22 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 			fmt.Fprintf(log, "claimed by %s at %s\n", rv.Reviewer, rv.ClaimedAt.UTC().Format(time.RFC3339))
 		}
 		if rv.Status == review.Done {
-			out := filepath.Join(dir, "out")
-			if err := os.MkdirAll(out, 0o755); err != nil {
-				return errored(err)
-			}
-			if err := os.WriteFile(filepath.Join(out, validation.VerdictFile), rv.Verdict, 0o644); err != nil {
-				return errored(err)
-			}
-			fmt.Fprintf(log, "verdict posted by %s at %s\n", rv.Reviewer, rv.FinishedAt.UTC().Format(time.RFC3339))
-			return scheduler.StepResult{Status: scheduler.Succeeded}
+			return e.takeVerdict(dir, rv, log)
 		}
 	}
+}
+
+// takeVerdict writes a posted verdict as the step's verdict.json.
+func (e *Engine) takeVerdict(dir string, rv review.Review, log io.Writer) scheduler.StepResult {
+	out := filepath.Join(dir, "out")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		return scheduler.StepResult{Status: scheduler.Errored, Err: err}
+	}
+	if err := os.WriteFile(filepath.Join(out, validation.VerdictFile), rv.Verdict, 0o644); err != nil {
+		return scheduler.StepResult{Status: scheduler.Errored, Err: err}
+	}
+	fmt.Fprintf(log, "verdict posted by %s at %s\n", rv.Reviewer, rv.FinishedAt.UTC().Format(time.RFC3339))
+	return scheduler.StepResult{Status: scheduler.Succeeded}
 }
 
 // ClaimReview hands the next waiting review to reviewer with a fresh token,

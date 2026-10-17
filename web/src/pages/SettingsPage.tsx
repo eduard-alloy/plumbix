@@ -114,6 +114,7 @@ function SecretRow({ secret, onChanged }: { secret: SecretStatus; onChanged: () 
 export function SettingsPage() {
   const [view, setView] = useState<SettingsView | null>(null)
   const [model, setModel] = useState('')
+  const [tools, setTools] = useState<'read-only' | 'full'>('read-only')
   const [guidance, setGuidance] = useState('')
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null)
   const [newKey, setNewKey] = useState('')
@@ -124,6 +125,7 @@ export function SettingsPage() {
     const v = await api.settings()
     setView(v)
     setModel(v.ai_model)
+    setTools(v.ai_tools)
     setGuidance(v.guidance)
   }, [])
 
@@ -135,9 +137,10 @@ export function SettingsPage() {
     e.preventDefault()
     setStatus(null)
     try {
-      const v = await api.updateSettings({ ai_model: model, guidance })
+      const v = await api.updateSettings({ ai_model: model, ai_tools: tools, guidance })
       setView(v)
       setModel(v.ai_model)
+      setTools(v.ai_tools)
       setGuidance(v.guidance)
       setStatus({ text: 'Saved', error: false })
     } catch (err) {
@@ -186,6 +189,16 @@ export function SettingsPage() {
             <label htmlFor="ai-model">Model</label>
             <input id="ai-model" value={model} onChange={(e) => setModel(e.target.value)} placeholder="claude-opus-5-5" disabled={!view} />
           </div>
+          <fieldset className="field tools" disabled={!view}>
+            <legend>Reviewer tools</legend>
+            <p className="hint">For reviews done outside the pipeline (plumbix review --watch and the Claude Code validator). Read only lets the reviewer open files beyond the diff; full also lets it run commands in the checked-out code, which text in the repository could try to steer.</p>
+            <label>
+              <input type="radio" name="ai-tools" value="read-only" checked={tools === 'read-only'} onChange={() => setTools('read-only')} /> Read only
+            </label>
+            <label>
+              <input type="radio" name="ai-tools" value="full" checked={tools === 'full'} onChange={() => setTools('full')} /> Full, including commands
+            </label>
+          </fieldset>
           <div className="field">
             <label htmlFor="guidance">Review guidance</label>
             <textarea id="guidance" value={guidance} onChange={(e) => setGuidance(e.target.value)} rows={5} maxLength={4000} placeholder="What validators should always pay attention to, across repositories." disabled={!view} />

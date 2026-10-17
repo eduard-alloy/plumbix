@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/eduard-alloy/plumbix/blob/main/contracts/pipeline.schema.json",
   "title": "Plumbix pipeline, format version 1",
-  "description": "Schema for .plumbix/pipeline.yaml. Plumbix also enforces rules that span fields, which this schema cannot express: step names are unique; every name in needs refers to another existing step, appears once, and is not a validator step; needs contain no cycles; a secret name is not also an env key; timeout is above zero and at most 24h; allow_failure and when are not set on validator steps; external is set only on validator steps and such a step has no image, run, env or secrets; every step named in stages exists, is not a validator and is in one stage only.",
+  "description": "Schema for .plumbix/pipeline.yaml. Plumbix also enforces rules that span fields, which this schema cannot express: step names are unique; every name in needs refers to another existing step, appears once, and is not a validator step; needs contain no cycles; a secret name is not also an env key; timeout is above zero and at most 24h; allow_failure and when are not set on validator steps; external is set only on validator steps and such a step has no image, run, env, secrets or retries; every step named in stages exists, is not a validator and is in one stage only.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -146,7 +146,7 @@
           "type": "boolean"
         },
         "external": {
-          "description": "The validator's verdict comes from a reviewer outside the pipeline: Plumbix publishes a review brief and waits, bounded by timeout (default one hour). Only for validators; no image, run, env or secrets.",
+          "description": "The validator's verdict comes from a reviewer outside the pipeline: Plumbix publishes a review brief and waits, bounded by timeout (default one hour). Only for validators; no image, run, env, secrets or retries.",
           "type": "boolean"
         },
         "when": {

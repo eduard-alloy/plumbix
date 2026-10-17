@@ -91,11 +91,10 @@ paths:
         - name: wait
           in: query
           required: false
-          description: Seconds to wait for a review before answering 204; 0 answers at once, 55 is the most.
+          description: Seconds to wait for a review before answering 204; 0 answers at once. Values above 55 are clamped to 55, the most one request waits.
           schema:
             type: integer
             minimum: 0
-            maximum: 55
       responses:
         "200":
           description: The claimed review's brief, with the token.

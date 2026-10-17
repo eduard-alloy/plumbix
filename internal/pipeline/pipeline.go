@@ -290,7 +290,7 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 		ps.add(p+".external", externalKey.Line, "is only for validator steps: a plain step has nobody outside the pipeline to answer for it")
 	}
 	if st.External {
-		for _, f := range []string{"image", "run", "secrets", "env"} {
+		for _, f := range []string{"image", "run", "secrets", "env", "retries"} {
 			if k := keyNodes[f]; k != nil {
 				ps.add(p+"."+f, k.Line, "is not allowed on an external step: nothing runs in a container, a reviewer outside the pipeline posts the verdict")
 			}

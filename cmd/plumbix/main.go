@@ -24,6 +24,7 @@ commands:
   run show|log          read a run, or a step's log
   alert list|resolve    bypass commits and token warnings
   events                follow the event stream as JSON lines
+  review --watch|--once answer external reviews with Claude Code on this machine
   login                 print a one-time link that signs a browser in
   logout                sign every browser out
   version               print the version
@@ -65,6 +66,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		return runEvents(ctx, args[1:], stdout, stderr)
+	case "review":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return runReview(ctx, args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintf(stdout, "plumbix %s\n", version)
 		return 0
