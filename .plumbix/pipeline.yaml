@@ -2,6 +2,8 @@
 # Plumbix itself: four independent steps run in parallel, then two
 # validators judge the change against its intent. The deterministic
 # validator must approve; the AI review alone is never enough (A12).
+# The AI review is an external step (A26): a reviewer loop on the
+# owner's machine, plumbix review --watch, answers it with Claude Code.
 version: 1
 steps:
   - name: build
@@ -21,9 +23,9 @@ steps:
     validator: true
     needs: [build, test, lint, web]
   - name: ai-review
-    image: plumbix-ai-validator:dev
     validator: true
+    external: true
     needs: [build, test, lint, web]
-    secrets: [ANTHROPIC_API_KEY]
+    timeout: 30m
 stages:
   checks: [build, test, lint, web]
