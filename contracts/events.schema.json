@@ -587,7 +587,8 @@
           "type": "string",
           "enum": [
             "bypass_commit",
-            "token_expiry"
+            "token_expiry",
+            "no_reviewer"
           ]
         },
         "key": {
@@ -614,7 +615,8 @@
           "type": "string",
           "enum": [
             "bypass_commit",
-            "token_expiry"
+            "token_expiry",
+            "no_reviewer"
           ]
         },
         "key": {

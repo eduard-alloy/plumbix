@@ -108,6 +108,26 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /reviewers:
+    get:
+      operationId: listReviewers
+      summary: The external reviewers the server has heard from since it started.
+      description: >
+        Every poll of GET /reviews/next is a heartbeat. The list is kept in
+        memory, most recently seen first, with each reviewer's repository
+        filter; a restarted server has heard from nobody until the next poll.
+        When an external review is published and nobody who could take it
+        polled within two minutes, an alert of kind no_reviewer is raised for
+        the repository and resolved by the next such poll.
+      responses:
+        "200":
+          description: The reviewers seen.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewerList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /reviews/{id}/verdict:
     post:
       operationId: postReviewVerdict
@@ -1333,7 +1353,7 @@ components:
           pattern: "^al_[a-z2-7]{12}$"
         kind:
           type: string
-          enum: [bypass_commit, token_expiry]
+          enum: [bypass_commit, token_expiry, no_reviewer]
         key:
           description: Identifies the alert's subject; one open alert per kind and key.
           type: string
@@ -1342,7 +1362,7 @@ components:
         message:
           type: string
         details:
-          description: "bypass_commit: branch, head, count, commits[{sha, author, email, time, subject}]. token_expiry: host, expires."
+          description: "bypass_commit: branch, head, count, commits[{sha, author, email, time, subject}]. token_expiry: host, expires. no_reviewer: change_id, run_id, review_id, step."
           type: object
         created_at:
           type: string
@@ -1503,6 +1523,26 @@ components:
           type: array
           items:
             type: string
+    ReviewerList:
+      type: object
+      additionalProperties: false
+      required: [reviewers]
+      properties:
+        reviewers:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, last_seen]
+            properties:
+              name:
+                type: string
+              repo_id:
+                description: The reviewer's repository filter, when it polls for one repository only.
+                type: string
+              last_seen:
+                type: string
+                format: date-time
     ReviewAccepted:
       type: object
       additionalProperties: false

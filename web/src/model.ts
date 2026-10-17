@@ -156,9 +156,17 @@ export interface Run {
   finished_at?: string
 }
 
+/** An external reviewer the server has heard from since it started (WU-026). */
+export interface Reviewer {
+  name: string
+  /** The reviewer's repository filter, when it polls for one repository only. */
+  repo_id?: string
+  last_seen: string
+}
+
 export interface Alert {
   id: string
-  kind: 'bypass_commit' | 'token_expiry'
+  kind: 'bypass_commit' | 'token_expiry' | 'no_reviewer'
   key: string
   repo_id?: string
   message: string

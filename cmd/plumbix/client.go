@@ -11,7 +11,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/eduard-alloy/plumbix/internal/auth"
@@ -398,11 +401,51 @@ func runReview(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	if !ok {
 		return 2
 	}
-	if len(pos) != 0 || *watch == *once {
-		return usageError(stderr, "usage: plumbix review --watch|--once [--repo <id>] [--reviewer <name>] [--tools read-only|full] [--model <m>] [--max-turns <n>] [--max-budget-usd <x>]")
-	}
 	if *tools != "" && *tools != review.ToolsReadOnly && *tools != review.ToolsFull {
 		return usageError(stderr, "plumbix review: --tools must be read-only or full")
+	}
+	const use = "usage: plumbix review --watch|--once [--repo <id>] [--reviewer <name>] [--tools read-only|full] [--model <m>] [--max-turns <n>] [--max-budget-usd <x>] | review install [same flags] | review uninstall | review status"
+	if len(pos) == 1 && (pos[0] == "install" || pos[0] == "uninstall" || pos[0] == "status") {
+		if *watch || *once {
+			return usageError(stderr, use)
+		}
+		// The installed loop gets the flags given here, plus the server and
+		// data-dir overrides, so it reviews the way this command would.
+		var loopArgs []string
+		if *who != "" {
+			loopArgs = append(loopArgs, "--reviewer", *who)
+		}
+		if *repo != "" {
+			loopArgs = append(loopArgs, "--repo", *repo)
+		}
+		if *tools != "" {
+			loopArgs = append(loopArgs, "--tools", *tools)
+		}
+		if *model != "" {
+			loopArgs = append(loopArgs, "--model", *model)
+		}
+		if *claudeBin != "claude" {
+			loopArgs = append(loopArgs, "--claude", *claudeBin)
+		}
+		if *maxTurns != reviewer.DefaultMaxTurns {
+			loopArgs = append(loopArgs, "--max-turns", strconv.Itoa(*maxTurns))
+		}
+		if *budget > 0 {
+			loopArgs = append(loopArgs, "--max-budget-usd", strconv.FormatFloat(*budget, 'f', 2, 64))
+		}
+		if c.server != "" {
+			loopArgs = append(loopArgs, "--server", c.server)
+		}
+		if c.over.DataDir != "" {
+			loopArgs = append(loopArgs, "--data-dir", c.over.DataDir)
+		}
+		if c.over.ConfigPath != "" {
+			loopArgs = append(loopArgs, "--config", c.over.ConfigPath)
+		}
+		return runReviewService(pos[0], c, loopArgs, stdout, stderr)
+	}
+	if len(pos) != 0 || *watch == *once {
+		return usageError(stderr, use)
 	}
 	cl, cfg, ok := c.connectWithConfig()
 	if !ok {
@@ -433,4 +476,76 @@ func defaultReviewerName() string {
 		return user
 	}
 	return user + "@" + host
+}
+
+// runReviewService handles "plumbix review install|uninstall|status": an OS
+// service keeps the loop alive (launchd on macOS, a systemd user unit on
+// Linux); the server never spawns it (A27).
+func runReviewService(verb string, c *clientCmd, loopArgs []string, stdout, stderr io.Writer) int {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(stderr, "plumbix: find home directory: %v\n", err)
+		return 1
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(stderr, "plumbix: find this executable: %v\n", err)
+		return 1
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	cfg, err := config.Load(c.over, os.Getenv, home)
+	if err != nil {
+		fmt.Fprintf(stderr, "plumbix: %v\n", err)
+		return 1
+	}
+	o := reviewer.InstallOptions{Home: home, GOOS: runtime.GOOS, UID: os.Getuid(), Exec: exe, Args: loopArgs,
+		LogPath: filepath.Join(cfg.DataDir, "review.log"), Path: os.Getenv("PATH"), Run: runCommand}
+	switch verb {
+	case "install":
+		path, err := reviewer.Install(o)
+		if err != nil {
+			fmt.Fprintf(stderr, "plumbix: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "installed %s\nThe reviewer loop starts at login and restarts if it stops; its log is %s.\n", path, o.LogPath)
+		return 0
+	case "uninstall":
+		if err := reviewer.Uninstall(o); err != nil {
+			fmt.Fprintf(stderr, "plumbix: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(stdout, "uninstalled; the loop is stopped")
+		return 0
+	default:
+		st, err := reviewer.Status(o)
+		if err != nil {
+			fmt.Fprintf(stderr, "plumbix: %v\n", err)
+			return 1
+		}
+		switch {
+		case st.Running:
+			fmt.Fprintf(stdout, "installed at %s and running\n", st.Path)
+		case st.Installed:
+			fmt.Fprintf(stdout, "installed at %s but not running\n", st.Path)
+		default:
+			fmt.Fprintln(stdout, "not installed; plumbix review install keeps a loop running")
+		}
+		if cl, ok := c.connect(); ok {
+			if resp, err := cl.Do(context.Background(), http.MethodGet, "/api/v1/reviewers", nil); err == nil && resp.OK() {
+				var out bytes.Buffer
+				if json.Indent(&out, resp.Body, "", "  ") == nil {
+					fmt.Fprintf(stdout, "reviewers the server has heard from:\n%s\n", out.String())
+				}
+			}
+		}
+		return 0
+	}
+}
+
+// runCommand runs a service-manager command and returns its combined output.
+func runCommand(name string, args ...string) (string, error) {
+	out, err := exec.Command(name, args...).CombinedOutput()
+	return string(out), err
 }

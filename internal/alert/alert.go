@@ -1,5 +1,6 @@
 // Package alert holds the things a human should look at: commits that
-// reached a protected branch without a verdict, and tokens about to expire.
+// reached a protected branch without a verdict, tokens about to expire, and
+// external reviews waiting with no reviewer around.
 package alert
 
 import (
@@ -14,6 +15,9 @@ type Kind string
 const (
 	BypassCommit Kind = "bypass_commit"
 	TokenExpiry  Kind = "token_expiry"
+	// NoReviewer: an external review is waiting and no reviewer has polled
+	// recently; key is the repository id (WU-026).
+	NoReviewer Kind = "no_reviewer"
 )
 
 // Alert is one open or resolved alert. Kind and Key identify its subject:

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../api'
 import { agoLong, minutesBetween } from '../format'
-import type { SecretStatus, SettingsView } from '../model'
+import type { Reviewer, SecretStatus, SettingsView } from '../model'
 import { useNow } from '../store'
 
 function errorText(e: unknown): string {
@@ -112,6 +112,7 @@ function SecretRow({ secret, onChanged }: { secret: SecretStatus; onChanged: () 
 }
 
 export function SettingsPage() {
+  const now = useNow()
   const [view, setView] = useState<SettingsView | null>(null)
   const [model, setModel] = useState('')
   const [tools, setTools] = useState<'read-only' | 'full'>('read-only')
@@ -211,6 +212,9 @@ export function SettingsPage() {
           </div>
         </form>
 
+        <h2>External reviewers</h2>
+        <p className="lead">Reviews for external validator steps are answered by plumbix review --watch running wherever Claude Code is signed in. Every poll is a heartbeat; this is who the server has heard from since it started.</p>
+        <ReviewersList now={now} />
         <h2>Other secrets</h2>
         <p className="lead">Any name a pipeline step lists under secrets. Steps see them as environment variables; validators and other steps do not.</p>
         {custom.map((s) => (
@@ -226,5 +230,43 @@ export function SettingsPage() {
         </form>
       </div>
     </>
+  )
+}
+
+function ReviewersList({ now }: { now: Date }) {
+  const [list, setList] = useState<Reviewer[] | null>(null)
+  const [repoNames, setRepoNames] = useState<Record<string, string>>({})
+  const load = useCallback(async () => {
+    const [r, repos] = await Promise.all([api.reviewers(), api.repos().catch(() => [])])
+    setList(r.reviewers)
+    setRepoNames(Object.fromEntries(repos.map((x) => [x.id, x.url.replace(/\.git$/, '').split('/').pop() ?? x.id])))
+  }, [])
+  useEffect(() => {
+    load().catch(() => setList([]))
+  }, [load])
+  return (
+    <div className="reviewers">
+      {list && list.length === 0 && (
+        <p className="hint">
+          No reviewer has polled since the server started. Run <code>plumbix review --watch</code> on a machine with Claude Code, or <code>plumbix review install</code> to keep one running there. An alert is raised when a review is published and nobody is listening.
+        </p>
+      )}
+      {list && list.length > 0 && (
+        <ul className="reviewer-list">
+          {list.map((r) => (
+            <li key={r.name}>
+              <span className="mono">{r.name}</span>
+              <span className="dim">{r.repo_id ? `${repoNames[r.repo_id] ?? r.repo_id} only` : 'every repository'}</span>
+              <span className="dim">{agoLong(minutesBetween(r.last_seen, now))}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="form-row">
+        <button className="secondary small" type="button" onClick={() => void load()}>
+          Refresh
+        </button>
+      </div>
+    </div>
   )
 }

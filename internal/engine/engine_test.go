@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/eduard-alloy/plumbix/internal/alert"
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/gitops"
@@ -1077,4 +1078,97 @@ func TestACancelledRunKeepsNoLateVerdict(t *testing.T) {
 	if b2.ID == b.ID || b2.RunID != second.ID {
 		t.Errorf("second review = %+v", b2)
 	}
+}
+
+// openNoReviewerAlerts lists the open no_reviewer alerts.
+func (h *harness) openNoReviewerAlerts() []alert.Alert {
+	h.t.Helper()
+	all, err := h.db.List(ctx, false)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	var out []alert.Alert
+	for _, a := range all {
+		if a.Kind == alert.NoReviewer {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+func TestReviewerPresenceAndTheNoReviewerAlert(t *testing.T) {
+	oldWindow := presenceWindow
+	presenceWindow = 2 * time.Second
+	t.Cleanup(func() { presenceWindow = oldWindow })
+	h := newHarness(t, Config{})
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalYAML}, "external review")
+	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	c := h.submit("feat")
+	if seen := h.eng.Reviewers(); len(seen) != 0 {
+		t.Fatalf("a fresh engine has heard from %v", seen)
+	}
+	r, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Nobody has polled: publishing the review raises the alert, once per repository.
+	deadline := time.Now().Add(15 * time.Second)
+	for len(h.openNoReviewerAlerts()) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("no no_reviewer alert was raised")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	a := h.openNoReviewerAlerts()[0]
+	if a.Key != h.repoID || a.RepoID != h.repoID || !strings.Contains(a.Message, "plumbix review --watch") || a.Details["change_id"] != c.ID {
+		t.Errorf("alert = %+v", a)
+	}
+	log, _ := os.ReadFile(h.eng.LogPath(r.ID, "ai-review"))
+	if !strings.Contains(string(log), "no reviewer has polled") {
+		t.Errorf("step log lacks the hint:\n%s", log)
+	}
+	// A poll from a reviewer whose filter covers the repository is presence, and resolves the alert.
+	if _, _, err := h.eng.ClaimReview(ctx, "r_other", "otto"); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(h.openNoReviewerAlerts()); n != 1 {
+		t.Errorf("a poll filtered to another repository resolved the alert (%d open)", n)
+	}
+	b := h.claimSoon("kai")
+	if n := len(h.openNoReviewerAlerts()); n != 0 {
+		t.Errorf("kai's poll left %d alert(s) open", n)
+	}
+	seen := h.eng.Reviewers()
+	if len(seen) != 2 || seen[0].Name != "kai" || seen[0].RepoID != "" || time.Since(seen[0].LastSeen) > 5*time.Second || seen[1].Name != "otto" || seen[1].RepoID != "r_other" {
+		t.Errorf("reviewers = %+v", seen)
+	}
+	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"Fine.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}]}`)
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); err != nil {
+		t.Fatal(err)
+	}
+	if done := h.wait(r.ID); done.Outcome != change.Approved {
+		t.Fatalf("outcome = %s", done.Outcome)
+	}
+	// A review published while kai was seen recently raises nothing; once the
+	// window passes with the review still pending, the waiting step raises it.
+	r2, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second)
+	if n := len(h.openNoReviewerAlerts()); n != 0 {
+		t.Errorf("alert raised although kai polled %s ago", time.Since(seen[0].LastSeen))
+	}
+	deadline = time.Now().Add(20 * time.Second)
+	for len(h.openNoReviewerAlerts()) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the waiting step did not raise the alert after the presence window passed")
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	b2 := h.claimSoon("kai")
+	if err := h.eng.PostReviewVerdict(ctx, b2.ID, b2.Token, good); err != nil {
+		t.Fatal(err)
+	}
+	h.wait(r2.ID)
 }

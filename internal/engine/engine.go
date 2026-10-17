@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/eduard-alloy/plumbix/internal/alert"
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/gitops"
@@ -54,6 +55,7 @@ type Store interface {
 	change.Store
 	run.Store
 	review.Store
+	alert.Store
 	events.Appender
 }
 
@@ -81,11 +83,12 @@ type Settings interface {
 
 // Engine runs validations in the background.
 type Engine struct {
-	store  Store
-	runner runner.Runner
-	cfg    Config
-	log    *slog.Logger
-	now    func() time.Time
+	presence presence
+	store    Store
+	runner   runner.Runner
+	cfg      Config
+	log      *slog.Logger
+	now      func() time.Time
 
 	base       context.Context
 	stopAll    context.CancelCauseFunc

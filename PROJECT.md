@@ -102,6 +102,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-021 | Human approval: a person approves a `needs_human` or `escalated` change with a reason (API, CLI, web) | F-001, F-004 | ✅ |
 | WU-022 | Update from main: Plumbix brings the target into a branch it created and validates again (API, CLI, web) | F-002, F-004 | ✅ |
 | WU-023 | External validator step and `plumbix review --watch`: AI review by pull, with the Claude Code a person already has | F-003, F-004 | ✅ |
+| WU-026 | Reviewer presence, the `no_reviewer` alert, and `plumbix review install|uninstall|status` | F-003, F-004 | ✅ |
 
 ## Milestone 2 candidates
 

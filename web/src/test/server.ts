@@ -1,7 +1,7 @@
 // A fake server for page tests: fetch answers from fixtures, EventSource is
 // a hand-driven stub. Tests mutate `db` and call `emit` to simulate change.
 import { vi } from 'vitest'
-import type { Alert, Change, Diff, PipelineFile, PlumbixEvent, Repo, Run } from '../model'
+import type { Alert, Change, Diff, PipelineFile, PlumbixEvent, Repo, Run, Reviewer } from '../model'
 import * as fx from './fixtures'
 
 export interface FakeDB {
@@ -9,6 +9,7 @@ export interface FakeDB {
   changes: Change[]
   runs: Record<string, Run[]>
   alerts: Alert[]
+  reviewers: Reviewer[]
   signedIn: boolean
   /** mergeResult decides what POST /merge answers: 'ok' or an error code. */
   mergeResult: 'ok' | 'source_moved' | 'target_moved' | 'push_rejected' | 'push_denied' | 'invalid_state'
@@ -57,6 +58,7 @@ export function freshDB(): FakeDB {
     signedIn: true,
     mergeResult: 'ok',
     refreshResult: 'ok',
+    reviewers: [],
     requests: [],
     secrets: {},
     secretUpdated: {},
@@ -227,6 +229,7 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       a.resolved_at ??= new Date().toISOString()
       return json(200, a)
     }
+    if (path === '/api/v1/reviewers') return json(200, { reviewers: db.reviewers })
     if (path.startsWith('/api/v1/alerts')) return json(200, { alerts: db.alerts.filter((a) => path.includes('include_resolved') || !a.resolved_at) })
     const log = path.match(/^\/api\/v1\/runs\/([^/]+)\/steps\/([^/]+)\/log$/)
     if (log) {
