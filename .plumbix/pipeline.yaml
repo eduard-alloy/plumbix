@@ -25,3 +25,5 @@ steps:
     validator: true
     needs: [build, test, lint, web]
     secrets: [ANTHROPIC_API_KEY]
+stages:
+  checks: [build, test, lint, web]
