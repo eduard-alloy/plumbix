@@ -169,6 +169,10 @@ func TestCLIFlow(t *testing.T) {
 	if code, _, errOut := c.run("", "change", "approve", id, "--reason", "looked at it myself"); code != 1 || !strings.Contains(errOut, "invalid_state") || !strings.Contains(errOut, "finished run") {
 		t.Errorf("approve with an errored latest run: exit %d, stderr %q", code, errOut)
 	}
+	// The branch was pushed by the test, not created by Plumbix, so a refresh is refused.
+	if code, _, errOut := c.run("", "change", "refresh", id); code != 1 || !strings.Contains(errOut, "not_plumbix_branch") {
+		t.Errorf("refresh of the test's own branch: exit %d, stderr %q", code, errOut)
+	}
 	if closed := c.mustRun("", "change", "close", id); closed["state"] != "closed" {
 		t.Errorf("close = %v", closed)
 	}

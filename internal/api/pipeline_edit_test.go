@@ -68,7 +68,7 @@ func TestProposePipelineOpensAChange(t *testing.T) {
 	}
 	o.check("Change", rec)
 	c := decode[change.Change](t, rec)
-	if c.SourceBranch != "pipeline/add-lint" || c.TargetBranch != "main" || c.Title != "Pipeline: add lint" || len(c.AcceptanceCriteria) != 2 || c.SubmittedBy != "pipeline editor" {
+	if c.SourceBranch != "pipeline/add-lint" || c.TargetBranch != "main" || c.Title != "Pipeline: add lint" || len(c.AcceptanceCriteria) != 2 || c.SubmittedBy != "pipeline editor" || !c.PlumbixBranch {
 		t.Errorf("change = %+v", c)
 	}
 	first := decode[struct{ Runs []run.Run }](t, a.do(http.MethodGet, "/api/v1/changes/"+c.ID+"/runs", "")).Runs[0]

@@ -180,12 +180,17 @@ func TestLifecycleEmitsEvents(t *testing.T) {
 	if err := db.ApproveByPerson(ctx, "c_2", change.NeedsHuman, "read it myself", "ffff", at.Add(14*time.Second)); err != nil {
 		t.Fatal(err)
 	}
+	// Plumbix brings main into its own branch; the engine appends the event itself.
+	if _, err := db.AppendEvent(ctx, events.Event{Type: events.ChangeRefreshed, Time: at.Add(15 * time.Second), RepoID: "r_1", ChangeID: "c_2",
+		Payload: events.ChangeRefreshedPayload{FromHead: "ffff", Head: "abab", TargetHead: "cdcd"}}); err != nil {
+		t.Fatal(err)
+	}
 
 	want := []events.Type{
 		events.ChangeSubmitted, events.RunStarted, events.StateChanged, events.StepFinished,
 		events.RunFinished, events.VerdictIssued, events.StateChanged, events.ChangeMerged, events.StateChanged,
 		events.AlertRaised, events.AlertResolved, events.AlertRaised, events.AlertResolved,
-		events.ChangeSubmitted, events.StateChanged, events.ApprovedByPerson, events.StateChanged,
+		events.ChangeSubmitted, events.StateChanged, events.ApprovedByPerson, events.StateChanged, events.ChangeRefreshed,
 	}
 	var got []events.Type
 	for i, e := range notified {
@@ -427,5 +432,42 @@ func TestApproveByPersonRecordsReasonAndEmitsBothEvents(t *testing.T) {
 	}
 	if err := db.ApproveByPerson(ctx, "c_nope", change.NeedsHuman, "x", "h", at); !errors.Is(err, change.ErrNotFound) {
 		t.Errorf("unknown change err = %v", err)
+	}
+}
+
+func TestPlumbixBranchRoundTripsAndARefreshIsAnEvent(t *testing.T) {
+	db := openDB(t)
+	schema := compileEventsSchema(t)
+	if err := db.CreateRepo(ctx, sampleRepo("r_1", "https://github.com/a/b")); err != nil {
+		t.Fatal(err)
+	}
+	own := sampleChange("c_1", "r_1", "pipeline/x")
+	own.PlumbixBranch = true
+	if err := db.CreateChange(ctx, own); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateChange(ctx, sampleChange("c_2", "r_1", "feat")); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := db.GetChange(ctx, "c_1"); !c.PlumbixBranch {
+		t.Error("plumbix_branch was not stored")
+	}
+	if c, _ := db.GetChange(ctx, "c_2"); c.PlumbixBranch {
+		t.Error("plumbix_branch leaked onto another change")
+	}
+	list, _ := db.ListChanges(ctx, change.Filter{RepoID: "r_1"})
+	if len(list) != 2 || !list[0].PlumbixBranch || list[1].PlumbixBranch {
+		t.Errorf("list = %+v", list)
+	}
+	e, err := db.AppendEvent(ctx, events.Event{Type: events.ChangeRefreshed, Time: t0, RepoID: "r_1", ChangeID: "c_1",
+		Payload: events.ChangeRefreshedPayload{FromHead: "aaa111", Head: "bbb222", TargetHead: "ccc333"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	validateEvent(t, schema, e)
+	raw, _ := json.Marshal(e.Payload)
+	var p events.ChangeRefreshedPayload
+	if err := json.Unmarshal(raw, &p); err != nil || p.FromHead != "aaa111" || p.Head != "bbb222" || p.TargetHead != "ccc333" {
+		t.Errorf("payload = %s %v", raw, err)
 	}
 }

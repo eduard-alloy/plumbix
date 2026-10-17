@@ -551,6 +551,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /changes/{id}/refresh:
+    post:
+      operationId: refreshChange
+      summary: Bring the target branch into a branch Plumbix created, and validate again.
+      description: >
+        For changes whose source branch Plumbix created (plumbix_branch, the
+        pipeline editor's changes). Plumbix merges the target's head into
+        the branch with itself as author, pushes the merge commit under a
+        lease on the old head (never forced), records change.refreshed and
+        starts a new iteration; the change is running when this returns.
+        A person asks for it, so it applies to sticky states too, and like
+        every new run it ends a standing approval. Branches with a commit by
+        anyone else are left alone: their authors bring the target in.
+      parameters:
+        - $ref: "#/components/parameters/ChangeID"
+      responses:
+        "200":
+          description: The change, now running its new iteration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Change"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: >
+            Codes invalid_state (final or running), not_plumbix_branch (the
+            branch is not Plumbix's, or carries someone else's commit),
+            already_current (the branch contains the target's head),
+            merge_conflict (both sides changed the same lines; the message
+            names the paths), push_rejected (the branch moved during the
+            refresh) and push_denied (the host refused the credentials).
+            Nothing was pushed in any of these cases.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /changes/{id}/approve:
     post:
       operationId: approveChange
@@ -1132,6 +1171,9 @@ components:
         source_head:
           description: The source branch's head as the poller last saw it; differs from the last run's head when commits arrived since the verdict.
           type: string
+        plumbix_branch:
+          description: True when Plumbix created the source branch (a pipeline editor change); such a change can be refreshed from its target with POST /changes/{id}/refresh.
+          type: boolean
         human_approval:
           description: Set while a person's approval stands; a new run clears it.
           type: object

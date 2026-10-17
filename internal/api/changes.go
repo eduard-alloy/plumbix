@@ -31,6 +31,7 @@ func registerChangeRoutes(mux *http.ServeMux, h *changeHandlers) {
 	mux.HandleFunc("GET /api/v1/changes/{id}", h.get)
 	mux.HandleFunc("POST /api/v1/changes/{id}/close", h.close)
 	mux.HandleFunc("POST /api/v1/changes/{id}/approve", h.approve)
+	mux.HandleFunc("POST /api/v1/changes/{id}/refresh", h.refresh)
 }
 
 func (h *changeHandlers) createRepo(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +126,21 @@ func (h *changeHandlers) approve(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, c)
 }
 
+// refresh brings the target branch into a branch Plumbix created and
+// starts a new iteration (WU-022).
+func (h *changeHandlers) refresh(w http.ResponseWriter, r *http.Request) {
+	if h.engine == nil {
+		writeError(w, http.StatusNotFound, "not_found", "no such endpoint")
+		return
+	}
+	c, err := h.engine.Refresh(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, c)
+}
+
 // fail maps service errors to HTTP responses.
 func (h *changeHandlers) fail(w http.ResponseWriter, err error) {
 	var inv *change.InvalidError
@@ -141,6 +157,12 @@ func (h *changeHandlers) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "source_moved", err.Error())
 	case errors.Is(err, engine.ErrTargetMoved):
 		writeError(w, http.StatusConflict, "target_moved", err.Error())
+	case errors.Is(err, engine.ErrAlreadyCurrent):
+		writeError(w, http.StatusConflict, "already_current", err.Error())
+	case errors.Is(err, engine.ErrNotPlumbixBranch):
+		writeError(w, http.StatusConflict, "not_plumbix_branch", err.Error())
+	case errors.Is(err, gitops.ErrMergeConflict):
+		writeError(w, http.StatusConflict, "merge_conflict", err.Error())
 	case errors.Is(err, gitops.ErrPushRejected):
 		writeError(w, http.StatusConflict, "push_rejected", err.Error())
 	case errors.Is(err, gitops.ErrPushDenied):

@@ -67,8 +67,11 @@ type Change struct {
 	// HumanApproval is set when a person approved the change at Head; a
 	// new run clears it.
 	HumanApproval *HumanApproval `json:"human_approval,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
+	// PlumbixBranch says Plumbix created the source branch (the pipeline
+	// editor's changes), so Plumbix may bring the target into it (WU-022).
+	PlumbixBranch bool      `json:"plumbix_branch,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // HumanApproval records that a person approved a change, and why.

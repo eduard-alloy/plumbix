@@ -67,6 +67,8 @@ export interface Change {
   merge?: Merge
   /** Set while a person's approval stands; a new run clears it. */
   human_approval?: { reason: string; head: string; at: string }
+  /** True when Plumbix created the source branch (a pipeline editor change); it can be updated from its target. */
+  plumbix_branch?: boolean
   source_head?: string
   created_at: string
   updated_at: string
@@ -237,6 +239,7 @@ export type EventType =
   | 'alert.raised'
   | 'alert.resolved'
   | 'change.approved_by_person'
+  | 'change.refreshed'
 
 export interface PlumbixEvent {
   id: number

@@ -226,3 +226,46 @@ func TestApproveEndpoint(t *testing.T) {
 		t.Errorf("merge after approval: %d %s", merged.Code, merged.Body.String())
 	}
 }
+
+func TestRefreshEndpoint(t *testing.T) {
+	o := loadOpenAPI(t)
+	a := newRunAPI(t)
+	content := "version: 1\nsteps:\n  - {name: test, image: x, run: x}\n  - {name: lint, image: x, run: x}\n  - {name: validate, image: v, validator: true, needs: [test, lint]}\n"
+	body := `{"branch": "pipeline/add-lint", "title": "Pipeline: add lint", "intent": "Lint every change.", "content": ` + jsonString(content) + `}`
+	c := decode[change.Change](t, a.do(http.MethodPost, "/api/v1/repos/"+a.repoID+"/pipeline/changes", body))
+	if !c.PlumbixBranch {
+		t.Fatalf("the editor's change does not carry plumbix_branch: %+v", c)
+	}
+	first := decode[struct{ Runs []run.Run }](t, a.do(http.MethodGet, "/api/v1/changes/"+c.ID+"/runs", "")).Runs[0]
+	if r := a.waitRun(first.ID); r.Outcome != change.NeedsHuman {
+		t.Fatalf("run = %+v", r)
+	}
+	cur := a.do(http.MethodPost, "/api/v1/changes/"+c.ID+"/refresh", "")
+	o.check("Error", cur)
+	if cur.Code != http.StatusConflict || decode[apiError](t, cur).Error.Code != "already_current" {
+		t.Errorf("refresh while current: %d %s", cur.Code, cur.Body.String())
+	}
+	a.repo.Commit("main", map[string]string{"x.txt": "x\n"}, "main moves")
+	rec := a.do(http.MethodPost, "/api/v1/changes/"+c.ID+"/refresh", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("refresh: %d %s", rec.Code, rec.Body.String())
+	}
+	o.check("Change", rec)
+	if got := decode[change.Change](t, rec); got.State != change.Running || !got.PlumbixBranch {
+		t.Errorf("refreshed change = %s %v", got.State, got.PlumbixBranch)
+	}
+	runs := decode[struct{ Runs []run.Run }](t, a.do(http.MethodGet, "/api/v1/changes/"+c.ID+"/runs", "")).Runs
+	if r := a.waitRun(runs[len(runs)-1].ID); r.Iteration != 2 || r.Base != a.remoteMain() || r.Outcome != change.NeedsHuman {
+		t.Errorf("new run = %+v", r)
+	}
+	agent := decode[change.Change](t, a.do(http.MethodPost, "/api/v1/changes", changeBody(a.repoID, "feat")))
+	a.waitRun(decode[struct{ Runs []run.Run }](t, a.do(http.MethodGet, "/api/v1/changes/"+agent.ID+"/runs", "")).Runs[0].ID)
+	theirs := a.do(http.MethodPost, "/api/v1/changes/"+agent.ID+"/refresh", "")
+	o.check("Error", theirs)
+	if theirs.Code != http.StatusConflict || decode[apiError](t, theirs).Error.Code != "not_plumbix_branch" {
+		t.Errorf("refresh of an agent's branch: %d %s", theirs.Code, theirs.Body.String())
+	}
+	if rec := a.do(http.MethodPost, "/api/v1/changes/c_nope/refresh", ""); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown: %d", rec.Code)
+	}
+}

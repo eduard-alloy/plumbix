@@ -241,6 +241,7 @@ func (h *pipelineHandlers) propose(w http.ResponseWriter, r *http.Request) {
 	c, err := h.svc.Submit(r.Context(), change.ChangeInput{
 		RepoID: repo.ID, SourceBranch: body.Branch, TargetBranch: body.TargetBranch, Title: body.Title, Intent: body.Intent,
 		AcceptanceCriteria: pipelineCriteria(), Constraints: []string{"only " + engine.PipelineFile + " changes"}, SubmittedBy: "pipeline editor",
+		PlumbixBranch: true,
 	})
 	if err != nil {
 		h.fail(w, fmt.Errorf("branch %s was pushed but the change could not be opened: %w", body.Branch, err))

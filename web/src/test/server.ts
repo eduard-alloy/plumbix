@@ -12,6 +12,8 @@ export interface FakeDB {
   signedIn: boolean
   /** mergeResult decides what POST /merge answers: 'ok' or an error code. */
   mergeResult: 'ok' | 'source_moved' | 'target_moved' | 'push_rejected' | 'push_denied' | 'invalid_state'
+  /** refreshResult decides what POST /refresh answers for a Plumbix branch: 'ok' or an error code. */
+  refreshResult: 'ok' | 'already_current' | 'merge_conflict' | 'push_denied' | 'push_rejected'
   requests: string[]
   secrets: Record<string, string>
   secretUpdated: Record<string, string>
@@ -54,6 +56,7 @@ export function freshDB(): FakeDB {
     alerts: structuredClone(fx.alerts),
     signedIn: true,
     mergeResult: 'ok',
+    refreshResult: 'ok',
     requests: [],
     secrets: {},
     secretUpdated: {},
@@ -260,6 +263,17 @@ export function fakeFetch(db: FakeDB): typeof fetch {
         if (c.state === 'merged' || c.state === 'closed') return error(409, 'invalid_state', 'final')
         c.state = 'closed'
         c.updated_at = new Date().toISOString()
+        return json(200, c)
+      }
+      if (sub === 'refresh' && method === 'POST') {
+        if (c.state === 'merged' || c.state === 'closed' || c.state === 'running') return error(409, 'invalid_state', `change ${c.id} is ${c.state}`)
+        if (!c.plumbix_branch) return error(409, 'not_plumbix_branch', `${c.source_branch} was pushed by its author, who brings ${c.target_branch} in`)
+        if (db.refreshResult !== 'ok') return error(409, db.refreshResult, db.refreshResult === 'merge_conflict' ? 'merge conflict: .plumbix/pipeline.yaml' : `refused: ${db.refreshResult}`)
+        c.state = 'running'
+        c.human_approval = undefined
+        c.updated_at = new Date().toISOString()
+        const run: Run = { id: 'run_refreshed001', repo_id: c.repo_id, change_id: c.id, branch: c.source_branch, iteration: (db.runs[id]?.length ?? 0) + 1, head: '', base: '', status: 'running', steps: [], started_at: new Date().toISOString() }
+        db.runs[id] = [...(db.runs[id] ?? []), run]
         return json(200, c)
       }
       if (sub === 'validate' && method === 'POST') {

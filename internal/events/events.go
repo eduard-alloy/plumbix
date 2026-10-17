@@ -26,10 +26,13 @@ const (
 	AlertResolved   Type = "alert.resolved"
 	// ApprovedByPerson: a person approved a needs_human or escalated change.
 	ApprovedByPerson Type = "change.approved_by_person"
+	// ChangeRefreshed: Plumbix merged the target branch into a branch it
+	// created and pushed the result; a new run follows.
+	ChangeRefreshed Type = "change.refreshed"
 )
 
 // Types lists every event type.
-var Types = []Type{ChangeSubmitted, StateChanged, ChangeMerged, RunStarted, StepFinished, RunFinished, VerdictIssued, AlertRaised, AlertResolved, ApprovedByPerson}
+var Types = []Type{ChangeSubmitted, StateChanged, ChangeMerged, RunStarted, StepFinished, RunFinished, VerdictIssued, AlertRaised, AlertResolved, ApprovedByPerson, ChangeRefreshed}
 
 // Event is the envelope every event shares. The three optional ids are the
 // filter keys; Payload holds what the type needs and is one of the payload
@@ -69,6 +72,13 @@ type (
 	ApprovedByPersonPayload struct {
 		Reason string `json:"reason"`
 		Head   string `json:"head"`
+	}
+	// ChangeRefreshedPayload: the source branch moved from FromHead to Head,
+	// a merge commit that brings in the target's TargetHead.
+	ChangeRefreshedPayload struct {
+		FromHead   string `json:"from_head"`
+		Head       string `json:"head"`
+		TargetHead string `json:"target_head"`
 	}
 	// RunStartedPayload: a pipeline run began; Iteration is set for a change's run.
 	RunStartedPayload struct {
