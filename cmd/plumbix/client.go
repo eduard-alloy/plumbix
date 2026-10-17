@@ -11,11 +11,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/eduard-alloy/plumbix/internal/auth"
 	"github.com/eduard-alloy/plumbix/internal/client"
 	"github.com/eduard-alloy/plumbix/internal/config"
+	"github.com/eduard-alloy/plumbix/internal/review"
+	"github.com/eduard-alloy/plumbix/internal/reviewer"
 )
 
 // stringList is a repeatable string flag.
@@ -60,15 +63,22 @@ func (c *clientCmd) parse(args []string) ([]string, bool) {
 // connect loads config and the token and returns a client, or prints the
 // problem and returns false.
 func (c *clientCmd) connect() (*client.Client, bool) {
+	cl, _, ok := c.connectWithConfig()
+	return cl, ok
+}
+
+// connectWithConfig is connect plus the configuration it read, for commands
+// that also need the data directory.
+func (c *clientCmd) connectWithConfig() (*client.Client, config.Config, bool) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintf(c.stderr, "plumbix: find home directory: %v\n", err)
-		return nil, false
+		return nil, config.Config{}, false
 	}
 	cfg, err := config.Load(c.over, os.Getenv, home)
 	if err != nil {
 		fmt.Fprintf(c.stderr, "plumbix: %v\n", err)
-		return nil, false
+		return nil, config.Config{}, false
 	}
 	addr := c.server
 	if addr == "" {
@@ -77,9 +87,9 @@ func (c *clientCmd) connect() (*client.Client, bool) {
 	token, err := auth.ReadToken(cfg.DataDir)
 	if err != nil {
 		fmt.Fprintf(c.stderr, "plumbix: %v\n", err)
-		return nil, false
+		return nil, config.Config{}, false
 	}
-	return client.New(addr, token), true
+	return client.New(addr, token), cfg, true
 }
 
 // printAPIError prints an error response the way every command does.
@@ -369,4 +379,58 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return c.call(http.MethodGet, "/api/v1/runs/"+url.PathEscape(pos[1])+"/steps/"+url.PathEscape(pos[2])+"/log", nil)
 	}
 	return usageError(stderr, "usage: plumbix run show <run-id> | plumbix run log <run-id> <step>")
+}
+
+// runReview handles "plumbix review --watch|--once": it pulls review briefs
+// from the server and answers them with Claude Code (WU-023).
+func runReview(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	c := newClientCmd("review", stdout, stderr)
+	watch := c.fs.Bool("watch", false, "keep reviewing until interrupted")
+	once := c.fs.Bool("once", false, "answer one review, then exit")
+	repo := c.fs.String("repo", "", "only this repository's reviews")
+	who := c.fs.String("reviewer", "", "the name the server logs for this reviewer (default: user@host)")
+	tools := c.fs.String("tools", "", "read-only or full; overrides the server's setting for this reviewer")
+	model := c.fs.String("model", "", "model for claude; overrides the server's setting")
+	claudeBin := c.fs.String("claude", "claude", "the claude executable")
+	maxTurns := c.fs.Int("max-turns", reviewer.DefaultMaxTurns, "most agentic turns per review")
+	budget := c.fs.Float64("max-budget-usd", 0, "most to spend per review as Claude Code estimates it; 0 for no cap")
+	pos, ok := c.parse(args)
+	if !ok {
+		return 2
+	}
+	if len(pos) != 0 || *watch == *once {
+		return usageError(stderr, "usage: plumbix review --watch|--once [--repo <id>] [--reviewer <name>] [--tools read-only|full] [--model <m>] [--max-turns <n>] [--max-budget-usd <x>]")
+	}
+	if *tools != "" && *tools != review.ToolsReadOnly && *tools != review.ToolsFull {
+		return usageError(stderr, "plumbix review: --tools must be read-only or full")
+	}
+	cl, cfg, ok := c.connectWithConfig()
+	if !ok {
+		return 1
+	}
+	name := *who
+	if name == "" {
+		name = defaultReviewerName()
+	}
+	err := reviewer.Run(ctx, reviewer.Options{
+		Client: cl, Reviewer: name, RepoID: *repo, Once: *once, Tools: *tools, Model: *model, Claude: *claudeBin,
+		WorkDir: filepath.Join(cfg.DataDir, "review"), MaxTurns: *maxTurns, MaxBudgetUSD: *budget, Stdout: stdout, Stderr: stderr,
+	})
+	if err != nil {
+		return 1
+	}
+	return 0
+}
+
+// defaultReviewerName is user@host, enough to tell reviewers apart in a log.
+func defaultReviewerName() string {
+	user := os.Getenv("USER")
+	if user == "" {
+		user = "reviewer"
+	}
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		return user
+	}
+	return user + "@" + host
 }

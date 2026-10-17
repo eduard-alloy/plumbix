@@ -212,6 +212,8 @@ export interface SecretStatus {
 
 export interface SettingsView {
   ai_model: string
+  /** Whether external reviewers may run commands: 'read-only' or 'full'. */
+  ai_tools: 'read-only' | 'full'
   guidance: string
   secrets: SecretStatus[]
 }

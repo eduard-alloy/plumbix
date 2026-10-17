@@ -39,10 +39,13 @@ git init --bare ~/git/myapp.git           # or point at an existing bare repo
 ./bin/plumbix change merge <change-id>   # once approved: lands the validated tree on main
 ./bin/plumbix alert list                 # commits that reached main without a verdict
 ./bin/plumbix events                     # follow everything Plumbix does, one JSON event per line
+./bin/plumbix review --watch             # answer external review steps with the Claude Code on this machine
 ./bin/plumbix login                      # one-time link that signs your browser in at http://127.0.0.1:6400
 # in the browser: Settings holds the git host tokens, the AI key and model, and review guidance for validators
 # then open http://127.0.0.1:6400: changes that need you first, verdict and evidence on each, merge with one click
 ```
+
+An AI review can run outside the pipeline too: a validator step with `external: true` waits for a verdict, and `plumbix review --watch` on any machine with Claude Code installed pulls the review brief, reads the change in a checkout, and posts the verdict, using whatever Claude login that machine already has. Settings decide whether such a reviewer may also run commands.
 
 Plumbix also accepts `file://` paths and SSH remotes (`ssh://host/path` or `user@host:path`), which use your own SSH keys. Your repository needs a `.plumbix/pipeline.yaml`; see [ARCHITECTURE.md](ARCHITECTURE.md) section 4.2.
 

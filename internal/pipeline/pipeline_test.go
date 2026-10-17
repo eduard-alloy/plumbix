@@ -262,6 +262,7 @@ func TestExtendedFieldErrors(t *testing.T) {
 		{"external with run", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, run: x}\n"), "steps[1].run", 4, "external"},
 		{"external with secrets", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, secrets: [K]}\n"), "steps[1].secrets", 4, "external"},
 		{"external with env", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, env: {A: b}}\n"), "steps[1].env", 4, "external"},
+		{"external with retries", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, retries: 1}\n"), "steps[1].retries", 4, "external"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -173,6 +173,13 @@ func TestCLIFlow(t *testing.T) {
 	if code, _, errOut := c.run("", "change", "refresh", id); code != 1 || !strings.Contains(errOut, "not_plumbix_branch") {
 		t.Errorf("refresh of the test's own branch: exit %d, stderr %q", code, errOut)
 	}
+	// The reviewer loop needs a mode; with neither it explains itself.
+	if code, _, errOut := c.run("", "review"); code != 2 || !strings.Contains(errOut, "--watch|--once") {
+		t.Errorf("review without a mode: exit %d, stderr %q", code, errOut)
+	}
+	if code, _, errOut := c.run("", "review", "--once", "--tools", "everything"); code != 2 || !strings.Contains(errOut, "read-only or full") {
+		t.Errorf("review with bad tools: exit %d, stderr %q", code, errOut)
+	}
 	if closed := c.mustRun("", "change", "close", id); closed["state"] != "closed" {
 		t.Errorf("close = %v", closed)
 	}
