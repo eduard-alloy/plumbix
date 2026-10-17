@@ -192,19 +192,24 @@ function contrast(a, b) { const la = luminance(a), lb = luminance(b); return (Ma
 // --bg from tokens.css, converted the same way as the tones.
 const PAGE_BG = { light: oklchToHex([0.992, 0.002, 265]), dark: oklchToHex([0.165, 0.006, 265]) }
 
+const DEFAULTS = {}
 function defaults(state) {
+  if (DEFAULTS[state]) return JSON.parse(JSON.stringify(DEFAULTS[state]))
   const e = ENCODING[state], t = TONES_OKLCH[e.tone]
   const c = (x) => oklchToHex(x)
-  return {
+  return (DEFAULTS[state] = {
     style: e.filled ? 'filled' : 'tint', label: 'tone', glyph: e.filled ? 'filled' : 'outline', border: 100,
     gradient: 'off', angle: 135,
-    light: { fg: c(t.light.fg), bg: c(t.light.bg), fg2: c(t.light.fg), bg2: c(t.light.bg) },
-    dark: { fg: c(t.dark.fg), bg: c(t.dark.bg), fg2: c(t.dark.fg), bg2: c(t.dark.bg) },
-  }
+    light: { fg: c(t.light.fg), bg: c(t.light.bg), fg2: c(t.light.fg), bg2: c(t.light.bg), css: '' },
+    dark: { fg: c(t.dark.fg), bg: c(t.dark.bg), fg2: c(t.dark.fg), bg2: c(t.dark.bg), css: '' },
+  }) && defaults(state)
 }
 let settings = {}
 try { settings = JSON.parse(localStorage.getItem(STORE) || '{}') } catch { settings = {} }
-for (const s of STATES) if (!settings[s]) settings[s] = defaults(s)
+for (const s of STATES) {
+  if (!settings[s]) settings[s] = defaults(s)
+  for (const sc of ['light', 'dark']) if (settings[s][sc].css === undefined) settings[s][sc].css = ''
+}
 let current = 'open'
 function save() { try { localStorage.setItem(STORE, JSON.stringify(settings)) } catch {} }
 
@@ -226,24 +231,38 @@ function pill(state, mode = 'pill', label) {
 // ---- live stylesheet ----
 const live = document.createElement('style'); document.head.appendChild(live)
 const ld = (s, k) => `light-dark(${s.light[k]}, ${s.dark[k]})`
-function fillFor(s) {
-  // What the pill's background is in pill mode, given style and gradient.
-  const grad = s.gradient === 'on'
-  if (s.style === 'tint') return grad ? `linear-gradient(${s.angle}deg, ${ld(s, 'bg')}, ${ld(s, 'bg2')})` : ld(s, 'bg')
-  if (s.style === 'filled') return grad ? `linear-gradient(${s.angle}deg, ${ld(s, 'fg')}, ${ld(s, 'fg2')})` : ld(s, 'fg')
+// customFor returns the pasted CSS gradient for a theme, or '' when none applies.
+function customFor(s, scheme) { return s.gradient === 'css' ? (s[scheme].css.trim() || s.light.css.trim()) : '' }
+// gradientLayer is the two-stop or pasted gradient as a background layer, per theme.
+function gradientLayer(s, k, k2) {
+  if (s.gradient === 'css') return { light: customFor(s, 'light') || ld(s, k), dark: customFor(s, 'dark') || ld(s, k) }
+  return { light: `linear-gradient(${s.angle}deg, ${s.light[k]}, ${s.light[k2]})`, dark: `linear-gradient(${s.angle}deg, ${s.dark[k]}, ${s.dark[k2]})` }
+}
+function fillFor(s, scheme) {
+  // What the pill's background is in pill mode, given style and gradient, for one theme.
+  const grad = s.gradient !== 'off'
+  if (s.style === 'tint') return grad ? gradientLayer(s, 'bg', 'bg2')[scheme] : s[scheme].bg
+  if (s.style === 'filled') return grad ? gradientLayer(s, 'fg', 'fg2')[scheme] : s[scheme].fg
   return 'transparent'
 }
 function render() {
   let css = ''
   for (const st of STATES) {
-    const s = settings[st], grad = s.gradient === 'on'
+    const s = settings[st], grad = s.gradient !== 'off'
     css += `.pill[data-state='${st}'] { color: ${ld(s, 'fg')}; background: ${ld(s, 'bg')}; --pill-paper: ${ld(s, 'bg')}; }\n`
     const p = `.pill[data-state='${st}'][data-mode='pill']`
-    if (s.style === 'tint') css += `${p} { background: ${fillFor(s)};${s.border < 100 ? ` box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor ${100 - s.border}%, transparent);` : ''} }\n`
+    // Gradients are written per theme: light-dark() takes colours, not whole gradients.
+    const perTheme = (rule) => `.theme[data-scheme='light'] ${p} { ${rule('light')} }\n.theme[data-scheme='dark'] ${p} { ${rule('dark')} }\n`
+    if (s.style === 'tint') css += perTheme((t) => `background: ${fillFor(s, t)};${s.border < 100 ? ` box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor ${100 - s.border}%, transparent);` : ''}`)
     if (s.style === 'outline' && !grad) css += `${p} { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor ${s.border}%, transparent); }\n`
-    if (s.style === 'outline' && grad) css += `${p} { box-sizing: border-box; border: 1px solid transparent; background: linear-gradient(var(--bg), var(--bg)) padding-box, linear-gradient(${s.angle}deg, color-mix(in srgb, ${ld(s, 'fg')} ${s.border}%, var(--bg)), color-mix(in srgb, ${ld(s, 'fg2')} ${s.border}%, var(--bg))) border-box; }\n`
+    if (s.style === 'outline' && grad) {
+      const edge = (t) => s.gradient === 'css' && customFor(s, t)
+        ? customFor(s, t)
+        : `linear-gradient(${s.angle}deg, color-mix(in srgb, ${s[t].fg} ${s.border}%, var(--bg)), color-mix(in srgb, ${s[t].fg2} ${s.border}%, var(--bg)))`
+      css += perTheme((t) => `box-sizing: border-box; border: 1px solid transparent; background: linear-gradient(var(--bg), var(--bg)) padding-box, ${edge(t)} border-box;`)
+    }
     if (s.style === 'plain') css += `${p} { background: transparent; }\n`
-    if (s.style === 'filled') css += `${p} { background: ${fillFor(s)}; color: var(--bg); --pill-paper: ${ld(s, 'fg')}; }\n`
+    if (s.style === 'filled') css += perTheme((t) => `background: ${fillFor(s, t)}; color: var(--bg); --pill-paper: ${s[t].fg};`)
     if (s.label === 'ink' && s.style !== 'filled') css += `${p} > span { color: var(--text); }\n`
   }
   live.textContent = css
@@ -338,7 +357,7 @@ function renderTuner() {
   seg('style', [['tint', 'Tint'], ['outline', 'Outline'], ['filled', 'Filled'], ['plain', 'Plain']], () => s.style, (v) => { s.style = v })
   seg('label', [['tone', 'Colour'], ['ink', 'Ink']], () => s.label, (v) => { s.label = v })
   seg('glyph', [['outline', 'Ring'], ['filled', 'Disc']], () => s.glyph, (v) => { s.glyph = v })
-  seg('gradient', [['off', 'Off'], ['on', 'On']], () => s.gradient, (v) => { s.gradient = v })
+  seg('gradient', [['off', 'Off'], ['on', 'Two colours'], ['css', 'Custom CSS']], () => s.gradient, (v) => { s.gradient = v })
   const bf = document.getElementById('borderField'), b = document.getElementById('border')
   bf.style.display = s.style === 'filled' || s.style === 'plain' ? 'none' : ''
   bf.querySelector('label').textContent = s.style === 'outline' ? 'Border' : 'Edge'
@@ -362,7 +381,24 @@ function renderTuner() {
 
   // Gradient: shown only when enabled. It runs from the base colour above to the second colour here.
   const gb = document.getElementById('gradientBox'); gb.innerHTML = ''
-  if (grad) {
+  if (s.gradient === 'css') {
+    const intro = document.createElement('p'); intro.className = 'hint'; intro.style.margin = '0 0 6px'
+    intro.textContent = s.style === 'plain' ? 'The plain style has no fill or border to paint. Pick tint, outline or filled.'
+      : `Paste any CSS gradient. It paints the ${s.style === 'outline' ? 'border' : s.style === 'tint' ? 'tint' : 'fill'}. Dark falls back to light when empty.`
+    gb.appendChild(intro)
+    for (const scheme of ['light', 'dark']) {
+      const h = document.createElement('h3'); h.textContent = scheme; gb.appendChild(h)
+      const ta = document.createElement('textarea'); ta.style.height = '54px'; ta.style.marginTop = '0'; ta.spellcheck = false
+      ta.placeholder = 'linear-gradient(to right, #1FA2FF 0%, #12D8FA 51%, #1FA2FF 100%)'
+      ta.value = s[scheme].css
+      ta.oninput = () => { s[scheme].css = ta.value; render() }
+      gb.appendChild(ta)
+      const pre = document.createElement('div'); pre.className = 'sw'
+      pre.style.cssText = `margin:4px 0 2px; color-scheme:${scheme}; background: ${customFor(s, scheme) || PAGE_BG[scheme]}`
+      pre.textContent = customFor(s, scheme) ? '' : 'empty'
+      gb.appendChild(pre)
+    }
+  } else if (grad) {
     if (s.style === 'plain') {
       gb.innerHTML = '<p class="hint" style="margin:0">The plain style has no fill or border to paint. Pick tint, outline or filled.</p>'
     } else {
@@ -392,10 +428,8 @@ function renderTuner() {
 
   // Swatches summarise the current state in both themes.
   for (const sc of ['light', 'dark']) {
-    const fill = s.style === 'filled' ? (grad ? `linear-gradient(${s.angle}deg, ${s[sc].fg}, ${s[sc].fg2})` : s[sc].fg)
-      : s.style === 'tint' ? (grad ? `linear-gradient(${s.angle}deg, ${s[sc].bg}, ${s[sc].bg2})` : s[sc].bg)
-      : PAGE_BG[sc]
-    const edge = s.style === 'outline' ? `box-shadow: inset 0 0 0 1px ${s[sc].fg};` : ''
+    const fill = s.style === 'plain' || s.style === 'outline' ? PAGE_BG[sc] : fillFor(s, sc)
+    const edge = s.style === 'outline' ? `box-shadow: inset 0 0 0 1px color-mix(in srgb, ${s[sc].fg} ${s.border}%, transparent);` : ''
     document.getElementById('sw-' + sc).style.cssText = `color-scheme:${sc}; color:${s.style === 'filled' ? (sc === 'light' ? 'white' : 'black') : s[sc].fg}; background:${fill}; ${edge}`
   }
   document.getElementById('out').value = exportCSS()
@@ -407,10 +441,13 @@ function exportCSS() {
   const list = changedStates().length ? changedStates() : CHANGE_STATES
   let css = `/* Pill tuner export, ${new Date().toISOString().slice(0, 16)}. States: ${list.join(', ')} */\n`
   for (const st of list) {
-    const s = settings[st], grad = s.gradient === 'on'
+    const s = settings[st]
     const notes = [`style: ${s.style}`, `label: ${s.label}`, `glyph: ${s.glyph}`, `border: ${s.border}%`]
-    if (grad) notes.push(`gradient: ${s.angle}deg to ${s.style === 'tint' ? `tint2 ${ld(s, 'bg2')}` : `colour2 ${ld(s, 'fg2')}`}`)
+    if (s.gradient === 'on') notes.push(`gradient: ${s.angle}deg to ${s.style === 'tint' ? `tint2 ${ld(s, 'bg2')}` : `colour2 ${ld(s, 'fg2')}`}`)
     css += `.pill[data-state='${st}'] { color: ${ld(s, 'fg')}; background: ${ld(s, 'bg')}; } /* ${notes.join(', ')} */\n`
+    if (s.gradient === 'css') {
+      for (const t of ['light', 'dark']) if (customFor(s, t)) css += `  /* ${t} ${s.style === 'outline' ? 'border' : 'fill'}: */ ${customFor(s, t)}\n`
+    }
   }
   return css
 }
