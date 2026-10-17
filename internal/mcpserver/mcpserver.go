@@ -26,8 +26,10 @@ import (
 
 // Limits.
 const (
-	MaxWait        = 55 * time.Minute // a pipeline's worth of waiting for a verdict
-	DefaultWait    = 15 * time.Minute
+	MaxWait = 55 * time.Minute // a pipeline's worth of waiting for a verdict
+	// DefaultWait stays under the tool-call timeouts MCP clients apply by
+	// default; the tool says "call again" when it runs out.
+	DefaultWait    = 4 * time.Minute
 	MaxClaimWait   = 55 // seconds, the API's own cap on GET /reviews/next
 	DefaultVersion = "dev"
 )
@@ -37,13 +39,18 @@ type Options struct {
 	Client  *client.Client
 	Name    string // the agent's name in the identity; "agent" by default
 	Version string
+	// AllowApprove registers approve_change. Off by default: approval is a
+	// person's act (A23), and an agent session must not move a needs_human
+	// or escalated change on its own unless the operator said so.
+	AllowApprove bool
 }
 
 // Server is the MCP server and the identity it acts under.
 type Server struct {
-	Server   *mcp.Server
-	Identity string
-	c        *client.Client
+	Server       *mcp.Server
+	Identity     string
+	c            *client.Client
+	allowApprove bool
 }
 
 // New builds the server with every tool registered.
@@ -56,11 +63,11 @@ func New(o Options) *Server {
 	}
 	suffix := make([]byte, 3)
 	_, _ = rand.Read(suffix)
-	s := &Server{Identity: "mcp:" + o.Name + ":" + hex.EncodeToString(suffix), c: o.Client}
+	s := &Server{Identity: "mcp:" + o.Name + ":" + hex.EncodeToString(suffix), c: o.Client, allowApprove: o.AllowApprove}
 	s.Server = mcp.NewServer(&mcp.Implementation{Name: "plumbix", Version: o.Version}, &mcp.ServerOptions{
 		Instructions: "Plumbix validates agent-written changes against their intent and acceptance criteria and merges them. " +
 			"Submit a change with submit_change, follow it with wait_for_verdict, read get_runs for what the validators said, " +
-			"then approve_change (needs_human or escalated), merge_change (approved) or refresh_change (target_moved on a branch Plumbix created). " +
+			"then merge_change (approved) or refresh_change (target_moved on a branch Plumbix created); a needs_human or escalated change waits for a person unless this session was started with --allow-approve. " +
 			"As a reviewer, next_review hands you a brief whose prompt says what to judge; answer with post_verdict. " +
 			"This session acts as " + s.Identity + " and never receives its own changes to review.",
 	})
@@ -194,8 +201,10 @@ func (s *Server) register() {
 	mcp.AddTool(srv, &mcp.Tool{Name: "get_step_log", Description: "The log of one step of a run."}, simpleFor(s, http.MethodGet, func(in stepLogIn) string {
 		return "/api/v1/runs/" + url.PathEscape(in.RunID) + "/steps/" + url.PathEscape(in.Step) + "/log"
 	}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "wait_for_verdict", Description: "Wait until the change's running iteration gets its verdict, or the change reaches a final state, or the timeout passes. Returns the verdict event and the change's state."}, s.wait)
-	mcp.AddTool(srv, &mcp.Tool{Name: "approve_change", Description: "A person's approval of a needs_human or escalated change, with a reason. The change becomes approved and merges as usual."}, s.approve)
+	mcp.AddTool(srv, &mcp.Tool{Name: "wait_for_verdict", Description: "Wait until the change's running iteration gets its verdict, or the change reaches a final state, or the timeout passes (default 4 minutes, at most 55; a client's own tool timeout may be shorter, raise MCP_TOOL_TIMEOUT for long waits). When it times out, call it again to keep waiting. Returns the verdict event and the change's state."}, s.wait)
+	if s.allowApprove {
+		mcp.AddTool(srv, &mcp.Tool{Name: "approve_change", Description: "Approve a needs_human or escalated change with a reason, as the person who started this session with --allow-approve would. The change becomes approved and merges as usual."}, s.approve)
+	}
 	mcp.AddTool(srv, &mcp.Tool{Name: "merge_change", Description: "Merge an approved change; refused with target_moved or source_moved when the branches moved since the verdict."}, simpleFor(s, http.MethodPost, changePath("/merge")))
 	mcp.AddTool(srv, &mcp.Tool{Name: "refresh_change", Description: "Bring the target branch into a branch Plumbix created and validate again; the answer to target_moved on such a branch."}, simpleFor(s, http.MethodPost, changePath("/refresh")))
 	mcp.AddTool(srv, &mcp.Tool{Name: "close_change", Description: "Close a change without merging."}, simpleFor(s, http.MethodPost, changePath("/close")))
@@ -280,19 +289,12 @@ func (s *Server) postVerdict(ctx context.Context, _ *mcp.CallToolRequest, in pos
 	return nil, out, nil
 }
 
-// wait follows the change's events until the iteration that is running
-// gets its verdict, the change reaches a final state, or the timeout passes.
-func (s *Server) wait(ctx context.Context, _ *mcp.CallToolRequest, in waitIn) (*mcp.CallToolResult, any, error) {
-	timeout := DefaultWait
-	if in.TimeoutSeconds > 0 {
-		timeout = min(time.Duration(in.TimeoutSeconds)*time.Second, MaxWait)
-	}
-	runsOut, err := s.api(ctx, http.MethodGet, "/api/v1/changes/"+url.PathEscape(in.ChangeID)+"/runs", nil)
+// runningIteration returns the iteration of the change's running run, or 0.
+func (s *Server) runningIteration(ctx context.Context, changeID string) (int, error) {
+	runsOut, err := s.api(ctx, http.MethodGet, "/api/v1/changes/"+url.PathEscape(changeID)+"/runs", nil)
 	if err != nil {
-		return nil, nil, err
+		return 0, err
 	}
-	// Which iteration is running, if any; an older verdict replayed by the
-	// stream is not the answer.
 	running := 0
 	if m, ok := runsOut.(map[string]any); ok {
 		if runs, ok := m["runs"].([]any); ok {
@@ -306,12 +308,44 @@ func (s *Server) wait(ctx context.Context, _ *mcp.CallToolRequest, in waitIn) (*
 			}
 		}
 	}
+	return running, nil
+}
+
+// wait follows the change's events until the iteration that is running
+// gets its verdict, the change reaches a final state, or the timeout passes.
+func (s *Server) wait(ctx context.Context, _ *mcp.CallToolRequest, in waitIn) (*mcp.CallToolResult, any, error) {
+	timeout := DefaultWait
+	if in.TimeoutSeconds > 0 {
+		timeout = min(time.Duration(in.TimeoutSeconds)*time.Second, MaxWait)
+	}
 	state := func() any {
 		c, err := s.api(ctx, http.MethodGet, "/api/v1/changes/"+url.PathEscape(in.ChangeID), nil)
 		if err != nil {
 			return map[string]any{"error": err.Error()}
 		}
 		return c
+	}
+	// Which iteration is running, if any; an older verdict replayed by the
+	// stream is not the answer. A change that says running but shows no run
+	// yet is caught between the submission and the engine's first record,
+	// so the tool looks again for a few seconds before giving up.
+	running, err := s.runningIteration(ctx, in.ChangeID)
+	if err != nil {
+		return nil, nil, err
+	}
+	for tries := 0; running == 0 && tries < 10; tries++ {
+		c, _ := state().(map[string]any)
+		if c == nil || c["state"] != "running" {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+		if running, err = s.runningIteration(ctx, in.ChangeID); err != nil {
+			return nil, nil, err
+		}
 	}
 	if running == 0 {
 		return nil, map[string]any{"waiting": false, "change": state(), "note": "no iteration is running; see get_runs for the latest verdict"}, nil

@@ -57,7 +57,7 @@ Plumbix is also an MCP server. In Claude Code:
 claude mcp add plumbix -- plumbix mcp
 ```
 
-The session then has tools to submit a change, wait for its verdict, read what the validators found, approve, merge or refresh it, and to act as an external reviewer (`next_review`, `post_verdict`). Each session acts under its own identity, so it never reviews a change it submitted.
+The session then has tools to submit a change, wait for its verdict, read what the validators found, merge or refresh it, and to act as an external reviewer (`next_review`, `post_verdict`). Each session acts under its own identity, so it never reviews a change it submitted. Approving a `needs_human` change stays a person's act: the tool for it appears only when you start the server with `--allow-approve`, for a session you drive yourself.
 
 ## Plumbix validates itself
 

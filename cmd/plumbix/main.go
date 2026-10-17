@@ -27,7 +27,8 @@ commands:
   review --watch|--once answer external reviews with Claude Code on this machine
   review install|uninstall|status
                         keep the reviewer loop running as a login service
-  mcp [--name <agent>]  serve Plumbix's tools to an agent session over stdio (MCP)
+  mcp [--name <agent>] [--allow-approve]
+                        serve Plumbix's tools to an agent session over stdio (MCP)
   login                 print a one-time link that signs a browser in
   logout                sign every browser out
   version               print the version

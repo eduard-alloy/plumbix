@@ -85,11 +85,15 @@ func (f *fakeAPI) handler() http.Handler {
 	return mux
 }
 
-func connect(t *testing.T, api *fakeAPI, name string) (*mcp.ClientSession, string) {
+func connect(t *testing.T, api *fakeAPI, name string, opts ...func(*Options)) (*mcp.ClientSession, string) {
 	t.Helper()
 	srv := httptest.NewServer(api.handler())
 	t.Cleanup(srv.Close)
-	s := New(Options{Client: client.New(strings.TrimPrefix(srv.URL, "http://"), "t"), Name: name, Version: "test"})
+	o := Options{Client: client.New(strings.TrimPrefix(srv.URL, "http://"), "t"), Name: name, Version: "test"}
+	for _, f := range opts {
+		f(&o)
+	}
+	s := New(o)
 	ct, st := mcp.NewInMemoryTransports()
 	go func() { _ = s.Server.Run(context.Background(), st) }()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0"}, nil).Connect(context.Background(), ct, nil)
@@ -133,10 +137,17 @@ func TestToolsWrapTheAPIUnderTheSessionIdentity(t *testing.T) {
 	for _, tl := range tools.Tools {
 		have[tl.Name] = true
 	}
-	for _, want := range []string{"list_repos", "submit_change", "get_change", "list_changes", "get_runs", "get_step_log", "wait_for_verdict", "approve_change", "merge_change", "refresh_change", "close_change", "validate_change", "next_review", "post_verdict", "list_alerts", "resolve_alert"} {
+	for _, want := range []string{"list_repos", "submit_change", "get_change", "list_changes", "get_runs", "get_step_log", "wait_for_verdict", "merge_change", "refresh_change", "close_change", "validate_change", "next_review", "post_verdict", "list_alerts", "resolve_alert"} {
 		if !have[want] {
 			t.Errorf("tool %s is missing", want)
 		}
+	}
+	// Approval is a person's act: a plain session has no approve_change.
+	if have["approve_change"] {
+		t.Error("approve_change is offered without --allow-approve")
+	}
+	if _, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "approve_change", Arguments: map[string]any{"change_id": "c_1", "reason": "fine"}}); err == nil || !strings.Contains(err.Error(), "unknown tool") {
+		t.Errorf("approve_change without --allow-approve: %v", err)
 	}
 	// A submission carries the session identity, whatever the agent says.
 	res := call(t, cs, "submit_change", map[string]any{"repo_id": "r_1", "source_branch": "feat", "title": "t", "intent": "i",
@@ -152,8 +163,9 @@ func TestToolsWrapTheAPIUnderTheSessionIdentity(t *testing.T) {
 	if !strings.Contains(text(res), `"c_1"`) {
 		t.Errorf("submit result = %s", text(res))
 	}
-	// A refusal is a tool error carrying the API's code.
-	res = call(t, cs, "approve_change", map[string]any{"change_id": "c_1", "reason": "fine"})
+	// With --allow-approve the tool exists, and a refusal is a tool error carrying the API's code.
+	approver, _ := connect(t, api, "eduard", func(o *Options) { o.AllowApprove = true })
+	res = call(t, approver, "approve_change", map[string]any{"change_id": "c_1", "reason": "fine"})
 	if !res.IsError || !strings.Contains(text(res), "invalid_state") {
 		t.Errorf("approve refusal = %v %s", res.IsError, text(res))
 	}
@@ -187,6 +199,21 @@ func TestWaitForVerdictFollowsTheRunningIteration(t *testing.T) {
 	res := call(t, cs, "wait_for_verdict", map[string]any{"change_id": "c_1", "timeout_seconds": 10})
 	if res.IsError || !strings.Contains(text(res), `"outcome":"approved"`) || !strings.Contains(text(res), `"iteration":2`) {
 		t.Errorf("wait = %v %s", res.IsError, text(res))
+	}
+	// A final state or an errored run ends the wait too.
+	api.mu.Lock()
+	api.events = []string{"id: 3\nevent: change.state_changed\ndata: {\"id\":3,\"type\":\"change.state_changed\",\"time\":\"2026-10-18T00:03:00Z\",\"repo_id\":\"r_1\",\"change_id\":\"c_1\",\"payload\":{\"from\":\"running\",\"to\":\"closed\"}}\n\n"}
+	api.mu.Unlock()
+	res = call(t, cs, "wait_for_verdict", map[string]any{"change_id": "c_1", "timeout_seconds": 10})
+	if res.IsError || !strings.Contains(text(res), `"reached":"closed"`) {
+		t.Errorf("closed = %v %s", res.IsError, text(res))
+	}
+	api.mu.Lock()
+	api.events = []string{"id: 4\nevent: run.finished\ndata: {\"id\":4,\"type\":\"run.finished\",\"time\":\"2026-10-18T00:03:00Z\",\"repo_id\":\"r_1\",\"change_id\":\"c_1\",\"run_id\":\"run_2\",\"payload\":{\"iteration\":2,\"status\":\"errored\",\"error\":\"no pipeline\"}}\n\n"}
+	api.mu.Unlock()
+	res = call(t, cs, "wait_for_verdict", map[string]any{"change_id": "c_1", "timeout_seconds": 10})
+	if res.IsError || !strings.Contains(text(res), `"reached":"errored"`) {
+		t.Errorf("errored = %v %s", res.IsError, text(res))
 	}
 	// Nothing arrives in time: the tool says so instead of hanging.
 	api.mu.Lock()
