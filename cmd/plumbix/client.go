@@ -20,6 +20,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/auth"
 	"github.com/eduard-alloy/plumbix/internal/client"
 	"github.com/eduard-alloy/plumbix/internal/config"
+	"github.com/eduard-alloy/plumbix/internal/mcpserver"
 	"github.com/eduard-alloy/plumbix/internal/review"
 	"github.com/eduard-alloy/plumbix/internal/reviewer"
 )
@@ -548,4 +549,31 @@ func runReviewService(verb string, c *clientCmd, loopArgs []string, stdout, stde
 func runCommand(name string, args ...string) (string, error) {
 	out, err := exec.Command(name, args...).CombinedOutput()
 	return string(out), err
+}
+
+// runMCP handles "plumbix mcp": an MCP server over stdio for agent sessions
+// (WU-024). It speaks to the Plumbix API like every client command; stdout
+// is the protocol, so nothing else is printed there.
+func runMCP(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	c := newClientCmd("mcp", stdout, stderr)
+	name := c.fs.String("name", "agent", "the agent's name in this session's identity (mcp:<name>:<id>)")
+	allowApprove := c.fs.Bool("allow-approve", false, "offer approve_change: only for a session a person drives, since approval is a person's act")
+	pos, ok := c.parse(args)
+	if !ok {
+		return 2
+	}
+	if len(pos) != 0 {
+		return usageError(stderr, "usage: plumbix mcp [--name <agent>] [--allow-approve]; add it to Claude Code with: claude mcp add plumbix -- plumbix mcp")
+	}
+	cl, ok := c.connect()
+	if !ok {
+		return 1
+	}
+	s := mcpserver.New(mcpserver.Options{Client: cl, Name: *name, Version: version, AllowApprove: *allowApprove})
+	fmt.Fprintf(stderr, "plumbix mcp: serving as %s\n", s.Identity)
+	if err := s.Run(ctx); err != nil && ctx.Err() == nil {
+		fmt.Fprintf(stderr, "plumbix mcp: %v\n", err)
+		return 1
+	}
+	return 0
 }

@@ -1,0 +1,9 @@
+{
+  "plumbix": "verdict/v1",
+  "outcome": "approve",
+  "summary": "Reviewed by an external agent: the change does what its intent says.",
+  "criteria": [
+    {"id": "AC-1", "status": "met", "reason": "tests pass", "evidence": ["test/log.txt"]}
+  ],
+  "usage": {"model": "claude-opus-5-5", "input_tokens": 1200, "output_tokens": 300, "turns": 13, "cost_usd": 3.06}
+}
