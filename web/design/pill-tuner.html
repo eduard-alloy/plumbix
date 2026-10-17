@@ -123,7 +123,7 @@ textarea { width: 100%; box-sizing: border-box; height: 170px; margin-top: 8px; 
 </aside>
 
 <script>
-// ---- the app's encoding table and glyphs, copied from web/src/ui/StatePill.tsx (main, 2026-10-17) ----
+// ---- the app's encoding table and glyphs, copied from web/src/ui/StatePill.tsx and web/src/tokens.css at commit 4930708 ----
 const PATHS = {
   check: 'M5.4 8.3l1.8 1.8 3.4-3.8', x: 'M6 6l4 4M10 6l-4 4', bang: 'M8 4.9v3.5M8 11v.01', up: 'M8 11V5.4M5.8 7.5 8 5.3l2.2 2.2',
   ret: 'M10.6 10.8V9.4a2 2 0 0 0-2-2H5.6M7.3 5.6 5.5 7.4l1.8 1.8', slash: 'M5.5 10.5l5-5', clock: 'M8 5v3.2l2 1.3', dash: 'M5.4 8h5.2',
@@ -166,7 +166,6 @@ const TONES_OKLCH = {
   teal:    { light: { fg: [0.47, 0.10, 190],  bg: [0.95, 0.03, 190] },   dark: { fg: [0.78, 0.11, 190],  bg: [0.265, 0.045, 190] } },
   plum:    { light: { fg: [0.49, 0.12, 350],  bg: [0.95, 0.025, 350] },  dark: { fg: [0.77, 0.11, 350],  bg: [0.27, 0.045, 350] } },
 }
-const PAGE_BG = { light: '#fdfdfe', dark: '#1c1c20' }
 const STORE = 'plumbix-pill-tuner-v2'
 const STATES = Object.keys(ENCODING)
 const CHANGE_STATES = ['open', 'running', 'approved', 'fix_requested', 'rejected', 'needs_human', 'escalated', 'merged', 'closed']
@@ -190,6 +189,8 @@ function luminance(h) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 function contrast(a, b) { const la = luminance(a), lb = luminance(b); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05) }
+// --bg from tokens.css, converted the same way as the tones.
+const PAGE_BG = { light: oklchToHex([0.992, 0.002, 265]), dark: oklchToHex([0.165, 0.006, 265]) }
 
 function defaults(state) {
   const e = ENCODING[state], t = TONES_OKLCH[e.tone]
@@ -379,7 +380,9 @@ function renderTuner() {
         const h = document.createElement('h3'); h.textContent = scheme + ' · second colour'; gb.appendChild(h)
         colourField(gb, s, scheme, key, s.style === 'tint' ? 'Tint 2' : s.style === 'filled' ? 'Fill 2' : 'Colour 2')
         const pre = document.createElement('div'); pre.className = 'sw'
-        pre.style.cssText = `margin:4px 0 2px; color-scheme:${scheme}; background: linear-gradient(${s.angle}deg, ${s[scheme][s.style === 'tint' ? 'bg' : 'fg']}, ${s[scheme][key]})`
+        // The outline border mixes each colour with the page at the border strength, so preview the same mix.
+        const stop = (k) => s.style === 'outline' ? `color-mix(in srgb, ${s[scheme][k]} ${s.border}%, ${PAGE_BG[scheme]})` : s[scheme][k]
+        pre.style.cssText = `margin:4px 0 2px; color-scheme:${scheme}; background: linear-gradient(${s.angle}deg, ${stop(s.style === 'tint' ? 'bg' : 'fg')}, ${stop(key)})`
         gb.appendChild(pre)
       }
     }
