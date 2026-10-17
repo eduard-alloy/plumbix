@@ -51,7 +51,7 @@ Plumbix also accepts `file://` paths and SSH remotes (`ssh://host/path` or `user
 
 ## Plumbix validates itself
 
-Every change to this repository goes through Plumbix. `.plumbix/pipeline.yaml` builds, tests and lints the Go code and the web interface in parallel containers, then the reference validator and the AI validator judge the change against its intent. Nothing lands on `main` without a verdict; a commit that gets there any other way raises an alert.
+Every change to this repository goes through Plumbix. `.plumbix/pipeline.yaml` builds, tests and lints the Go code and the web interface in parallel containers, then the reference validator judges the change against its intent, and an external `ai-review` step waits for a verdict from `plumbix review --watch` running on the maintainer's machine with Claude Code. Nothing lands on `main` without a verdict; a commit that gets there any other way raises an alert.
 
 To contribute a change: push a branch, then submit it with its intent and acceptance criteria.
 
