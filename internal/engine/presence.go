@@ -29,14 +29,19 @@ type presence struct {
 	seen map[string]Reviewer
 }
 
-// note records a poll and reports whether the reviewer is new or its filter changed.
-func (p *presence) note(name, repoID string, at time.Time) {
+// note records a poll and reports whether the reviewer counted as present
+// before it: false when it is new, or had not polled within the window, or
+// now covers a repository it did not cover before.
+func (p *presence) note(name, repoID string, at time.Time) (wasPresent bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.seen == nil {
 		p.seen = map[string]Reviewer{}
 	}
+	prev, ok := p.seen[name]
+	wasPresent = ok && at.Sub(prev.LastSeen) <= presenceWindow && (prev.RepoID == repoID || prev.RepoID == "")
 	p.seen[name] = Reviewer{Name: name, RepoID: repoID, LastSeen: at}
+	return wasPresent
 }
 
 // list returns reviewers, most recently seen first.
@@ -72,11 +77,14 @@ func (p *presence) available(repoID string, now time.Time) bool {
 // Reviewers lists the external reviewers heard from since the server started.
 func (e *Engine) Reviewers() []Reviewer { return e.presence.list() }
 
-// noteReviewer records a poll and resolves the no_reviewer alerts the
-// poll's filter covers.
+// noteReviewer records a poll and, when the reviewer was not present a
+// moment ago, resolves the no_reviewer alerts its filter covers. A reviewer
+// polling every second does not query the alerts every second.
 func (e *Engine) noteReviewer(ctx context.Context, name, repoID string) {
 	now := e.now().UTC()
-	e.presence.note(name, repoID, now)
+	if e.presence.note(name, repoID, now) {
+		return
+	}
 	open, err := e.store.List(ctx, false)
 	if err != nil {
 		e.log.Warn("list alerts after a reviewer poll", "err", err)

@@ -105,3 +105,19 @@ func TestInstallWritesASystemdUserUnitOnLinux(t *testing.T) {
 		t.Error("an unsupported platform was accepted")
 	}
 }
+
+func TestSystemdWordsAreQuotedTheSystemdWay(t *testing.T) {
+	cases := map[string]string{"plain": "plain", "--repo": "--repo", "": `""`, "with space": `"with space"`, `say "hi"`: `"say \"hi\""`, `back\slash`: `"back\\slash"`, "a;b": `"a;b"`}
+	for in, want := range cases {
+		if got := systemdWord(in); got != want {
+			t.Errorf("systemdWord(%q) = %s, want %s", in, got, want)
+		}
+	}
+	o := InstallOptions{Home: "/home/me", GOOS: "linux", Exec: "/opt/my tools/plumbix", Args: []string{"--reviewer", "a b"}, LogPath: "/home/me/.plumbix/review.log", Path: "/usr/bin:/opt/my tools"}
+	u := unit(o)
+	for _, want := range []string{`ExecStart="/opt/my tools/plumbix" review --watch --reviewer "a b"`, `Environment="PATH=/usr/bin:/opt/my tools"`} {
+		if !strings.Contains(u, want) {
+			t.Errorf("unit lacks %q:\n%s", want, u)
+		}
+	}
+}

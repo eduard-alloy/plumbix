@@ -6,7 +6,6 @@ import (
 	"html"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -161,20 +160,26 @@ func plist(o InstallOptions) string {
 	return b.String()
 }
 
-// unit is the systemd user service.
+// unit is the systemd user service. Words are quoted the way systemd
+// reads them: double quotes, with backslash and double quote escaped;
+// plain words stay bare.
 func unit(o InstallOptions) string {
 	var parts []string
 	for _, a := range command(o) {
-		parts = append(parts, strconv.Quote(a))
-	}
-	for i, p := range parts { // systemd quoting: plain words need no quotes
-		if !strings.ContainsAny(p[1:len(p)-1], " \t\"'\\$") {
-			parts[i] = p[1 : len(p)-1]
-		}
+		parts = append(parts, systemdWord(a))
 	}
 	return "[Unit]\nDescription=Plumbix external reviewer (plumbix review --watch)\nAfter=network-online.target\n\n" +
 		"[Service]\nExecStart=" + strings.Join(parts, " ") + "\nRestart=always\nRestartSec=5\n" +
-		"Environment=PATH=" + o.Path + "\nWorkingDirectory=" + o.Home + "\n" +
+		"Environment=" + systemdWord("PATH="+o.Path) + "\nWorkingDirectory=" + o.Home + "\n" +
 		"StandardOutput=append:" + o.LogPath + "\nStandardError=append:" + o.LogPath + "\n\n" +
 		"[Install]\nWantedBy=default.target\n"
+}
+
+// systemdWord quotes a word for a unit file when it needs it.
+func systemdWord(w string) string {
+	if w != "" && !strings.ContainsAny(w, " \t\"'\\$;#") {
+		return w
+	}
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+	return `"` + r.Replace(w) + `"`
 }

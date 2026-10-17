@@ -129,14 +129,7 @@ func TestReviewersListsWhoPolled(t *testing.T) {
 	a.do(http.MethodGet, "/api/v1/reviews/next?reviewer=otto&repo_id="+a.repoID+"&wait=0", "")
 	rec := a.do(http.MethodGet, "/api/v1/reviewers", "")
 	o.check("ReviewerList", rec)
-	var got struct {
-		Reviewers []struct {
-			Name     string `json:"name"`
-			RepoID   string `json:"repo_id"`
-			LastSeen string `json:"last_seen"`
-		} `json:"reviewers"`
-	}
-	got = decode[struct {
+	got := decode[struct {
 		Reviewers []struct {
 			Name     string `json:"name"`
 			RepoID   string `json:"repo_id"`
