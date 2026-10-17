@@ -1,10 +1,20 @@
 // StatePill is the one badge shape for every state in the interface: a
 // 14px icon (circle plus one glyph) and a label, in four modes. Colour
 // never stands alone: there is always an icon and a label, visible or for
-// screen readers only. The table mirrors web/design/README.md.
+// screen readers only. The table mirrors web/design/README.md; the colours
+// come from the status palette in tokens.css (web/design/status-palette.md).
+import type { CSSProperties } from 'react'
 import './pill.css'
 
-export type Tone = 'neutral' | 'blue' | 'green' | 'amber' | 'red' | 'violet' | 'ink' | 'teal' | 'plum'
+/** Palette is a status in web/design/status-palette.css; each has base, fg, bg and border tokens. */
+export type Palette =
+  | 'open' | 'running' | 'queued' | 'pending'
+  | 'approved' | 'succeeded' | 'met' | 'finished' | 'merged'
+  | 'needs-human' | 'escalated' | 'errored'
+  | 'fix-requested' | 'major'
+  | 'rejected' | 'failed' | 'unmet' | 'timed-out' | 'blocker'
+  | 'closed' | 'cancelled' | 'skipped'
+  | 'unknown' | 'minor'
 
 export type PillStatus =
   | 'open' | 'running' | 'approved' | 'fix_requested' | 'rejected' | 'needs_human' | 'escalated' | 'merged' | 'closed'
@@ -18,7 +28,7 @@ type Glyph = 'check' | 'x' | 'bang' | 'up' | 'ret' | 'slash' | 'clock' | 'dash' 
 
 interface Encoding {
   label: string
-  tone: Tone
+  palette: Palette
   glyph: Glyph
   filled?: boolean
   dashed?: boolean
@@ -38,34 +48,34 @@ const PATHS: Record<Exclude<Glyph, 'half' | 'none'>, string> = {
 }
 
 export const ENCODING: Record<PillStatus, Encoding> = {
-  open: { label: 'Open', tone: 'blue', glyph: 'none' },
-  running: { label: 'Running', tone: 'blue', glyph: 'half' },
-  approved: { label: 'Approved', tone: 'green', glyph: 'check' },
-  fix_requested: { label: 'Fix requested', tone: 'amber', glyph: 'ret' },
-  rejected: { label: 'Rejected', tone: 'red', glyph: 'x' },
-  needs_human: { label: 'Needs human', tone: 'violet', glyph: 'bang' },
-  escalated: { label: 'Escalated', tone: 'violet', glyph: 'up' },
-  merged: { label: 'Merged', tone: 'teal', glyph: 'check', filled: true },
-  closed: { label: 'Closed', tone: 'plum', glyph: 'slash' },
-  finished: { label: 'Finished', tone: 'neutral', glyph: 'check' },
-  errored: { label: 'Errored', tone: 'violet', glyph: 'bang' },
-  cancelled: { label: 'Cancelled', tone: 'neutral', glyph: 'slash' },
-  succeeded: { label: 'Succeeded', tone: 'green', glyph: 'check' },
-  failed: { label: 'Failed', tone: 'red', glyph: 'x' },
-  timed_out: { label: 'Timed out', tone: 'red', glyph: 'clock' },
-  skipped: { label: 'Skipped', tone: 'neutral', glyph: 'dash' },
-  queued: { label: 'Queued', tone: 'neutral', glyph: 'none', dashed: true },
-  met: { label: 'Met', tone: 'green', glyph: 'check' },
-  unmet: { label: 'Unmet', tone: 'red', glyph: 'x' },
-  unknown: { label: 'Unknown', tone: 'neutral', glyph: 'q' },
-  pending: { label: 'Pending', tone: 'neutral', glyph: 'none', dashed: true },
-  blocker: { label: 'Blocker', tone: 'red', glyph: 'bang', filled: true },
-  major: { label: 'Major', tone: 'amber', glyph: 'bang' },
-  minor: { label: 'Minor', tone: 'neutral', glyph: 'info' },
-  human_required: { label: 'Human required', tone: 'violet', glyph: 'bang' },
-  alert: { label: 'Open', tone: 'violet', glyph: 'bang' },
-  resolved: { label: 'Resolved', tone: 'neutral', glyph: 'check' },
-  info: { label: 'Next step', tone: 'neutral', glyph: 'info' },
+  open: { label: 'Open', palette: 'open', glyph: 'none' },
+  running: { label: 'Running', palette: 'running', glyph: 'half' },
+  approved: { label: 'Approved', palette: 'approved', glyph: 'check' },
+  fix_requested: { label: 'Fix requested', palette: 'fix-requested', glyph: 'ret' },
+  rejected: { label: 'Rejected', palette: 'rejected', glyph: 'x' },
+  needs_human: { label: 'Needs human', palette: 'needs-human', glyph: 'bang' },
+  escalated: { label: 'Escalated', palette: 'escalated', glyph: 'up' },
+  merged: { label: 'Merged', palette: 'merged', glyph: 'check', filled: true },
+  closed: { label: 'Closed', palette: 'closed', glyph: 'slash' },
+  finished: { label: 'Finished', palette: 'finished', glyph: 'check' },
+  errored: { label: 'Errored', palette: 'errored', glyph: 'bang' },
+  cancelled: { label: 'Cancelled', palette: 'cancelled', glyph: 'slash' },
+  succeeded: { label: 'Succeeded', palette: 'succeeded', glyph: 'check' },
+  failed: { label: 'Failed', palette: 'failed', glyph: 'x' },
+  timed_out: { label: 'Timed out', palette: 'timed-out', glyph: 'clock' },
+  skipped: { label: 'Skipped', palette: 'skipped', glyph: 'dash' },
+  queued: { label: 'Queued', palette: 'queued', glyph: 'none', dashed: true },
+  met: { label: 'Met', palette: 'met', glyph: 'check' },
+  unmet: { label: 'Unmet', palette: 'unmet', glyph: 'x' },
+  unknown: { label: 'Unknown', palette: 'unknown', glyph: 'q' },
+  pending: { label: 'Pending', palette: 'pending', glyph: 'none', dashed: true },
+  blocker: { label: 'Blocker', palette: 'blocker', glyph: 'bang', filled: true },
+  major: { label: 'Major', palette: 'major', glyph: 'bang' },
+  minor: { label: 'Minor', palette: 'minor', glyph: 'info' },
+  human_required: { label: 'Human required', palette: 'needs-human', glyph: 'bang' },
+  alert: { label: 'Open', palette: 'needs-human', glyph: 'bang' },
+  resolved: { label: 'Resolved', palette: 'closed', glyph: 'check' },
+  info: { label: 'Next step', palette: 'minor', glyph: 'info' },
 }
 
 export type PillMode = 'pill' | 'icon' | 'plain' | 'text'
@@ -74,8 +84,13 @@ export function StatePill({ status, mode = 'pill', label }: { status: PillStatus
   const e = ENCODING[status] ?? ENCODING.open
   const text = label ?? e.label
   const half = e.glyph === 'half'
+  const style = {
+    '--pill-fg': `var(--status-${e.palette}-fg)`,
+    '--pill-bg': `var(--status-${e.palette}-bg)`,
+    '--pill-border': `var(--status-${e.palette}-border)`,
+  } as CSSProperties
   return (
-    <span className="pill" data-tone={e.tone} data-mode={mode} title={text}>
+    <span className="pill" data-status={e.palette} data-mode={mode} title={text} style={style}>
       {mode !== 'text' && (
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <circle cx="8" cy="8" r="5.75" stroke="currentColor" strokeWidth="1.5" fill={e.filled ? 'currentColor' : 'none'} strokeDasharray={e.dashed ? '2.1 2.1' : undefined} />

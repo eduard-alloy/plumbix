@@ -18,16 +18,119 @@
   --accent:    light-dark(oklch(0.5 0.18 275),  oklch(0.75 0.13 275));
   --accent-bg: light-dark(oklch(0.95 0.03 275), oklch(0.28 0.06 275));
 
-  /* State colours: fg used for icon + label, bg is the pill tint. fg on bg >= 4.5:1 */
+  /* Tone colours for text accents (diff signs, errors, live dot). Pills use the status palette below. */
   --s-neutral: light-dark(oklch(0.46 0.012 265), oklch(0.74 0.008 265)); --s-neutral-bg: light-dark(oklch(0.945 0.004 265), oklch(0.245 0.008 265));
   --s-blue:    light-dark(oklch(0.49 0.12 230),  oklch(0.78 0.11 230));  --s-blue-bg:    light-dark(oklch(0.95 0.03 230),   oklch(0.27 0.045 230));
   --s-green:   light-dark(oklch(0.48 0.12 152),  oklch(0.79 0.13 152));  --s-green-bg:   light-dark(oklch(0.95 0.035 152),  oklch(0.265 0.045 152));
   --s-amber:   light-dark(oklch(0.5 0.11 70),    oklch(0.81 0.12 75));   --s-amber-bg:   light-dark(oklch(0.955 0.04 80),   oklch(0.27 0.045 70));
   --s-red:     light-dark(oklch(0.5 0.17 25),    oklch(0.75 0.14 25));   --s-red-bg:     light-dark(oklch(0.95 0.025 25),   oklch(0.27 0.05 25));
   --s-violet:  light-dark(oklch(0.5 0.17 320),   oklch(0.77 0.13 320));  --s-violet-bg:  light-dark(oklch(0.95 0.03 320),   oklch(0.27 0.05 320));
-  /* Added after the handoff so open, merged and closed carry a colour of their own. */
-  --s-teal:    light-dark(oklch(0.47 0.10 190),  oklch(0.78 0.11 190));  --s-teal-bg:    light-dark(oklch(0.95 0.03 190),   oklch(0.265 0.045 190));
-  --s-plum:    light-dark(oklch(0.49 0.12 350),  oklch(0.77 0.11 350));  --s-plum-bg:    light-dark(oklch(0.95 0.025 350),  oklch(0.27 0.045 350));
+
+  /* Status palette (web/design/status-palette.md): one base per status, with fg (icon + label),
+     bg (pill tint) and border derived per theme. merged and blocker carry the strong fill. */
+  /* Active */
+  --status-open: #3B82F6;
+  --status-open-fg: light-dark(color-mix(in oklch, #3B82F6 58%, black), color-mix(in oklch, #3B82F6 72%, white));
+  --status-open-bg: light-dark(color-mix(in oklch, #3B82F6 10%, var(--bg)), color-mix(in oklch, #3B82F6 16%, var(--bg)));
+  --status-open-border: light-dark(color-mix(in oklch, #3B82F6 75%, white), #3B82F6);
+  --status-running: #6366F1;
+  --status-running-fg: light-dark(color-mix(in oklch, #6366F1 58%, black), color-mix(in oklch, #6366F1 72%, white));
+  --status-running-bg: light-dark(color-mix(in oklch, #6366F1 10%, var(--bg)), color-mix(in oklch, #6366F1 16%, var(--bg)));
+  --status-running-border: light-dark(color-mix(in oklch, #6366F1 75%, white), #6366F1);
+  --status-queued: #64748B;
+  --status-queued-fg: light-dark(color-mix(in oklch, #64748B 58%, black), color-mix(in oklch, #64748B 72%, white));
+  --status-queued-bg: light-dark(color-mix(in oklch, #64748B 10%, var(--bg)), color-mix(in oklch, #64748B 16%, var(--bg)));
+  --status-queued-border: light-dark(color-mix(in oklch, #64748B 75%, white), #64748B);
+  --status-pending: #94A3B8;
+  --status-pending-fg: light-dark(color-mix(in oklch, #94A3B8 58%, black), color-mix(in oklch, #94A3B8 72%, white));
+  --status-pending-bg: light-dark(color-mix(in oklch, #94A3B8 10%, var(--bg)), color-mix(in oklch, #94A3B8 16%, var(--bg)));
+  --status-pending-border: light-dark(color-mix(in oklch, #94A3B8 75%, white), #94A3B8);
+  /* Success */
+  --status-approved: #22C55E;
+  --status-approved-fg: light-dark(color-mix(in oklch, #22C55E 58%, black), color-mix(in oklch, #22C55E 72%, white));
+  --status-approved-bg: light-dark(color-mix(in oklch, #22C55E 10%, var(--bg)), color-mix(in oklch, #22C55E 16%, var(--bg)));
+  --status-approved-border: light-dark(color-mix(in oklch, #22C55E 75%, white), #22C55E);
+  --status-succeeded: #22C55E;
+  --status-succeeded-fg: light-dark(color-mix(in oklch, #22C55E 58%, black), color-mix(in oklch, #22C55E 72%, white));
+  --status-succeeded-bg: light-dark(color-mix(in oklch, #22C55E 10%, var(--bg)), color-mix(in oklch, #22C55E 16%, var(--bg)));
+  --status-succeeded-border: light-dark(color-mix(in oklch, #22C55E 75%, white), #22C55E);
+  --status-met: #22C55E;
+  --status-met-fg: light-dark(color-mix(in oklch, #22C55E 58%, black), color-mix(in oklch, #22C55E 72%, white));
+  --status-met-bg: light-dark(color-mix(in oklch, #22C55E 10%, var(--bg)), color-mix(in oklch, #22C55E 16%, var(--bg)));
+  --status-met-border: light-dark(color-mix(in oklch, #22C55E 75%, white), #22C55E);
+  --status-finished: #4ADE80;
+  --status-finished-fg: light-dark(color-mix(in oklch, #4ADE80 58%, black), color-mix(in oklch, #4ADE80 72%, white));
+  --status-finished-bg: light-dark(color-mix(in oklch, #4ADE80 10%, var(--bg)), color-mix(in oklch, #4ADE80 16%, var(--bg)));
+  --status-finished-border: light-dark(color-mix(in oklch, #4ADE80 75%, white), #4ADE80);
+  --status-merged: #84CC16;
+  --status-merged-fg: light-dark(color-mix(in oklch, #84CC16 45%, black), color-mix(in oklch, #84CC16 25%, white));
+  --status-merged-bg: light-dark(color-mix(in oklch, #84CC16 30%, var(--bg)), color-mix(in oklch, #84CC16 42%, var(--bg)));
+  --status-merged-border: #84CC16;
+  /* Attention */
+  --status-needs-human: #F59E0B;
+  --status-needs-human-fg: light-dark(color-mix(in oklch, #F59E0B 58%, black), color-mix(in oklch, #F59E0B 72%, white));
+  --status-needs-human-bg: light-dark(color-mix(in oklch, #F59E0B 10%, var(--bg)), color-mix(in oklch, #F59E0B 16%, var(--bg)));
+  --status-needs-human-border: light-dark(color-mix(in oklch, #F59E0B 75%, white), #F59E0B);
+  --status-escalated: #F97316;
+  --status-escalated-fg: light-dark(color-mix(in oklch, #F97316 58%, black), color-mix(in oklch, #F97316 72%, white));
+  --status-escalated-bg: light-dark(color-mix(in oklch, #F97316 10%, var(--bg)), color-mix(in oklch, #F97316 16%, var(--bg)));
+  --status-escalated-border: light-dark(color-mix(in oklch, #F97316 75%, white), #F97316);
+  --status-errored: #EF4444;
+  --status-errored-fg: light-dark(color-mix(in oklch, #EF4444 58%, black), color-mix(in oklch, #EF4444 72%, white));
+  --status-errored-bg: light-dark(color-mix(in oklch, #EF4444 10%, var(--bg)), color-mix(in oklch, #EF4444 16%, var(--bg)));
+  --status-errored-border: light-dark(color-mix(in oklch, #EF4444 75%, white), #EF4444);
+  /* Caution */
+  --status-fix-requested: #EAB308;
+  --status-fix-requested-fg: light-dark(color-mix(in oklch, #EAB308 58%, black), color-mix(in oklch, #EAB308 72%, white));
+  --status-fix-requested-bg: light-dark(color-mix(in oklch, #EAB308 10%, var(--bg)), color-mix(in oklch, #EAB308 16%, var(--bg)));
+  --status-fix-requested-border: light-dark(color-mix(in oklch, #EAB308 75%, white), #EAB308);
+  --status-major: #FACC15;
+  --status-major-fg: light-dark(color-mix(in oklch, #FACC15 58%, black), color-mix(in oklch, #FACC15 72%, white));
+  --status-major-bg: light-dark(color-mix(in oklch, #FACC15 10%, var(--bg)), color-mix(in oklch, #FACC15 16%, var(--bg)));
+  --status-major-border: light-dark(color-mix(in oklch, #FACC15 75%, white), #FACC15);
+  /* Failure */
+  --status-rejected: #EF4444;
+  --status-rejected-fg: light-dark(color-mix(in oklch, #EF4444 58%, black), color-mix(in oklch, #EF4444 72%, white));
+  --status-rejected-bg: light-dark(color-mix(in oklch, #EF4444 10%, var(--bg)), color-mix(in oklch, #EF4444 16%, var(--bg)));
+  --status-rejected-border: light-dark(color-mix(in oklch, #EF4444 75%, white), #EF4444);
+  --status-failed: #EF4444;
+  --status-failed-fg: light-dark(color-mix(in oklch, #EF4444 58%, black), color-mix(in oklch, #EF4444 72%, white));
+  --status-failed-bg: light-dark(color-mix(in oklch, #EF4444 10%, var(--bg)), color-mix(in oklch, #EF4444 16%, var(--bg)));
+  --status-failed-border: light-dark(color-mix(in oklch, #EF4444 75%, white), #EF4444);
+  --status-unmet: #EF4444;
+  --status-unmet-fg: light-dark(color-mix(in oklch, #EF4444 58%, black), color-mix(in oklch, #EF4444 72%, white));
+  --status-unmet-bg: light-dark(color-mix(in oklch, #EF4444 10%, var(--bg)), color-mix(in oklch, #EF4444 16%, var(--bg)));
+  --status-unmet-border: light-dark(color-mix(in oklch, #EF4444 75%, white), #EF4444);
+  --status-timed-out: #F97316;
+  --status-timed-out-fg: light-dark(color-mix(in oklch, #F97316 58%, black), color-mix(in oklch, #F97316 72%, white));
+  --status-timed-out-bg: light-dark(color-mix(in oklch, #F97316 10%, var(--bg)), color-mix(in oklch, #F97316 16%, var(--bg)));
+  --status-timed-out-border: light-dark(color-mix(in oklch, #F97316 75%, white), #F97316);
+  --status-blocker: #DC2626;
+  --status-blocker-fg: light-dark(color-mix(in oklch, #DC2626 45%, black), color-mix(in oklch, #DC2626 25%, white));
+  --status-blocker-bg: light-dark(color-mix(in oklch, #DC2626 30%, var(--bg)), color-mix(in oklch, #DC2626 42%, var(--bg)));
+  --status-blocker-border: #DC2626;
+  /* Stopped */
+  --status-closed: #64748B;
+  --status-closed-fg: light-dark(color-mix(in oklch, #64748B 58%, black), color-mix(in oklch, #64748B 72%, white));
+  --status-closed-bg: light-dark(color-mix(in oklch, #64748B 10%, var(--bg)), color-mix(in oklch, #64748B 16%, var(--bg)));
+  --status-closed-border: light-dark(color-mix(in oklch, #64748B 75%, white), #64748B);
+  --status-cancelled: #94A3B8;
+  --status-cancelled-fg: light-dark(color-mix(in oklch, #94A3B8 58%, black), color-mix(in oklch, #94A3B8 72%, white));
+  --status-cancelled-bg: light-dark(color-mix(in oklch, #94A3B8 10%, var(--bg)), color-mix(in oklch, #94A3B8 16%, var(--bg)));
+  --status-cancelled-border: light-dark(color-mix(in oklch, #94A3B8 75%, white), #94A3B8);
+  --status-skipped: #CBD5E1;
+  --status-skipped-fg: light-dark(color-mix(in oklch, #CBD5E1 58%, black), color-mix(in oklch, #CBD5E1 72%, white));
+  --status-skipped-bg: light-dark(color-mix(in oklch, #CBD5E1 10%, var(--bg)), color-mix(in oklch, #CBD5E1 16%, var(--bg)));
+  --status-skipped-border: light-dark(color-mix(in oklch, #CBD5E1 75%, white), #CBD5E1);
+  /* Neutral */
+  --status-unknown: #94A3B8;
+  --status-unknown-fg: light-dark(color-mix(in oklch, #94A3B8 58%, black), color-mix(in oklch, #94A3B8 72%, white));
+  --status-unknown-bg: light-dark(color-mix(in oklch, #94A3B8 10%, var(--bg)), color-mix(in oklch, #94A3B8 16%, var(--bg)));
+  --status-unknown-border: light-dark(color-mix(in oklch, #94A3B8 75%, white), #94A3B8);
+  --status-minor: #A1A1AA;
+  --status-minor-fg: light-dark(color-mix(in oklch, #A1A1AA 58%, black), color-mix(in oklch, #A1A1AA 72%, white));
+  --status-minor-bg: light-dark(color-mix(in oklch, #A1A1AA 10%, var(--bg)), color-mix(in oklch, #A1A1AA 16%, var(--bg)));
+  --status-minor-border: light-dark(color-mix(in oklch, #A1A1AA 75%, white), #A1A1AA);
 
   /* Diff and search */
   --diff-add:   light-dark(oklch(0.96 0.03 152),  oklch(0.235 0.035 152));

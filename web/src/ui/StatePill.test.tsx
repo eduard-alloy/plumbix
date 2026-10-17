@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { StatePill, ENCODING, type PillStatus } from './StatePill'
+import tokens from '../tokens.css?raw'
 
 describe('StatePill', () => {
   it('has an entry for every status in the encoding table', () => {
@@ -18,23 +19,33 @@ describe('StatePill', () => {
     }
   })
 
-  it('gives open, merged and closed a colour of their own', () => {
-    expect(ENCODING.open.tone).toBe('blue')
-    expect(ENCODING.merged.tone).toBe('teal')
-    expect(ENCODING.closed.tone).toBe('plum')
-    expect(ENCODING.running.tone).toBe('blue')
-    for (const tone of ['teal', 'plum']) {
-      const { container } = render(<StatePill status={tone === 'teal' ? 'merged' : 'closed'} />)
-      expect((container.firstElementChild as HTMLElement).dataset.tone).toBe(tone)
+  it('maps every status to a palette entry that tokens.css defines in all four parts', () => {
+    for (const [k, e] of Object.entries(ENCODING)) {
+      for (const part of ['', '-fg', '-bg', '-border']) {
+        expect(tokens, `${k} -> --status-${e.palette}${part}`).toContain(`--status-${e.palette}${part}:`)
+      }
     }
   })
 
-  it('renders icon and label in pill mode, with the tone as data', () => {
+  it('gives open, merged and closed a colour of their own', () => {
+    expect(ENCODING.open.palette).toBe('open')
+    expect(ENCODING.merged.palette).toBe('merged')
+    expect(ENCODING.closed.palette).toBe('closed')
+    expect(ENCODING.alert.palette).toBe('needs-human')
+    const { container } = render(<StatePill status="merged" />)
+    const pill = container.firstElementChild as HTMLElement
+    expect(pill.dataset.status).toBe('merged')
+    expect(pill.style.getPropertyValue('--pill-fg')).toBe('var(--status-merged-fg)')
+    expect(pill.style.getPropertyValue('--pill-bg')).toBe('var(--status-merged-bg)')
+    expect(pill.style.getPropertyValue('--pill-border')).toBe('var(--status-merged-border)')
+  })
+
+  it('renders icon and label in pill mode, with the palette key as data', () => {
     const { container } = render(<StatePill status="fix_requested" />)
     const pill = container.firstElementChild as HTMLElement
     expect(pill.textContent).toBe('Fix requested')
     expect(pill.querySelector('svg')).not.toBeNull()
-    expect(pill.dataset.tone).toBe('amber')
+    expect(pill.dataset.status).toBe('fix-requested')
     expect(pill.dataset.mode).toBe('pill')
     expect(pill.title).toBe('Fix requested')
   })

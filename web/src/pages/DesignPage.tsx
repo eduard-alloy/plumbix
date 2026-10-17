@@ -54,7 +54,7 @@ function Pane({ theme }: { theme: 'light' | 'dark' }) {
               <StatePill status={s} mode="icon" />
               <StatePill status={s} mode="text" />
               <span className="mono dim">{s}</span>
-              <span className="mono dim">{ENCODING[s].tone}</span>
+              <span className="mono dim">{ENCODING[s].palette}</span>
             </div>
           ))}
         </div>
