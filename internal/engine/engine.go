@@ -429,7 +429,10 @@ func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([
 	logs := map[string]*os.File{}
 	defer closeLogs(logs)
 	opts := e.schedulerOptions(r, prep.workspace, logs)
-	opts.ChangedFiles, opts.ChangesKnown = prep.changed, true
+	// A change's run compares base to head, so when.paths can be judged.
+	// Plain branch runs go through runBranch, which never sets this, and a
+	// missing base leaves conditional steps running here too.
+	opts.ChangedFiles, opts.ChangesKnown = prep.changed, prep.base != ""
 	opts.Setup = func(st pipeline.Step, finished []scheduler.StepResult) (scheduler.StepSetup, error) {
 		if !st.Validator {
 			return scheduler.StepSetup{}, nil

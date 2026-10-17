@@ -568,3 +568,23 @@ func TestChangeRunRecordsRetriesAllowancesSkipsAndStages(t *testing.T) {
 		t.Fatal("the validator did not run")
 	}
 }
+
+func TestBranchRunRunsConditionalSteps(t *testing.T) {
+	h := newHarness(t, Config{})
+	h.repo.Commit("ci-only", map[string]string{".plumbix/pipeline.yaml": richPipelineYAML, "x.go": "package x\n"}, "push without a change")
+	r, err := h.eng.RunBranch(ctx, h.repoID, "ci-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := h.wait(r.ID)
+	by := map[string]run.Step{}
+	for _, s := range got.Steps {
+		by[s.Name] = s
+	}
+	if s := by["api"]; s.Status != "succeeded" || s.Reason != "" {
+		t.Errorf("api = %+v: a plain branch run has no changed files to compare, so conditional steps run", s)
+	}
+	if s := by["flaky"]; s.Status != "succeeded" || s.Attempts != 0 {
+		t.Errorf("flaky = %+v", s)
+	}
+}
