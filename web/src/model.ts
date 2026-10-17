@@ -290,9 +290,3 @@ export interface PipelineFile {
   problems: PipelineProblem[]
   last_run?: { run_id: string; head: string; steps: Record<string, { status: string; duration_ms: number }> }
 }
-
-export interface PipelineCheck {
-  valid: boolean
-  order?: string[]
-  errors?: PipelineProblem[]
-}

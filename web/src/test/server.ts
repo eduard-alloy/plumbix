@@ -174,10 +174,6 @@ export function fakeFetch(db: FakeDB): typeof fetch {
         return new Response(null, { status: 204 })
       }
     }
-    if (path === '/api/v1/pipelines/check' && method === 'POST') {
-      const content = String(init?.body ?? '')
-      return content.includes('INVALID') ? json(200, { valid: false, errors: [{ path: 'steps', line: 2, message: 'invalid' }] }) : json(200, { valid: true, order: [] })
-    }
     const pipe = path.match(/^\/api\/v1\/repos\/([^/]+)\/pipeline(\/changes)?(\?.*)?$/)
     if (pipe) {
       const [, id, changes] = pipe

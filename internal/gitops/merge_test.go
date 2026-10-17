@@ -258,3 +258,24 @@ func TestPushBranchCreatesAndNeverOverwrites(t *testing.T) {
 		t.Errorf("push onto main: err = %v", err)
 	}
 }
+
+func TestPushBranchRefusesABranchThatAppearedAfterTheFetch(t *testing.T) {
+	r := gittest.New(t)
+	base := r.Commit("main", map[string]string{"a.txt": "a\n"}, "base")
+	m := mirrorOf(t, r.Remote)
+	sha, err := m.CommitFile(ctx, base, "f.txt", []byte("f"), "f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Someone else creates the branch on the remote after the mirror's fetch.
+	theirs := r.Commit("pipeline/raced", map[string]string{"g.txt": "g\n"}, "theirs")
+	if err := m.PushBranch(ctx, "pipeline/raced", sha); !errors.Is(err, ErrBranchExists) {
+		t.Fatalf("err = %v, want ErrBranchExists", err)
+	}
+	if got := remoteHead(t, m, "pipeline/raced"); got != theirs {
+		t.Errorf("remote branch = %s, want %s untouched", got, theirs)
+	}
+	if _, err := m.Head(ctx, "pipeline/raced"); err == nil {
+		t.Error("the mirror learned a branch the push did not create")
+	}
+}
