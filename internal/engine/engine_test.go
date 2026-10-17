@@ -711,3 +711,30 @@ func TestApprovalRefusalsAndANewRunEndsIt(t *testing.T) {
 		t.Errorf("merge: %v", err)
 	}
 }
+
+func TestApprovalRefusesRejectedAndUnfinishedRuns(t *testing.T) {
+	h := newHarness(t, Config{})
+	h.repo.Commit("feat", map[string]string{".plumbix/pipeline.yaml": pipelineYAML + "  - {name: lint, image: x, run: x}\n"}, "pipeline edit")
+	c := h.submit("feat")
+	if r := h.validate(c.ID); r.Outcome != change.NeedsHuman {
+		t.Fatalf("outcome = %s", r.Outcome)
+	}
+	// Rejected is the validators' explicit no: a person cannot approve it.
+	if err := h.db.SetChangeState(ctx, c.ID, change.NeedsHuman, change.Rejected, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "override"); !errors.Is(err, change.ErrInvalidState) || !strings.Contains(err.Error(), "rejected") {
+		t.Errorf("approving a rejected change: %v", err)
+	}
+	if err := h.db.SetChangeState(ctx, c.ID, change.Rejected, change.NeedsHuman, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// The latest run errored (the pipeline file broke), so there is no judged head to approve.
+	h.repo.Commit("feat", map[string]string{".plumbix/pipeline.yaml": "version: 2\n"}, "break pipeline")
+	if r := h.validate(c.ID); r.Status != run.Errored {
+		t.Fatalf("run = %+v", r)
+	}
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "fine"); !errors.Is(err, change.ErrInvalidState) || !strings.Contains(err.Error(), "finished run") {
+		t.Errorf("approving after an errored run: %v", err)
+	}
+}
