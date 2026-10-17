@@ -1,7 +1,3 @@
-# Plumbix's own pipeline. Every change to this repository is validated by
-# Plumbix itself: four independent steps run in parallel, then two
-# validators judge the change against its intent. The deterministic
-# validator must approve; the AI review alone is never enough (A12).
 version: 1
 steps:
   - name: build
@@ -12,10 +8,10 @@ steps:
     run: go test ./...
   - name: lint
     image: golang:1.27
-    run: go vet ./... && test -z "$(gofmt -l .)"
+    run: "go vet ./... && test -z \"$(gofmt -l .)\""
   - name: web
     image: node:24-alpine
-    run: cd web && npm ci --no-audit --no-fund && npm test -- --reporter=dot && npm run build
+    run: "cd web && npm ci --no-audit --no-fund && npm test -- --reporter=dot && npm run build"
   - name: validate
     image: plumbix-reference-validator:dev
     validator: true
@@ -25,3 +21,5 @@ steps:
     validator: true
     needs: [build, test, lint, web]
     secrets: [ANTHROPIC_API_KEY]
+stages:
+  checks: [build, test, lint, web]
