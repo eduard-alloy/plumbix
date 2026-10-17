@@ -29,6 +29,18 @@ describe('StatePill', () => {
     }
   })
 
+  it('carries that colour on the border only, not as a fill', () => {
+    for (const status of ['open', 'merged', 'closed'] as const) {
+      expect(ENCODING[status].outline, status).toBe(true)
+      expect(ENCODING[status].filled, status).toBeFalsy()
+      const { container } = render(<StatePill status={status} />)
+      expect((container.firstElementChild as HTMLElement).dataset.outline, status).toBe('true')
+    }
+    expect(ENCODING.approved.outline).toBeFalsy()
+    const { container } = render(<StatePill status="approved" />)
+    expect((container.firstElementChild as HTMLElement).dataset.outline).toBeUndefined()
+  })
+
   it('renders icon and label in pill mode, with the tone as data', () => {
     const { container } = render(<StatePill status="fix_requested" />)
     const pill = container.firstElementChild as HTMLElement
@@ -53,10 +65,10 @@ describe('StatePill', () => {
     expect(pill.textContent).toBe('Signed in')
   })
 
-  it('draws a dashed circle for queued and pending, a filled one for merged and blockers', () => {
+  it('draws a dashed circle for queued and pending, a filled one for blockers', () => {
     const dashed = render(<StatePill status="queued" />).container.querySelector('circle')!
     expect(dashed.getAttribute('stroke-dasharray')).toBe('2.1 2.1')
-    const filled = render(<StatePill status="merged" />).container.querySelector('circle')!
+    const filled = render(<StatePill status="blocker" />).container.querySelector('circle')!
     expect(filled.getAttribute('fill')).toBe('currentColor')
     const half = render(<StatePill status="running" />).container.querySelector('path')!
     expect(half.getAttribute('fill')).toBe('currentColor')

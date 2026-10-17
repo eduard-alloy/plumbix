@@ -21,6 +21,8 @@ interface Encoding {
   tone: Tone
   glyph: Glyph
   filled?: boolean
+  /** outline pills show their tone on the border and glyph only; the label stays ink and the background stays the page. */
+  outline?: boolean
   dashed?: boolean
 }
 
@@ -38,15 +40,15 @@ const PATHS: Record<Exclude<Glyph, 'half' | 'none'>, string> = {
 }
 
 export const ENCODING: Record<PillStatus, Encoding> = {
-  open: { label: 'Open', tone: 'blue', glyph: 'none' },
+  open: { label: 'Open', tone: 'blue', glyph: 'none', outline: true },
   running: { label: 'Running', tone: 'blue', glyph: 'half' },
   approved: { label: 'Approved', tone: 'green', glyph: 'check' },
   fix_requested: { label: 'Fix requested', tone: 'amber', glyph: 'ret' },
   rejected: { label: 'Rejected', tone: 'red', glyph: 'x' },
   needs_human: { label: 'Needs human', tone: 'violet', glyph: 'bang' },
   escalated: { label: 'Escalated', tone: 'violet', glyph: 'up' },
-  merged: { label: 'Merged', tone: 'teal', glyph: 'check', filled: true },
-  closed: { label: 'Closed', tone: 'plum', glyph: 'slash' },
+  merged: { label: 'Merged', tone: 'teal', glyph: 'check', outline: true },
+  closed: { label: 'Closed', tone: 'plum', glyph: 'slash', outline: true },
   finished: { label: 'Finished', tone: 'neutral', glyph: 'check' },
   errored: { label: 'Errored', tone: 'violet', glyph: 'bang' },
   cancelled: { label: 'Cancelled', tone: 'neutral', glyph: 'slash' },
@@ -75,7 +77,7 @@ export function StatePill({ status, mode = 'pill', label }: { status: PillStatus
   const text = label ?? e.label
   const half = e.glyph === 'half'
   return (
-    <span className="pill" data-tone={e.tone} data-mode={mode} title={text}>
+    <span className="pill" data-tone={e.tone} data-mode={mode} data-outline={e.outline ? 'true' : undefined} title={text}>
       {mode !== 'text' && (
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <circle cx="8" cy="8" r="5.75" stroke="currentColor" strokeWidth="1.5" fill={e.filled ? 'currentColor' : 'none'} strokeDasharray={e.dashed ? '2.1 2.1' : undefined} />
