@@ -24,8 +24,8 @@
 .pill[data-tone='teal'] { color: var(--s-teal); background: var(--s-teal-bg); }
 .pill[data-tone='plum'] { color: var(--s-plum); background: var(--s-plum-bg); }
 /* Outline pills (open, merged, closed): the tone sits on the border and the glyph; the label stays ink. */
-.pill[data-outline] { background: transparent; box-shadow: inset 0 0 0 1px currentColor; }
-.pill[data-outline] > span { color: var(--text); }
+.pill[data-outline][data-mode='pill'] { background: transparent; box-shadow: inset 0 0 0 1px currentColor; }
+.pill[data-outline][data-mode='pill'] > span { color: var(--text); }
 .pill[data-mode='icon'], .pill[data-mode='plain'], .pill[data-mode='text'] { background: transparent !important; }
 
 .sr-only {
