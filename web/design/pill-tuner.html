@@ -69,6 +69,9 @@ body { margin: 0; font: 13px/1.45 var(--ui); -webkit-font-smoothing: antialiased
 .field label { color: var(--text-2); }
 .field input[type='range'] { width: 100%; margin: 0; }
 .field output { font-family: var(--mono); font-size: 11px; color: var(--text-2); text-align: right; }
+.field.colour .pick { display: flex; gap: 6px; align-items: center; }
+.field.colour input[type='color'] { width: 34px; height: 26px; padding: 0 2px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); }
+.field.colour .hex { width: 76px; font: 11px var(--mono); padding: 5px 6px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text); }
 .contrast { font-family: var(--mono); font-size: 11px; color: var(--text-3); margin-top: 4px; }
 .contrast b { color: var(--text); font-weight: 500; }
 .contrast .bad { color: var(--s-red); }
@@ -86,7 +89,7 @@ textarea { width: 100%; box-sizing: border-box; height: 170px; margin-top: 8px; 
 
 <aside class="tuner" aria-label="Pill tuner">
   <h2>Pill tuner</h2>
-  <p class="hint" style="margin:0 0 8px">Click any pill on the left, or pick a state. Both themes update live. Settings stay in this browser until you reset.</p>
+  <p class="hint" style="margin:0 0 8px">Click any pill on the left, or pick a state. Both themes update live. Colours are plain RGB; settings stay in this browser until you reset.</p>
   <h3>State</h3>
   <div class="states" id="states"></div>
   <h3>Style</h3>
@@ -100,15 +103,10 @@ textarea { width: 100%; box-sizing: border-box; height: 170px; margin-top: 8px; 
     <span class="dim2" style="margin-left:6px">Glyph</span>
     <div class="seg" id="glyph"></div>
   </div>
-  <div style="margin-top:8px; display:flex; gap:14px; align-items:center">
-    <span class="dim2">Gradient</span>
-    <div class="seg" id="gradient"></div>
-  </div>
-  <div class="field" id="angleField">
-    <label for="angle">Angle</label><input id="angle" type="range" min="0" max="360" step="5"><output id="angle-out"></output>
-  </div>
   <div class="swatches"><div class="sw" id="sw-light">light</div><div class="sw" id="sw-dark">dark</div></div>
-  <div id="sliders"></div>
+  <div id="colours"></div>
+  <h3 style="display:flex; align-items:center; gap:10px">Gradient <div class="seg" id="gradient" style="text-transform:none; letter-spacing:0"></div></h3>
+  <div id="gradientBox"></div>
   <div class="actions">
     <button id="copyLD">Light → dark</button>
     <button id="copyDL">Dark → light</button>
@@ -125,7 +123,7 @@ textarea { width: 100%; box-sizing: border-box; height: 170px; margin-top: 8px; 
 </aside>
 
 <script>
-// ---- the app's encoding table and glyphs, copied from web/src/ui/StatePill.tsx ----
+// ---- the app's encoding table and glyphs, copied from web/src/ui/StatePill.tsx (main, 2026-10-17) ----
 const PATHS = {
   check: 'M5.4 8.3l1.8 1.8 3.4-3.8', x: 'M6 6l4 4M10 6l-4 4', bang: 'M8 4.9v3.5M8 11v.01', up: 'M8 11V5.4M5.8 7.5 8 5.3l2.2 2.2',
   ret: 'M10.6 10.8V9.4a2 2 0 0 0-2-2H5.6M7.3 5.6 5.5 7.4l1.8 1.8', slash: 'M5.5 10.5l5-5', clock: 'M8 5v3.2l2 1.3', dash: 'M5.4 8h5.2',
@@ -157,8 +155,8 @@ const ENCODING = {
   major: { label: 'Major', tone: 'amber', glyph: 'bang' },
   minor: { label: 'Minor', tone: 'neutral', glyph: 'info' },
 }
-// Tone colours as in tokens.css: [L, C, H] for fg and bg, light and dark.
-const TONES = {
+// Tone colours as in tokens.css (OKLCH there); converted to RGB hex once at load.
+const TONES_OKLCH = {
   neutral: { light: { fg: [0.46, 0.012, 265], bg: [0.945, 0.004, 265] }, dark: { fg: [0.74, 0.008, 265], bg: [0.245, 0.008, 265] } },
   blue:    { light: { fg: [0.49, 0.12, 230],  bg: [0.95, 0.03, 230] },   dark: { fg: [0.78, 0.11, 230],  bg: [0.27, 0.045, 230] } },
   green:   { light: { fg: [0.48, 0.12, 152],  bg: [0.95, 0.035, 152] },  dark: { fg: [0.79, 0.13, 152],  bg: [0.265, 0.045, 152] } },
@@ -168,32 +166,46 @@ const TONES = {
   teal:    { light: { fg: [0.47, 0.10, 190],  bg: [0.95, 0.03, 190] },   dark: { fg: [0.78, 0.11, 190],  bg: [0.265, 0.045, 190] } },
   plum:    { light: { fg: [0.49, 0.12, 350],  bg: [0.95, 0.025, 350] },  dark: { fg: [0.77, 0.11, 350],  bg: [0.27, 0.045, 350] } },
 }
-const PAGE_BG = { light: [0.992, 0.002, 265], dark: [0.165, 0.006, 265] }
-const STORE = 'plumbix-pill-tuner-v1'
+const PAGE_BG = { light: '#fdfdfe', dark: '#1c1c20' }
+const STORE = 'plumbix-pill-tuner-v2'
 const STATES = Object.keys(ENCODING)
 const CHANGE_STATES = ['open', 'running', 'approved', 'fix_requested', 'rejected', 'needs_human', 'escalated', 'merged', 'closed']
 
+// ---- colour maths: OKLCH → sRGB hex (for defaults) and hex → luminance (for contrast) ----
+function oklchToHex([L, C, H]) {
+  const a = C * Math.cos((H * Math.PI) / 180), b = C * Math.sin((H * Math.PI) / 180)
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b, m_ = L - 0.1055613458 * a - 0.0638541728 * b, s_ = L - 0.0894841775 * a - 1.291485548 * b
+  const l = l_ ** 3, m = m_ ** 3, s = s_ ** 3
+  const lin = [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ].map((v) => Math.min(1, Math.max(0, v)))
+  const gam = lin.map((v) => (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055))
+  return '#' + gam.map((v) => Math.round(v * 255).toString(16).padStart(2, '0')).join('')
+}
+function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255] }
+function luminance(h) {
+  const [r, g, b] = hexToRgb(h).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+function contrast(a, b) { const la = luminance(a), lb = luminance(b); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05) }
+
 function defaults(state) {
-  const e = ENCODING[state], t = TONES[e.tone]
+  const e = ENCODING[state], t = TONES_OKLCH[e.tone]
+  const c = (x) => oklchToHex(x)
   return {
     style: e.filled ? 'filled' : 'tint', label: 'tone', glyph: e.filled ? 'filled' : 'outline', border: 100,
     gradient: 'off', angle: 135,
-    light: { fg: [...t.light.fg], bg: [...t.light.bg], fg2: [...t.light.fg], bg2: [...t.light.bg] },
-    dark: { fg: [...t.dark.fg], bg: [...t.dark.bg], fg2: [...t.dark.fg], bg2: [...t.dark.bg] },
+    light: { fg: c(t.light.fg), bg: c(t.light.bg), fg2: c(t.light.fg), bg2: c(t.light.bg) },
+    dark: { fg: c(t.dark.fg), bg: c(t.dark.bg), fg2: c(t.dark.fg), bg2: c(t.dark.bg) },
   }
 }
 let settings = {}
 try { settings = JSON.parse(localStorage.getItem(STORE) || '{}') } catch { settings = {} }
-for (const s of STATES) {
-  if (!settings[s]) settings[s] = defaults(s)
-  const d = defaults(s)
-  for (const k of ['gradient', 'angle']) if (settings[s][k] === undefined) settings[s][k] = d[k]
-  for (const sc of ['light', 'dark']) for (const k of ['fg2', 'bg2']) if (!settings[s][sc][k]) settings[s][sc][k] = d[sc][k]
-}
+for (const s of STATES) if (!settings[s]) settings[s] = defaults(s)
 let current = 'open'
-
 function save() { try { localStorage.setItem(STORE, JSON.stringify(settings)) } catch {} }
-const ok = (c) => `oklch(${c[0]} ${c[1]} ${c[2]})`
 
 // ---- markup identical to StatePill ----
 function pill(state, mode = 'pill', label) {
@@ -212,23 +224,25 @@ function pill(state, mode = 'pill', label) {
 
 // ---- live stylesheet ----
 const live = document.createElement('style'); document.head.appendChild(live)
+const ld = (s, k) => `light-dark(${s.light[k]}, ${s.dark[k]})`
+function fillFor(s) {
+  // What the pill's background is in pill mode, given style and gradient.
+  const grad = s.gradient === 'on'
+  if (s.style === 'tint') return grad ? `linear-gradient(${s.angle}deg, ${ld(s, 'bg')}, ${ld(s, 'bg2')})` : ld(s, 'bg')
+  if (s.style === 'filled') return grad ? `linear-gradient(${s.angle}deg, ${ld(s, 'fg')}, ${ld(s, 'fg2')})` : ld(s, 'fg')
+  return 'transparent'
+}
 function render() {
   let css = ''
   for (const st of STATES) {
-    const s = settings[st]
-    const fg = `light-dark(${ok(s.light.fg)}, ${ok(s.dark.fg)})`, bg = `light-dark(${ok(s.light.bg)}, ${ok(s.dark.bg)})`
-    const fg2 = `light-dark(${ok(s.light.fg2)}, ${ok(s.dark.fg2)})`, bg2 = `light-dark(${ok(s.light.bg2)}, ${ok(s.dark.bg2)})`
-    const grad = s.gradient === 'on'
-    const tintFill = grad ? `linear-gradient(${s.angle}deg, ${bg}, ${bg2})` : bg
-    const solidFill = grad ? `linear-gradient(${s.angle}deg, ${fg}, ${fg2})` : fg
-    css += `.pill[data-state='${st}'] { color: ${fg}; background: ${bg}; --pill-paper: ${bg}; }\n`
+    const s = settings[st], grad = s.gradient === 'on'
+    css += `.pill[data-state='${st}'] { color: ${ld(s, 'fg')}; background: ${ld(s, 'bg')}; --pill-paper: ${ld(s, 'bg')}; }\n`
     const p = `.pill[data-state='${st}'][data-mode='pill']`
-    if (s.style === 'tint') css += `${p} { background: ${tintFill}; }\n`
-    if (s.style === 'outline' && !grad) css += `${p} { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in oklch, currentColor ${s.border}%, transparent); }\n`
-    if (s.style === 'outline' && grad) css += `${p} { box-sizing: border-box; border: 1px solid transparent; background: linear-gradient(var(--bg), var(--bg)) padding-box, linear-gradient(${s.angle}deg, color-mix(in oklch, ${fg} ${s.border}%, var(--bg)), color-mix(in oklch, ${fg2} ${s.border}%, var(--bg))) border-box; }\n`
+    if (s.style === 'tint') css += `${p} { background: ${fillFor(s)};${s.border < 100 ? ` box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor ${100 - s.border}%, transparent);` : ''} }\n`
+    if (s.style === 'outline' && !grad) css += `${p} { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor ${s.border}%, transparent); }\n`
+    if (s.style === 'outline' && grad) css += `${p} { box-sizing: border-box; border: 1px solid transparent; background: linear-gradient(var(--bg), var(--bg)) padding-box, linear-gradient(${s.angle}deg, color-mix(in srgb, ${ld(s, 'fg')} ${s.border}%, var(--bg)), color-mix(in srgb, ${ld(s, 'fg2')} ${s.border}%, var(--bg))) border-box; }\n`
     if (s.style === 'plain') css += `${p} { background: transparent; }\n`
-    if (s.style === 'filled') css += `${p} { background: ${solidFill}; color: var(--bg); --pill-paper: ${fg}; }\n`
-    if (s.style === 'tint' && s.border < 100) css += `${p} { box-shadow: inset 0 0 0 1px color-mix(in oklch, currentColor ${100 - s.border}%, transparent); }\n`
+    if (s.style === 'filled') css += `${p} { background: ${fillFor(s)}; color: var(--bg); --pill-paper: ${ld(s, 'fg')}; }\n`
     if (s.label === 'ink' && s.style !== 'filled') css += `${p} > span { color: var(--text); }\n`
   }
   live.textContent = css
@@ -306,91 +320,101 @@ const seg = (id, options, get, set) => {
   el.innerHTML = options.map(([v, l]) => `<button data-v="${v}" aria-pressed="${get() === v}">${l}</button>`).join('')
   el.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { set(b.dataset.v); render() }))
 }
-const SL = [['fg', 'Colour'], ['fg2', 'Colour 2'], ['bg', 'Tint'], ['bg2', 'Tint 2']]
-const CH = [['L', 0, 1, 0.005], ['C', 0, 0.3, 0.005], ['H', 0, 360, 1]]
+// colourField renders a native picker plus its hex, bound to settings[current][scheme][key].
+function colourField(box, s, scheme, key, name) {
+  const f = document.createElement('div'); f.className = 'field colour'
+  f.innerHTML = `<label>${name}</label><span class="pick"><input type="color" value="${s[scheme][key]}"><input type="text" class="hex" value="${s[scheme][key]}" maxlength="7" spellcheck="false"></span><output></output>`
+  const pick = f.querySelector('input[type=color]'), hex = f.querySelector('.hex')
+  pick.oninput = () => { s[scheme][key] = pick.value; hex.value = pick.value; render() }
+  hex.onchange = () => { if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { s[scheme][key] = hex.value.toLowerCase(); render() } else hex.value = s[scheme][key] }
+  box.appendChild(f)
+}
 function renderTuner() {
-  const s = settings[current]
+  const s = settings[current], grad = s.gradient === 'on'
   const states = document.getElementById('states')
-  states.innerHTML = STATES.map((st) => `<button data-v="${st}" aria-pressed="${st === current}">${ENCODING[st].label}${st === 'alert' ? ' (alert)' : ''}</button>`).join('')
+  states.innerHTML = STATES.map((st) => `<button data-v="${st}" aria-pressed="${st === current}">${ENCODING[st].label}</button>`).join('')
   states.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { current = b.dataset.v; render() }))
   seg('style', [['tint', 'Tint'], ['outline', 'Outline'], ['filled', 'Filled'], ['plain', 'Plain']], () => s.style, (v) => { s.style = v })
   seg('label', [['tone', 'Colour'], ['ink', 'Ink']], () => s.label, (v) => { s.label = v })
   seg('glyph', [['outline', 'Ring'], ['filled', 'Disc']], () => s.glyph, (v) => { s.glyph = v })
   seg('gradient', [['off', 'Off'], ['on', 'On']], () => s.gradient, (v) => { s.gradient = v })
-  const af = document.getElementById('angleField'), an = document.getElementById('angle')
-  af.style.display = s.gradient === 'on' && s.style !== 'plain' ? '' : 'none'
-  an.value = s.angle; document.getElementById('angle-out').textContent = s.angle + '°'
-  an.oninput = () => { s.angle = +an.value; render() }
   const bf = document.getElementById('borderField'), b = document.getElementById('border')
   bf.style.display = s.style === 'filled' || s.style === 'plain' ? 'none' : ''
   bf.querySelector('label').textContent = s.style === 'outline' ? 'Border' : 'Edge'
   b.value = s.border; document.getElementById('border-out').textContent = s.border + '%'
   b.oninput = () => { s.border = +b.value; render() }
-  const box = document.getElementById('sliders'); box.innerHTML = ''
+
+  // Base colours: the text/icon colour always; the tint only for the tint style.
+  const box = document.getElementById('colours'); box.innerHTML = ''
   for (const scheme of ['light', 'dark']) {
     const h = document.createElement('h3'); h.textContent = scheme; box.appendChild(h)
-    for (const [key, name] of SL) {
-      const grad = s.gradient === 'on'
-      if ((key === 'bg' || key === 'bg2') && s.style !== 'tint') continue
-      if (key === 'bg2' && !grad) continue
-      if (key === 'fg2' && (!grad || s.style === 'tint' || s.style === 'plain')) continue
-      CH.forEach(([ch, min, max, step], i) => {
-        const f = document.createElement('div'); f.className = 'field'
-        const val = s[scheme][key][i]
-        f.innerHTML = `<label>${name} ${ch}</label><input type="range" min="${min}" max="${max}" step="${step}" value="${val}"><output>${val}</output>`
-        const inp = f.querySelector('input'), out = f.querySelector('output')
-        inp.oninput = () => { s[scheme][key][i] = +inp.value; out.textContent = inp.value; render() }
-        box.appendChild(f)
-      })
-    }
+    colourField(box, s, scheme, 'fg', s.style === 'filled' ? 'Fill' : 'Colour')
+    if (s.style === 'tint') colourField(box, s, scheme, 'bg', 'Tint')
     const c = document.createElement('div'); c.className = 'contrast'
-    const onPage = contrast(s[scheme].fg, PAGE_BG[scheme])
-    const onTint = contrast(s[scheme].fg, s[scheme].bg)
     const fmt = (r) => `<b class="${r < 4.5 ? 'bad' : ''}">${r.toFixed(2)}:1</b>`
-    c.innerHTML = `colour on page ${fmt(onPage)}${s.style === 'tint' ? ` · on tint ${fmt(onTint)}` : ''}${s.style === 'filled' ? ` · page on colour ${fmt(contrast(PAGE_BG[scheme], s[scheme].fg))}` : ''} · AA needs 4.5`
+    let txt = `colour on page ${fmt(contrast(s[scheme].fg, PAGE_BG[scheme]))}`
+    if (s.style === 'tint') txt += ` · on tint ${fmt(contrast(s[scheme].fg, s[scheme].bg))}`
+    if (s.style === 'filled') txt += ` · page on fill ${fmt(contrast(PAGE_BG[scheme], s[scheme].fg))}`
+    c.innerHTML = txt + ' · AA needs 4.5'
     box.appendChild(c)
   }
+
+  // Gradient: shown only when enabled. It runs from the base colour above to the second colour here.
+  const gb = document.getElementById('gradientBox'); gb.innerHTML = ''
+  if (grad) {
+    if (s.style === 'plain') {
+      gb.innerHTML = '<p class="hint" style="margin:0">The plain style has no fill or border to paint. Pick tint, outline or filled.</p>'
+    } else {
+      const what = s.style === 'tint' ? 'tint' : s.style === 'filled' ? 'fill' : 'border'
+      const key = s.style === 'tint' ? 'bg2' : 'fg2'
+      const intro = document.createElement('p'); intro.className = 'hint'; intro.style.margin = '0 0 6px'
+      intro.textContent = `The ${what} fades from the ${s.style === 'tint' ? 'tint' : s.style === 'filled' ? 'fill' : 'colour'} above to the second colour below, along the angle.`
+      gb.appendChild(intro)
+      const af = document.createElement('div'); af.className = 'field'
+      af.innerHTML = `<label>Angle</label><input type="range" min="0" max="360" step="5" value="${s.angle}"><output>${s.angle}°</output>`
+      const an = af.querySelector('input'), ao = af.querySelector('output')
+      an.oninput = () => { s.angle = +an.value; ao.textContent = an.value + '°'; render() }
+      gb.appendChild(af)
+      for (const scheme of ['light', 'dark']) {
+        const h = document.createElement('h3'); h.textContent = scheme + ' · second colour'; gb.appendChild(h)
+        colourField(gb, s, scheme, key, s.style === 'tint' ? 'Tint 2' : s.style === 'filled' ? 'Fill 2' : 'Colour 2')
+        const pre = document.createElement('div'); pre.className = 'sw'
+        pre.style.cssText = `margin:4px 0 2px; color-scheme:${scheme}; background: linear-gradient(${s.angle}deg, ${s[scheme][s.style === 'tint' ? 'bg' : 'fg']}, ${s[scheme][key]})`
+        gb.appendChild(pre)
+      }
+    }
+  } else {
+    gb.innerHTML = '<p class="hint" style="margin:0">Off: one colour. Turn it on to fade the fill or border between two colours.</p>'
+  }
+
+  // Swatches summarise the current state in both themes.
   for (const sc of ['light', 'dark']) {
-    const g = s.gradient === 'on'
-    const fill = s.style === 'filled' ? (g ? `linear-gradient(${s.angle}deg, ${ok(s[sc].fg)}, ${ok(s[sc].fg2)})` : ok(s[sc].fg))
-      : s.style === 'tint' ? (g ? `linear-gradient(${s.angle}deg, ${ok(s[sc].bg)}, ${ok(s[sc].bg2)})` : ok(s[sc].bg))
-      : ok(PAGE_BG[sc])
-    const edge = s.style === 'outline' ? `box-shadow: inset 0 0 0 1px ${ok(s[sc].fg)};` : ''
-    document.getElementById('sw-' + sc).style.cssText = `color-scheme:${sc}; color:${s.style === 'filled' ? (sc === 'light' ? 'white' : 'black') : ok(s[sc].fg)}; background:${fill}; ${edge}`
+    const fill = s.style === 'filled' ? (grad ? `linear-gradient(${s.angle}deg, ${s[sc].fg}, ${s[sc].fg2})` : s[sc].fg)
+      : s.style === 'tint' ? (grad ? `linear-gradient(${s.angle}deg, ${s[sc].bg}, ${s[sc].bg2})` : s[sc].bg)
+      : PAGE_BG[sc]
+    const edge = s.style === 'outline' ? `box-shadow: inset 0 0 0 1px ${s[sc].fg};` : ''
+    document.getElementById('sw-' + sc).style.cssText = `color-scheme:${sc}; color:${s.style === 'filled' ? (sc === 'light' ? 'white' : 'black') : s[sc].fg}; background:${fill}; ${edge}`
   }
   document.getElementById('out').value = exportCSS()
 }
 
-// ---- contrast (oklch → sRGB luminance) ----
-function oklchToRgb([L, C, H]) {
-  const a = C * Math.cos((H * Math.PI) / 180), b = C * Math.sin((H * Math.PI) / 180)
-  const l_ = L + 0.3963377774 * a + 0.2158037573 * b, m_ = L - 0.1055613458 * a - 0.0638541728 * b, s_ = L - 0.0894841775 * a - 1.291485548 * b
-  const l = l_ ** 3, m = m_ ** 3, s = s_ ** 3
-  return [
-    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
-  ].map((v) => Math.min(1, Math.max(0, v)))
-}
-function luminance(c) { const [r, g, b] = oklchToRgb(c); return 0.2126 * r + 0.7152 * g + 0.0722 * b }
-function contrast(a, b) { const la = luminance(a), lb = luminance(b); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05) }
-
 // ---- export ----
+function changedStates() { return STATES.filter((st) => JSON.stringify(settings[st]) !== JSON.stringify(defaults(st))) }
 function exportCSS() {
-  const changed = STATES.filter((st) => JSON.stringify(settings[st]) !== JSON.stringify(defaults(st)))
-  const list = changed.length ? changed : CHANGE_STATES
+  const list = changedStates().length ? changedStates() : CHANGE_STATES
   let css = `/* Pill tuner export, ${new Date().toISOString().slice(0, 16)}. States: ${list.join(', ')} */\n`
   for (const st of list) {
-    const s = settings[st]
-    const g = s.gradient === 'on' ? `, gradient ${s.angle}deg to colour2 light-dark(${ok(s.light.fg2)}, ${ok(s.dark.fg2)}) / tint2 light-dark(${ok(s.light.bg2)}, ${ok(s.dark.bg2)})` : ''
-    css += `.pill[data-state='${st}'] { color: light-dark(${ok(s.light.fg)}, ${ok(s.dark.fg)}); background: light-dark(${ok(s.light.bg)}, ${ok(s.dark.bg)}); } /* style: ${s.style}, label: ${s.label}, glyph: ${s.glyph}, border: ${s.border}%${g} */\n`
+    const s = settings[st], grad = s.gradient === 'on'
+    const notes = [`style: ${s.style}`, `label: ${s.label}`, `glyph: ${s.glyph}`, `border: ${s.border}%`]
+    if (grad) notes.push(`gradient: ${s.angle}deg to ${s.style === 'tint' ? `tint2 ${ld(s, 'bg2')}` : `colour2 ${ld(s, 'fg2')}`}`)
+    css += `.pill[data-state='${st}'] { color: ${ld(s, 'fg')}; background: ${ld(s, 'bg')}; } /* ${notes.join(', ')} */\n`
   }
   return css
 }
 document.getElementById('copy').onclick = () => navigator.clipboard?.writeText(exportCSS())
-document.getElementById('copyJSON').onclick = () => navigator.clipboard?.writeText(JSON.stringify(Object.fromEntries(STATES.filter((st) => JSON.stringify(settings[st]) !== JSON.stringify(defaults(st))).map((st) => [st, settings[st]])), null, 2))
-document.getElementById('copyLD').onclick = () => { settings[current].dark = JSON.parse(JSON.stringify(settings[current].light)); render() }
-document.getElementById('copyDL').onclick = () => { settings[current].light = JSON.parse(JSON.stringify(settings[current].dark)); render() }
+document.getElementById('copyJSON').onclick = () => navigator.clipboard?.writeText(JSON.stringify(Object.fromEntries(changedStates().map((st) => [st, settings[st]])), null, 2))
+document.getElementById('copyLD').onclick = () => { settings[current].dark = { ...settings[current].light }; render() }
+document.getElementById('copyDL').onclick = () => { settings[current].light = { ...settings[current].dark }; render() }
 document.getElementById('resetOne').onclick = () => { settings[current] = defaults(current); render() }
 document.getElementById('resetAll').onclick = () => { for (const st of STATES) settings[st] = defaults(st); render() }
 document.addEventListener('keydown', (e) => {
