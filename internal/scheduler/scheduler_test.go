@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"strings"
@@ -571,4 +572,76 @@ func (l *lockedBuffer) String() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.b.String()
+}
+
+func TestExternalStepUsesTheHookInsteadOfTheRunner(t *testing.T) {
+	p := mustParse(t, "  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, needs: [a], timeout: 1s}\n")
+	fake := newFake(ok)
+	o := opts(2)
+	var got pipeline.Step
+	var sawSetup bool
+	o.Setup = func(st pipeline.Step, finished []StepResult) (StepSetup, error) {
+		if st.External {
+			sawSetup = true
+		}
+		return StepSetup{}, nil
+	}
+	o.External = func(ctx context.Context, st pipeline.Step, setup StepSetup, log io.Writer) StepResult {
+		got = st
+		fmt.Fprintln(log, "waiting for a reviewer")
+		return StepResult{Name: st.Name, Status: Succeeded}
+	}
+	res := Execute(context.Background(), p, fake, o)
+	if !res.Succeeded() {
+		t.Fatalf("run failed: %+v", res.Steps)
+	}
+	if got.Name != "v" || !sawSetup {
+		t.Errorf("hook saw step %q (setup %v); want v after its setup", got.Name, sawSetup)
+	}
+	if _, ran := fake.jobs["v"]; ran {
+		t.Error("the runner got a job for the external step")
+	}
+	if _, ran := fake.jobs["a"]; !ran {
+		t.Error("the plain step did not run")
+	}
+
+	// The hook is bound by the step's timeout: a reviewer who never answers
+	// leaves the step timed out, which the engine treats as a validator error.
+	o.External = func(ctx context.Context, st pipeline.Step, setup StepSetup, log io.Writer) StepResult {
+		<-ctx.Done()
+		return StepResult{Name: st.Name, Status: TimedOut}
+	}
+	start := time.Now()
+	res = Execute(context.Background(), p, newFake(ok), o)
+	if s := statusOf(t, res); s["v"] != TimedOut || time.Since(start) > 10*time.Second {
+		t.Errorf("status = %v after %s; want v timed_out within the step's timeout", s, time.Since(start))
+	}
+
+	// Without a hook an external step is an error, never a silent pass.
+	o.External = nil
+	res = Execute(context.Background(), p, newFake(ok), o)
+	if s := statusOf(t, res); s["v"] != Errored {
+		t.Errorf("status without a hook = %v; want v errored", s)
+	}
+}
+
+func TestWaitingExternalStepHoldsNoContainerSlot(t *testing.T) {
+	// v waits for the whole of its 1s timeout; with one slot, a must still
+	// run at once rather than after v gives up.
+	p := mustParse(t, "  - {name: v, validator: true, external: true, timeout: 1s}\n  - {name: a, image: x, run: x}\n")
+	fake := newFake(ok)
+	o := opts(1)
+	o.External = func(ctx context.Context, st pipeline.Step, setup StepSetup, log io.Writer) StepResult {
+		<-ctx.Done()
+		return StepResult{}
+	}
+	begin := time.Now()
+	res := Execute(context.Background(), p, fake, o)
+	s := statusOf(t, res)
+	if s["a"] != Succeeded || s["v"] != TimedOut {
+		t.Fatalf("status = %v", s)
+	}
+	if started := fake.start["a"]; started.Sub(begin) > 500*time.Millisecond {
+		t.Errorf("a started %s after the run began; the waiting external step held the only slot", started.Sub(begin))
+	}
 }

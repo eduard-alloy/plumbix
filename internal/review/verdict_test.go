@@ -1,4 +1,4 @@
-package aivalidator
+package review
 
 import (
 	"strings"

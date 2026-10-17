@@ -10,6 +10,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/host"
+	"github.com/eduard-alloy/plumbix/internal/review"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/settings"
 )
@@ -200,6 +201,7 @@ func (f fakeSettings) Guidance(context.Context, string) (settings.Guidance, erro
 	return settings.Guidance{Global: f.global, Repository: f.repo}, nil
 }
 func (f fakeSettings) AIModel(context.Context) (string, error) { return f.model, nil }
+func (f fakeSettings) AITools(context.Context) (string, error) { return review.ToolsReadOnly, nil }
 
 // TestValidatorsGetGuidanceAndModel: validator steps see the operator's
 // guidance in change.json and the model as PLUMBIX_AI_MODEL, unless the

@@ -46,6 +46,14 @@ type Options struct {
 	// Setup, when set, runs just before a step starts. It sees the steps
 	// finished so far and can add mounts, for example validator inputs.
 	Setup func(step pipeline.Step, finished []StepResult) (StepSetup, error)
+	// External runs an external validator step in place of the runner
+	// (WU-023): it publishes the review and waits for the verdict. ctx ends
+	// at the step's timeout; the hook returns the step's result and may
+	// write to log. An external step with no hook errors.
+	External func(ctx context.Context, step pipeline.Step, setup StepSetup, log io.Writer) StepResult
+	// ExternalTimeout bounds an external step that sets no timeout; zero
+	// means DefaultExternalTimeout.
+	ExternalTimeout time.Duration
 	// Finished, when set, is called exactly once per step with its index in
 	// the pipeline and its final result, as soon as it is known: after the
 	// step ran, when it was skipped, or when it could not be built.
@@ -58,6 +66,10 @@ type StepSetup struct {
 	WorkspaceReadOnly bool
 	Env               map[string]string // added to the step's env; values the step or its secrets set win
 }
+
+// DefaultExternalTimeout is how long an external step waits for a verdict
+// when neither the step nor the options say.
+const DefaultExternalTimeout = time.Hour
 
 // Reasons a step was skipped.
 const (
@@ -128,7 +140,8 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 		results[i].Name = st.Name
 	}
 	done := make(chan finished)
-	running := 0
+	running := 0    // steps in flight, external ones included
+	containers := 0 // steps holding a container slot; a waiting external step holds none
 	// settle records a step's final result and tells the Finished hook.
 	settle := func(i int, r StepResult) {
 		results[i] = r
@@ -147,10 +160,21 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 		if ctx.Err() == nil {
 			markSkipped(steps, results, index, settle)
 			for i, st := range steps {
-				if running >= o.MaxParallel {
-					break
-				}
 				if results[i].Status != "" || !needsSatisfied(st, results, index) {
+					continue
+				}
+				if st.External {
+					setup, log, err := prepareExternal(st, o, finishedSoFar(results))
+					if err != nil {
+						settle(i, StepResult{Name: st.Name, Status: Errored, Err: err})
+						continue
+					}
+					results[i].Status = inProgress
+					running++
+					go func(i int, st pipeline.Step) { done <- finished{i, runExternal(ctx, o, st, setup, log)} }(i, st)
+					continue
+				}
+				if containers >= o.MaxParallel {
 					continue
 				}
 				job, err := buildJob(st, o, finishedSoFar(results))
@@ -160,20 +184,23 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 				}
 				results[i].Status = inProgress
 				running++
+				containers++
 				go func(i int, st pipeline.Step) { done <- finished{i, runStep(ctx, r, job, st)} }(i, st)
 			}
 		}
 		if running == 0 {
 			break
 		}
+		var f finished
 		select {
-		case f := <-done:
-			settle(f.index, f.result)
-			running--
+		case f = <-done:
 		case <-ctx.Done():
-			f := <-done
-			settle(f.index, f.result)
-			running--
+			f = <-done
+		}
+		settle(f.index, f.result)
+		running--
+		if !steps[f.index].External {
+			containers--
 		}
 	}
 
@@ -299,6 +326,61 @@ func buildJob(st pipeline.Step, o Options, finished []StepResult) (runner.Job, e
 		MemoryMB:          o.MemoryMB,
 		Log:               log,
 	}, nil
+}
+
+// prepareExternal runs the Setup hook for an external step and opens its log.
+func prepareExternal(st pipeline.Step, o Options, finished []StepResult) (StepSetup, io.Writer, error) {
+	var log io.Writer = io.Discard
+	if o.Log != nil {
+		if w := o.Log(st.Name); w != nil {
+			log = w
+		}
+	}
+	var setup StepSetup
+	if o.Setup != nil {
+		var err error
+		if setup, err = o.Setup(st, finished); err != nil {
+			return StepSetup{}, nil, fmt.Errorf("prepare step %s: %w", st.Name, err)
+		}
+	}
+	return setup, log, nil
+}
+
+// runExternal hands an external step to the External hook under the step's
+// timeout. A missing hook, or a hook that returns no status, is an error:
+// an external step never passes by default.
+func runExternal(ctx context.Context, o Options, st pipeline.Step, setup StepSetup, log io.Writer) StepResult {
+	if o.External == nil {
+		return StepResult{Name: st.Name, Status: Errored, Err: fmt.Errorf("external step %s: this server has no external reviews", st.Name)}
+	}
+	timeout := st.Timeout
+	if timeout == 0 {
+		timeout = o.ExternalTimeout
+	}
+	if timeout == 0 {
+		timeout = DefaultExternalTimeout
+	}
+	stepCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	start := time.Now()
+	sr := o.External(stepCtx, st, setup, log)
+	sr.Name = st.Name
+	if sr.Duration == 0 {
+		sr.Duration = time.Since(start)
+	}
+	if sr.Attempts == 0 {
+		sr.Attempts = 1
+	}
+	switch {
+	case sr.Status != "":
+	case ctx.Err() != nil:
+		sr.Status = Cancelled
+	case stepCtx.Err() != nil:
+		sr.Status = TimedOut
+	default:
+		sr.Status, sr.Err = Errored, fmt.Errorf("external step %s returned no status", st.Name)
+	}
+	return sr
 }
 
 // runStep runs a job, again after a failure or timeout while the step has

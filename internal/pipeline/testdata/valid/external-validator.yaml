@@ -1,0 +1,12 @@
+# An external validator: no image, the verdict comes from a reviewer
+# outside the pipeline (WU-023). timeout bounds the wait.
+version: 1
+steps:
+  - name: test
+    image: golang:1.27
+    run: go test ./...
+  - name: ai-review
+    validator: true
+    external: true
+    needs: [test]
+    timeout: 2h

@@ -1,4 +1,4 @@
-package aivalidator
+package review
 
 import (
 	"encoding/json"
@@ -144,8 +144,8 @@ func ToVerdict(raw []byte, criteria []change.Criterion, usage validation.Usage) 
 	return v, nil
 }
 
-// criterionIDs lists the ids of a change's criteria, in order.
-func criterionIDs(criteria []change.Criterion) []string {
+// CriterionIDs lists the ids of a change's criteria, in order.
+func CriterionIDs(criteria []change.Criterion) []string {
 	ids := make([]string, 0, len(criteria))
 	for _, c := range criteria {
 		ids = append(ids, c.ID)

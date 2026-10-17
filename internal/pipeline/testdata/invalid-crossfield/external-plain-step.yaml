@@ -1,0 +1,7 @@
+# external is only for validators: a plain step has nobody outside the
+# pipeline to answer for it, and an external step runs nothing.
+version: 1
+steps:
+  - name: gate
+    run: echo gate
+    external: true

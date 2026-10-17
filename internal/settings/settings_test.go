@@ -101,3 +101,25 @@ func TestSecretMetaAndKnownKeys(t *testing.T) {
 		t.Error("forgotten secret still has a time")
 	}
 }
+
+func TestAIToolsDefaultsToReadOnlyAndAcceptsFull(t *testing.T) {
+	s := newService(t)
+	if v, err := s.AITools(ctx); err != nil || v != "read-only" {
+		t.Fatalf("default tools = %q %v", v, err)
+	}
+	if err := s.SetAITools(ctx, "full"); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := s.AITools(ctx); v != "full" {
+		t.Errorf("tools = %q, want full", v)
+	}
+	if err := s.SetAITools(ctx, "everything"); err == nil {
+		t.Error("an unknown tools policy was accepted")
+	}
+	if err := s.SetAITools(ctx, "read-only"); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := s.AITools(ctx); v != "read-only" {
+		t.Errorf("tools = %q, want read-only", v)
+	}
+}

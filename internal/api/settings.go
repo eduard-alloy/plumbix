@@ -54,6 +54,7 @@ type secretStatus struct {
 
 type settingsView struct {
 	AIModel  string         `json:"ai_model"`
+	AITools  string         `json:"ai_tools"`
 	Guidance string         `json:"guidance"`
 	Secrets  []secretStatus `json:"secrets"`
 }
@@ -67,7 +68,11 @@ func (h *settingsHandlers) view(ctx context.Context) (settingsView, error) {
 	if err != nil {
 		return settingsView{}, err
 	}
-	v := settingsView{AIModel: model, Guidance: g.Global, Secrets: []secretStatus{}}
+	tools, err := h.settings.AITools(ctx)
+	if err != nil {
+		return settingsView{}, err
+	}
+	v := settingsView{AIModel: model, AITools: tools, Guidance: g.Global, Secrets: []secretStatus{}}
 	listed := map[string]bool{}
 	add := func(key, purpose, hostKind string, known bool) error {
 		_, set := h.secrets.Get(key)
@@ -117,6 +122,7 @@ func (h *settingsHandlers) get(w http.ResponseWriter, r *http.Request) {
 func (h *settingsHandlers) update(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		AIModel  *string `json:"ai_model"`
+		AITools  *string `json:"ai_tools"`
 		Guidance *string `json:"guidance"`
 	}
 	if !decodeJSON(w, r, &body) {
@@ -124,6 +130,12 @@ func (h *settingsHandlers) update(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.AIModel != nil {
 		if err := h.settings.SetAIModel(r.Context(), *body.AIModel); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
+	}
+	if body.AITools != nil {
+		if err := h.settings.SetAITools(r.Context(), *body.AITools); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}

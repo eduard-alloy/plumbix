@@ -120,6 +120,8 @@ The base address comes from config `server.listen`, default `127.0.0.1:6400`. Ev
 | POST | `/api/v1/changes/{id}/merge` | Merge an approved change. Fails if the target branch moved since validation. |
 | POST | `/api/v1/changes/{id}/approve` | A person approves a `needs_human` or `escalated` change with a reason; the change becomes `approved` and merges as usual. |
 | POST | `/api/v1/changes/{id}/refresh` | Bring the target branch into a branch Plumbix created (`plumbix_branch`) and validate again (409 `not_plumbix_branch`, `already_current`, `merge_conflict`). |
+| GET | `/api/v1/reviews/next` | Claim the oldest review an external validator step is waiting for, long-polling up to `wait` seconds (204 when idle); the brief carries the AI validator's prompt and schema, the commits and a one-time token. |
+| POST | `/api/v1/reviews/{id}/verdict` | Post a claimed review's verdict with its token; checked like a verdict file (400 problems, 409 wrong token, answered or expired). |
 | POST | `/api/v1/changes/{id}/close` | Close without merging. |
 | GET | `/api/v1/runs/{id}` | A run with its steps, status, timings and evidence index. |
 | GET | `/api/v1/runs/{id}/steps/{step}/log` | A step's log, streamed while running. |
@@ -133,7 +135,7 @@ The base address comes from config `server.listen`, default `127.0.0.1:6400`. Ev
 | DELETE | `/api/v1/sessions` | Token only. Signs every browser out (`plumbix logout`). |
 | DELETE | `/api/v1/sessions/current` | Cookie only. Signs this browser out. |
 | GET | `/api/v1/session` | How the caller is signed in, with the cookie's expiry. |
-| GET, PUT | `/api/v1/settings` | AI model, global review guidance, and which secrets are set (never their values). |
+| GET, PUT | `/api/v1/settings` | AI model, reviewer tool policy (`ai_tools`: `read-only` or `full`), global review guidance, and which secrets are set (never their values). |
 | PUT, DELETE | `/api/v1/settings/secrets/{key}` | Set or remove a secret in the server's secrets file; used from the next fetch on. |
 | POST | `/api/v1/settings/secrets/{key}/check` | Run a git host's token check now. |
 | GET, PUT | `/api/v1/repos/{id}/settings` | One repository's review guidance. |
@@ -193,6 +195,7 @@ stages:
 | `steps[].artifacts` | no | Workspace paths to keep as evidence after the step. |
 | `steps[].timeout` | no | Duration such as `10m`. Default comes from config. |
 | `steps[].validator` | no | Marks the step as a validator. It gets validator inputs and must write a verdict. |
+| `steps[].external` | no | On a validator only: the verdict comes from a reviewer outside the pipeline (WU-023, A26). No `image`, `run`, `env` or `secrets`; `timeout` bounds the wait, one hour by default. Plumbix publishes a review brief and a reviewer posts the verdict through the API. |
 | `steps[].retries` | no | 0 to 5. A failed or timed-out step runs again up to this many more times; only the last attempt counts. The log gets a separator per attempt and the step record says how many attempts there were. |
 | `steps[].allow_failure` | no | A failed or timed-out step does not fail the run and does not skip the steps that need it. Its status stays `failed` or `timed_out`, marked as allowed. A criterion that names the step is still unmet. Not on validators. |
 | `steps[].when.paths` | no | Globs (`*`, `?`, `**`). For a change's run the step runs only if a changed file matches; otherwise it is `skipped` with reason `paths`, counts as satisfied for its dependents and as met for a criterion that names it. A plain branch run always runs it. Not on validators. |
@@ -206,7 +209,7 @@ Unknown fields are errors. There are no triggers, matrices or reusable templates
 
 ### 4.3 Validator contract
 
-Plumbix mounts these paths into a validator step's container:
+Plumbix mounts these paths into a validator step's container (an `external` validator gets the same inputs, rendered into a review brief instead of a container; see below):
 
 | Path | Access | Content |
 |------|--------|---------|
@@ -238,11 +241,12 @@ Plumbix mounts these paths into a validator step's container:
 - `outcome` is `approve`, `fix` or `reject`. Criterion `status` is `met`, `unmet` or `unknown`. Finding `severity` is `blocker`, `major` or `minor`.
 - A validator that exits non-zero or writes an invalid file produces no verdict. That counts as a validator error, never as approval.
 - Only steps marked `validator: true` get `/plumbix/out/`. Verdict files from other steps are ignored.
+- An `external` validator (A26) runs nothing. When the run reaches it, the engine builds the AI validator's prompt from the same inputs and workspace, stores a review with the brief (prompt, verdict JSON schema with the change's criterion ids, head, base, iteration, repository URL, the operator's tool policy and model) and an expiry at the step's timeout, emits `review.requested`, and waits. A reviewer claims it with `GET /api/v1/reviews/next` (a fresh token per claim, `review.claimed`; never a change the reviewer submitted) and posts the verdict with `POST /api/v1/reviews/{id}/verdict`; the verdict becomes the step's `verdict.json` and the same checks apply. No verdict by the timeout, or a run cancelled meanwhile, leaves the step `timed_out` or `cancelled`: a validator error, never approval.
 - `change.json` may carry `guidance: {global, repository}`: instructions from the Plumbix operator, set in the settings, never taken from the repository. Validators may follow them; the AI validator renders them as "Operator guidance" outside the untrusted block. Validator steps also receive `PLUMBIX_AI_MODEL` when the operator set a model, unless a secret of that name already supplies one.
 
 ### 4.4 Events
 
-Every fact Plumbix records is also an event: `{id, type, time, repo_id?, change_id?, run_id?, payload}`, with the payload of each type in `contracts/events.schema.json`. Types: `change.submitted`, `change.state_changed`, `change.merged`, `change.approved_by_person`, `change.refreshed`, `run.started`, `step.finished`, `run.finished`, `verdict.issued`, `alert.raised`, `alert.resolved`. (`iteration.started` from the first draft was dropped: a change's run is its iteration, and `run.started` carries `change_id` and `iteration`.)
+Every fact Plumbix records is also an event: `{id, type, time, repo_id?, change_id?, run_id?, payload}`, with the payload of each type in `contracts/events.schema.json`. Types: `change.submitted`, `change.state_changed`, `change.merged`, `change.approved_by_person`, `change.refreshed`, `run.started`, `step.finished`, `run.finished`, `verdict.issued`, `alert.raised`, `alert.resolved`, `review.requested`, `review.claimed`. (`iteration.started` from the first draft was dropped: a change's run is its iteration, and `run.started` carries `change_id` and `iteration`.)
 
 The store is the event source (A16): the write that records a fact appends its event in the same transaction, so no write path can forget one and a crash never leaves data without its event. `step.finished` and `change.refreshed` have no row of their own; the engine appends them (the refresh's fact lives in git, as the pushed merge commit). Emitting writes are serialised, so ids are published in order. The hub (`events.Hub`) fans events out to open streams and never blocks a writer: a stream that falls behind is cut off and resumes from the store.
 
@@ -272,7 +276,7 @@ Branch heads come from `git ls-remote`, fetches and pushes from `git` with crede
 3. The pipeline package reads the pipeline file from that commit, and the validator policy from the target branch.
 4. The scheduler starts every step whose needs are met, up to `runner.max_parallel` at once.
 5. The runner creates a worktree, starts each step's container, streams its log, and saves evidence when it ends.
-6. Validator steps run with their inputs mounted. The validation package reads each `verdict.json`.
+6. Validator steps run with their inputs mounted. The validation package reads each `verdict.json`. An `external` validator waits for its verdict from outside instead (4.3).
 7. Verdicts are combined and the change moves to its outcome state. `verdict.issued` and `change.state_changed` are emitted.
 
 ### 5.2 Fix loop
@@ -362,6 +366,7 @@ These are implementation calls made in this architecture step, with the reasons 
 | A22 | The pipeline editor is one client of the API: the browser builds the YAML, the server owns the commit, the push and the change. Validators it writes need every plain step. | The format's parser stays the single judge of a file, host credentials stay on the server, and a validator that needs every step says in the file when it runs. | A server-side YAML editor (duplicates the browser's model); a browser-side push (needs host credentials in the client) |
 | A23 | A person approves a `needs_human` or `escalated` change with a required reason; merge stays a separate action | Those states exist for a person to look; without a way to say "looked, fine" nothing that edits `.plumbix/` could ever merge through Plumbix. The reason is the audit trail. | Moving the pipeline out of `.plumbix/` (the rule is about editing the policy, not the folder); approve-and-merge in one step; letting a person approve `rejected` |
 | A24 | Plumbix brings the target into branches it created itself (`plumbix_branch`), on a person's request, with a real merge commit pushed under a lease; a refresh starts a new run and a standing approval is given again | The editor's branches are Plumbix's own work, so refreshing them is editing its own work, and the only alternative was a terminal. The approval named a head; after the refresh the merge would land a different tree, so a person looks once more, which is cheap and keeps the audit honest. | Refreshing any change's branch (an agent's branch is the agent's; Plumbix would be pushing merge commits onto work it does not own); carrying an approval across a refresh when the diff is unchanged (the landed tree still differs, and a machine would be re-approving for a person); refreshing by rebase (rewrites commits a run already judged and needs a forced push) |
+| A26 | AI review by pull: an `external` validator step publishes a review brief and waits; a reviewer outside the pipeline (a Claude Code session with the Plumbix MCP, or `plumbix review --watch` wherever Claude Code is installed) claims it and posts the verdict. The server stays the author of the prompt and the gate on the verdict; the token is minted per claim; a reviewer never gets its own change | Claude Code cannot be called back by an MCP server (no sampling support), so the direction is pull. People use the Claude they already have, with no OAuth token in a container and no Node image, and the core still holds no AI (Q07): it publishes a prompt and checks a verdict. | Waiting for sampling support; a containerized Claude Code image first (kept as a later item for unattended servers); letting the reviewer post without a claim; handing a session its own change's review |
 
 ## 9. Risks and open items
 

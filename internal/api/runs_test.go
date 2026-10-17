@@ -69,7 +69,7 @@ func newRunAPI(t *testing.T) *runAPI {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eng := engine.New(db, approvingRunner{}, engine.Config{DataDir: data, MaxParallel: 2, DefaultTimeout: time.Minute, MaxFixRounds: 3, Hosts: host.Live(sec.Values)}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	eng := engine.New(db, approvingRunner{}, engine.Config{DataDir: data, MaxParallel: 2, DefaultTimeout: time.Minute, MaxFixRounds: 3, Hosts: host.Live(sec.Values), Settings: settings.New(db)}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Cleanup(func() { eng.Shutdown(context.Background()) })
 	repo := gittest.New(t)
 	repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": "version: 1\nsteps:\n  - {name: test, image: x, run: x}\n  - {name: validate, image: v, validator: true, needs: [test]}\n"}, "pipeline")
