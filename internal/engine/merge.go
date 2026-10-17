@@ -117,7 +117,8 @@ func (e *Engine) beginMerge(ctx context.Context, changeID string) (change.Change
 		return c, run.Run{}, fmt.Errorf("%w: change %s has no run", change.ErrInvalidState, changeID)
 	}
 	last := runs[len(runs)-1]
-	if last.Status != run.Finished || last.Outcome != change.Approved || last.Head == "" {
+	byPerson := c.HumanApproval != nil && c.HumanApproval.Head == last.Head
+	if last.Status != run.Finished || last.Head == "" || (last.Outcome != change.Approved && !byPerson) {
 		return c, run.Run{}, fmt.Errorf("%w: the latest run of change %s is not an approval", change.ErrInvalidState, changeID)
 	}
 	if e.merging == nil {

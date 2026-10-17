@@ -108,7 +108,9 @@ export interface ChangeView {
   risks: RiskVM[]
   iterations: IterationVM[]
   evidence: { label: string; runId: string; error: string; steps: StepVM[] }
-  actions: { primary: 'merge' | 'validate' | null; close: boolean }
+  actions: { primary: 'merge' | 'validate' | null; close: boolean; approve: boolean }
+  /** A person's standing approval, for the verdict panel. */
+  humanApproval: { reason: string; ago: string } | null
   diffRange: string
   /** Short sha of commits on the branch newer than the judged head, or null. */
   newerCommits: string | null
@@ -288,7 +290,9 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
     actions: {
       primary: c.state === 'approved' ? 'merge' : c.state === 'needs_human' || c.state === 'escalated' ? 'validate' : null,
       close: !['merged', 'closed'].includes(c.state),
+      approve: c.state === 'needs_human' || c.state === 'escalated',
     },
+    humanApproval: c.human_approval ? { reason: c.human_approval.reason, ago: ago(minutesBetween(c.human_approval.at, now)) } : null,
     diffRange: withHead ? `${shortSha(withHead.base)}..${shortSha(withHead.head)}` : '',
     newerCommits: c.source_head && cur?.head && c.source_head !== cur.head && !['running', 'open', 'merged', 'closed'].includes(c.state) ? shortSha(c.source_head) : null,
     needsPerson: ['needs_human', 'escalated', 'rejected'].includes(c.state),

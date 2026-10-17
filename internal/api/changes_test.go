@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/store"
 )
 
@@ -186,5 +187,42 @@ func TestChangeRoutesNeedToken(t *testing.T) {
 	a.h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+func TestApproveEndpoint(t *testing.T) {
+	o := loadOpenAPI(t)
+	a := newRunAPI(t)
+	a.repo.Commit("pipe", map[string]string{".plumbix/pipeline.yaml": "version: 1\nsteps:\n  - {name: test, image: x, run: x}\n  - {name: lint, image: x, run: x}\n  - {name: validate, image: v, validator: true, needs: [test, lint]}\n"}, "pipeline edit")
+	c := decode[change.Change](t, a.do(http.MethodPost, "/api/v1/changes", changeBody(a.repoID, "pipe")))
+	first := decode[struct{ Runs []run.Run }](t, a.do(http.MethodGet, "/api/v1/changes/"+c.ID+"/runs", "")).Runs[0]
+	if r := a.waitRun(first.ID); r.Outcome != change.NeedsHuman {
+		t.Fatalf("run = %+v", r)
+	}
+	bad := a.do(http.MethodPost, "/api/v1/changes/"+c.ID+"/approve", `{"reason": " "}`)
+	o.check("Error", bad)
+	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), `"reason"`) {
+		t.Errorf("empty reason: %d %s", bad.Code, bad.Body.String())
+	}
+	rec := a.do(http.MethodPost, "/api/v1/changes/"+c.ID+"/approve", `{"reason": "pipeline edit reviewed by hand"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
+	}
+	o.check("Change", rec)
+	got := decode[change.Change](t, rec)
+	if got.State != change.Approved || got.HumanApproval == nil || got.HumanApproval.Reason != "pipeline edit reviewed by hand" || got.HumanApproval.Head == "" {
+		t.Errorf("approved = %+v %+v", got.State, got.HumanApproval)
+	}
+	again := a.do(http.MethodPost, "/api/v1/changes/"+c.ID+"/approve", `{"reason": "again"}`)
+	o.check("Error", again)
+	if again.Code != http.StatusConflict || decode[apiError](t, again).Error.Code != "invalid_state" {
+		t.Errorf("approve twice: %d %s", again.Code, again.Body.String())
+	}
+	if rec := a.do(http.MethodPost, "/api/v1/changes/c_nope/approve", `{"reason": "x"}`); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown: %d", rec.Code)
+	}
+	merged := a.do(http.MethodPost, "/api/v1/changes/"+c.ID+"/merge", "")
+	if merged.Code != http.StatusOK || decode[change.Change](t, merged).State != change.Merged {
+		t.Errorf("merge after approval: %d %s", merged.Code, merged.Body.String())
 	}
 }

@@ -551,6 +551,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /changes/{id}/approve:
+    post:
+      operationId: approveChange
+      summary: A person approves a needs_human or escalated change, with a reason.
+      description: >
+        Records the reason and the validated head on the change, emits
+        change.approved_by_person and the state change to approved, and lets
+        the normal merge apply. A later push starts a new run, which ends the
+        approval. Only needs_human and escalated changes; rejected is the
+        validators' explicit no.
+      parameters:
+        - $ref: "#/components/parameters/ChangeID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+      responses:
+        "200":
+          description: The approved change, with human_approval set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Change"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The change is not needs_human or escalated, has no finished run (invalid_state), or changed state meanwhile (conflict).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /changes/{id}/merge:
     post:
       operationId: mergeChange
@@ -1088,6 +1132,20 @@ components:
         source_head:
           description: The source branch's head as the poller last saw it; differs from the last run's head when commits arrived since the verdict.
           type: string
+        human_approval:
+          description: Set while a person's approval stands; a new run clears it.
+          type: object
+          additionalProperties: false
+          required: [reason, head, at]
+          properties:
+            reason:
+              type: string
+            head:
+              description: The validated commit the person approved.
+              type: string
+            at:
+              type: string
+              format: date-time
         created_at:
           type: string
           format: date-time

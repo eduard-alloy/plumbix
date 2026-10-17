@@ -12,6 +12,7 @@ export const EVENT_TYPES: EventType[] = [
   'verdict.issued',
   'alert.raised',
   'alert.resolved',
+  'change.approved_by_person',
 ]
 
 export type Connection = 'live' | 'reconnecting'

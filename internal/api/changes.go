@@ -30,6 +30,7 @@ func registerChangeRoutes(mux *http.ServeMux, h *changeHandlers) {
 	mux.HandleFunc("GET /api/v1/changes", h.list)
 	mux.HandleFunc("GET /api/v1/changes/{id}", h.get)
 	mux.HandleFunc("POST /api/v1/changes/{id}/close", h.close)
+	mux.HandleFunc("POST /api/v1/changes/{id}/approve", h.approve)
 }
 
 func (h *changeHandlers) createRepo(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +96,28 @@ func (h *changeHandlers) get(w http.ResponseWriter, r *http.Request) {
 
 func (h *changeHandlers) close(w http.ResponseWriter, r *http.Request) {
 	c, err := h.svc.Close(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, c)
+}
+
+// approveBody is a person's approval of a needs_human or escalated change.
+type approveBody struct {
+	Reason string `json:"reason"`
+}
+
+func (h *changeHandlers) approve(w http.ResponseWriter, r *http.Request) {
+	if h.engine == nil {
+		writeError(w, http.StatusNotFound, "not_found", "no such endpoint")
+		return
+	}
+	var body approveBody
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	c, err := h.engine.ApproveByPerson(r.Context(), r.PathValue("id"), body.Reason)
 	if err != nil {
 		h.fail(w, err)
 		return

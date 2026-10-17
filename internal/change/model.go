@@ -64,8 +64,18 @@ type Change struct {
 	State              State       `json:"state"`
 	Merge              *Merge      `json:"merge,omitempty"`       // set once merged
 	SourceHead         string      `json:"source_head,omitempty"` // the source branch's head as the poller last saw it
-	CreatedAt          time.Time   `json:"created_at"`
-	UpdatedAt          time.Time   `json:"updated_at"`
+	// HumanApproval is set when a person approved the change at Head; a
+	// new run clears it.
+	HumanApproval *HumanApproval `json:"human_approval,omitempty"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+}
+
+// HumanApproval records that a person approved a change, and why.
+type HumanApproval struct {
+	Reason string    `json:"reason"`
+	Head   string    `json:"head"` // the validated commit the person approved
+	At     time.Time `json:"at"`
 }
 
 // Merge says how a change landed on its target branch.
@@ -122,6 +132,9 @@ type Store interface {
 	// SetChangeState moves a change from one state to another. It returns
 	// ErrConflict if the change is no longer in state from.
 	SetChangeState(ctx context.Context, id string, from, to State, at time.Time) error
+	// ApproveByPerson records a person's approval at head and moves the
+	// change from state from to approved. ErrConflict if it left state from.
+	ApproveByPerson(ctx context.Context, id string, from State, reason, head string, at time.Time) error
 	RecordMerge(ctx context.Context, m MergeRecord) error // ErrConflict if the change was merged already
 	// ListMerges returns the merges Plumbix pushed to a branch, oldest first.
 	ListMerges(ctx context.Context, repoID, branch string) ([]MergeRecord, error)
