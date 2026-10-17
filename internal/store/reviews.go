@@ -96,6 +96,22 @@ func (db *DB) ExpireReview(ctx context.Context, id string, at time.Time) error {
 	return err
 }
 
+// ReleaseReview returns a claimed review to pending with no reviewer and
+// no token, so the next claim can take it.
+func (db *DB) ReleaseReview(ctx context.Context, id string) error {
+	res, err := db.sql.ExecContext(ctx,
+		`UPDATE reviews SET status = ?, reviewer = '', token_hash = '', claimed_at = '' WHERE id = ? AND status = ?`,
+		review.Pending, id, review.Claimed)
+	if err != nil {
+		return mapErr(err)
+	}
+	if n, _ := res.RowsAffected(); n == 1 {
+		return nil
+	}
+	_, err = db.GetReview(ctx, id)
+	return err
+}
+
 // ExpireRunReviews closes the open reviews of one run.
 func (db *DB) ExpireRunReviews(ctx context.Context, runID string, at time.Time) error {
 	_, err := db.sql.ExecContext(ctx,

@@ -112,7 +112,11 @@ func next(ctx context.Context, o Options) (review.Brief, bool, error) {
 	if o.RepoID != "" {
 		q.Set("repo_id", o.RepoID)
 	}
-	resp, err := o.Client.Do(ctx, http.MethodGet, "/api/v1/reviews/next?"+q.Encode(), nil)
+	// The server holds the request up to wait seconds; the request timeout
+	// of a plain call is shorter and would abandon a claim already made.
+	pollCtx, cancel := context.WithTimeout(ctx, time.Duration(o.Wait)*time.Second+15*time.Second)
+	defer cancel()
+	resp, err := o.Client.Wait(pollCtx, http.MethodGet, "/api/v1/reviews/next?"+q.Encode(), nil)
 	if err != nil {
 		return review.Brief{}, false, err
 	}

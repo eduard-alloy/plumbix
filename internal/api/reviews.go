@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -50,6 +51,16 @@ func (h *reviewHandlers) next(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if ok {
+			// The claim happened in the store; if the poller hung up meanwhile
+			// the token would be lost with it, so the claim is given back.
+			if r.Context().Err() != nil {
+				bg, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := h.engine.ReleaseReview(bg, b.ID); err != nil {
+					h.log.Warn("release review after the client left", "review", b.ID, "err", err)
+				}
+				return
+			}
 			writeJSON(w, http.StatusOK, b)
 			return
 		}

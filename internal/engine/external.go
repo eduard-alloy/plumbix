@@ -161,6 +161,16 @@ func (e *Engine) ClaimReview(ctx context.Context, repoID, reviewer string) (revi
 	return b, true, nil
 }
 
+// ReleaseReview gives a claimed review back when its reviewer never got the
+// brief, so the claim does not sit unanswered until the step times out.
+func (e *Engine) ReleaseReview(ctx context.Context, id string) error {
+	if err := e.store.ReleaseReview(ctx, id); err != nil {
+		return err
+	}
+	e.log.Info("review released: the reviewer went away before the brief reached it", "review", id)
+	return nil
+}
+
 // PostReviewVerdict accepts a reviewer's verdict for a claimed review: the
 // token must be the one handed out with the brief, and the verdict must
 // pass the checks every verdict passes. The waiting step picks it up.
