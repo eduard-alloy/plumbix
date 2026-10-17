@@ -10,7 +10,7 @@ import { LogPanel, type LogTarget } from '../ui/LogPanel'
 import { DiffView, type Highlight } from '../ui/DiffView'
 import { changeView, refusalNotice, type NoticeVM, type StepVM } from '../vm/change'
 
-type Busy = 'merge' | 'close' | 'validate' | null
+type Busy = 'merge' | 'close' | 'validate' | 'approve' | null
 
 export function ChangePage({ id }: { id: string }) {
   const { state, actions } = useStore()
@@ -22,6 +22,8 @@ export function ChangePage({ id }: { id: string }) {
   const [selected, setSelected] = useState<number | undefined>(undefined)
   const [busy, setBusy] = useState<Busy>(null)
   const [confirmClose, setConfirmClose] = useState(false)
+  const [approving, setApproving] = useState(false)
+  const [reason, setReason] = useState('')
   const [notice, setNotice] = useState<NoticeVM | null>(null)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [flash, setFlash] = useState<string | null>(null)
@@ -83,6 +85,21 @@ export function ChangePage({ id }: { id: string }) {
         setNotice(refusalNotice(e.code, ctx))
         void actions.refreshChange(c!.id)
       }
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function approve() {
+    if (!reason.trim()) return
+    setBusy('approve')
+    try {
+      actions.setChange(await api.approve(c!.id, reason.trim()))
+      setApproving(false)
+      setReason('')
+    } catch (e) {
+      setNotice({ title: 'Not approved', body: e instanceof ApiError ? e.message : 'The server refused the approval.', cmd: '', action: null, actionLabel: '' })
+      if (e instanceof ApiError) void actions.refreshChange(c!.id)
     } finally {
       setBusy(null)
     }
@@ -281,7 +298,42 @@ export function ChangePage({ id }: { id: string }) {
                 Validate again
               </button>
             )}
+            {v.actions.approve && !approving && (
+              <button className="secondary" onClick={() => setApproving(true)} disabled={busy !== null}>
+                Approve
+              </button>
+            )}
           </div>
+          {v.actions.approve && approving && (
+            <form
+              className="approve-form"
+              aria-label="Approve this change"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void approve()
+              }}
+            >
+              <label>
+                Why is this change fine despite the verdict?
+                <textarea aria-label="Reason" rows={2} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Read by whoever looks at this change later." autoFocus />
+              </label>
+              <div className="buttons">
+                <button className="primary" type="submit" disabled={busy !== null || !reason.trim()}>
+                  {busy === 'approve' ? 'Approving…' : 'Confirm approval'}
+                </button>
+                <button
+                  className="quiet"
+                  type="button"
+                  onClick={() => {
+                    setApproving(false)
+                    setReason('')
+                  }}
+                >
+                  Keep
+                </button>
+              </div>
+            </form>
+          )}
         </div>
 
         {v.newerCommits && (
@@ -445,6 +497,11 @@ export function ChangePage({ id }: { id: string }) {
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+            {v.humanApproval && (
+              <div className="block mergenote" data-testid="human-approval">
+                <b>Approved by a person</b> · {v.humanApproval.reason} · {v.humanApproval.ago} ago
               </div>
             )}
             {v.verdict.mergeNote && <div className="block mergenote">{v.verdict.mergeNote}</div>}

@@ -174,10 +174,6 @@ export function fakeFetch(db: FakeDB): typeof fetch {
         return new Response(null, { status: 204 })
       }
     }
-    if (path === '/api/v1/pipelines/check' && method === 'POST') {
-      const content = String(init?.body ?? '')
-      return content.includes('INVALID') ? json(200, { valid: false, errors: [{ path: 'steps', line: 2, message: 'invalid' }] }) : json(200, { valid: true, order: [] })
-    }
     const pipe = path.match(/^\/api\/v1\/repos\/([^/]+)\/pipeline(\/changes)?(\?.*)?$/)
     if (pipe) {
       const [, id, changes] = pipe
@@ -247,6 +243,16 @@ export function fakeFetch(db: FakeDB): typeof fetch {
         if (db.mergeResult !== 'ok') return error(409, db.mergeResult, `refused: ${db.mergeResult}`)
         c.state = 'merged'
         c.merge = { commit: '5c0e7a3b9d21aaaaaaaaaaaaaaaaaaaaaaaaaaaa', previous: 'a81d7c0bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', strategy: 'squash', run_id: 'run_8h2k4m1qz2bb', merged_at: new Date().toISOString() }
+        c.updated_at = new Date().toISOString()
+        return json(200, c)
+      }
+      if (sub === 'approve' && method === 'POST') {
+        const body = JSON.parse(String(init?.body)) as { reason: string }
+        if (!body.reason?.trim()) return json(400, { error: { code: 'invalid_request', message: 'the request has 1 problem(s)', details: { problems: [{ field: 'reason', message: 'is required' }] } } })
+        if (c.state !== 'needs_human' && c.state !== 'escalated') return error(409, 'invalid_state', `change ${c.id} is ${c.state}`)
+        const head = (db.runs[c.id] ?? []).slice(-1)[0]?.head ?? ''
+        c.state = 'approved'
+        c.human_approval = { reason: body.reason.trim(), head, at: new Date().toISOString() }
         c.updated_at = new Date().toISOString()
         return json(200, c)
       }

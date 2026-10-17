@@ -99,6 +99,31 @@ describe('Change page', () => {
     expect(window.location.pathname).toBe('/repos')
   })
 
+  it('lets a person approve with a reason, then shows the approval and the merge button', async () => {
+    await open(needsHuman.id)
+    expect(screen.queryByRole('button', { name: 'Merge' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    const form = screen.getByRole('form', { name: 'Approve this change' })
+    const confirm = within(form).getByRole('button', { name: 'Confirm approval' })
+    expect(confirm.hasAttribute('disabled')).toBe(true)
+    fireEvent.change(within(form).getByLabelText('Reason'), { target: { value: 'pipeline edit read by hand' } })
+    fireEvent.click(confirm)
+    await waitFor(() => expect(screen.getByTestId('human-approval').textContent).toContain('Approved by a person · pipeline edit read by hand'))
+    expect(screen.getByRole('button', { name: 'Merge' })).toBeTruthy()
+    expect(screen.queryByRole('form', { name: 'Approve this change' })).toBeNull()
+    const c = db.changes.find((x) => x.id === needsHuman.id)!
+    expect(c.state).toBe('approved')
+    expect(c.human_approval?.reason).toBe('pipeline edit read by hand')
+  })
+
+  it('Keep closes the approval field without approving', async () => {
+    await open(needsHuman.id)
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Keep' }))
+    expect(screen.queryByRole('form', { name: 'Approve this change' })).toBeNull()
+    expect(db.changes.find((x) => x.id === needsHuman.id)!.state).toBe('needs_human')
+  })
+
   it('closes only after an inline confirm', async () => {
     await open(fixRequested.id)
     expect(screen.queryByRole('button', { name: 'Merge' })).toBeNull()

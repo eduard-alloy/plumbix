@@ -168,11 +168,24 @@ func TestLifecycleEmitsEvents(t *testing.T) {
 	if err := db.ResolveKey(ctx, alert.TokenExpiry, "github", at.Add(11*time.Second)); err != nil {
 		t.Fatal(err)
 	}
+	// A second change stops at needs_human and a person approves it.
+	c2 := c
+	c2.ID, c2.SourceBranch, c2.CreatedAt, c2.UpdatedAt = "c_2", "pipe", at.Add(12*time.Second), at.Add(12*time.Second)
+	if err := db.CreateChange(ctx, c2); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetChangeState(ctx, "c_2", change.Open, change.NeedsHuman, at.Add(13*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ApproveByPerson(ctx, "c_2", change.NeedsHuman, "read it myself", "ffff", at.Add(14*time.Second)); err != nil {
+		t.Fatal(err)
+	}
 
 	want := []events.Type{
 		events.ChangeSubmitted, events.RunStarted, events.StateChanged, events.StepFinished,
 		events.RunFinished, events.VerdictIssued, events.StateChanged, events.ChangeMerged, events.StateChanged,
 		events.AlertRaised, events.AlertResolved, events.AlertRaised, events.AlertResolved,
+		events.ChangeSubmitted, events.StateChanged, events.ApprovedByPerson, events.StateChanged,
 	}
 	var got []events.Type
 	for i, e := range notified {
@@ -364,5 +377,55 @@ func TestStepFinishedPayloadCarriesRetriesAndReasons(t *testing.T) {
 	data, _ := json.Marshal(events.StepFinishedPayload{Step: "build", Status: "succeeded"})
 	if s := string(data); strings.Contains(s, "attempts") || strings.Contains(s, "reason") || strings.Contains(s, "allowed") {
 		t.Errorf("plain step payload carries empty optional fields: %s", s)
+	}
+}
+
+func TestApproveByPersonRecordsReasonAndEmitsBothEvents(t *testing.T) {
+	db := openDB(t)
+	schema := compileEventsSchema(t)
+	if err := db.CreateRepo(ctx, sampleRepo("r_1", "https://github.com/a/b")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateChange(ctx, sampleChange("c_1", "r_1", "feat")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetChangeState(ctx, "c_1", change.Open, change.NeedsHuman, t0); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
+	at := t0.Add(time.Minute)
+	if err := db.ApproveByPerson(ctx, "c_1", change.NeedsHuman, "pipeline edit reviewed by hand", "abc123", at); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := db.GetChange(ctx, "c_1")
+	if c.State != change.Approved || c.HumanApproval == nil || c.HumanApproval.Reason != "pipeline edit reviewed by hand" || c.HumanApproval.Head != "abc123" || !c.HumanApproval.At.Equal(at) {
+		t.Fatalf("change = %+v %+v", c.State, c.HumanApproval)
+	}
+	after, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
+	fresh := after[len(before):]
+	if len(fresh) != 2 || fresh[0].Type != events.ApprovedByPerson || fresh[1].Type != events.StateChanged {
+		t.Fatalf("events = %+v", fresh)
+	}
+	for _, e := range fresh {
+		validateEvent(t, schema, e)
+	}
+	raw, _ := json.Marshal(fresh[0].Payload)
+	var p events.ApprovedByPersonPayload
+	if err := json.Unmarshal(raw, &p); err != nil || p.Reason != "pipeline edit reviewed by hand" || p.Head != "abc123" {
+		t.Errorf("payload = %s %v", raw, err)
+	}
+	// Approving again is a conflict: the change is no longer needs_human.
+	if err := db.ApproveByPerson(ctx, "c_1", change.NeedsHuman, "again", "abc123", at); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("second approval err = %v", err)
+	}
+	// A new run ends the approval.
+	if err := db.SetChangeState(ctx, "c_1", change.Approved, change.Running, at.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ = db.GetChange(ctx, "c_1"); c.HumanApproval != nil {
+		t.Errorf("approval survived a new run: %+v", c.HumanApproval)
+	}
+	if err := db.ApproveByPerson(ctx, "c_nope", change.NeedsHuman, "x", "h", at); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("unknown change err = %v", err)
 	}
 }

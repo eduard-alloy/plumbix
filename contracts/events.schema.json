@@ -168,6 +168,21 @@
           "$ref": "#/$defs/alertResolved"
         }
       }
+    },
+    {
+      "description": "A person approved a needs_human or escalated change; the change.state_changed event to approved follows in the same transaction.",
+      "properties": {
+        "type": {
+          "const": "change.approved_by_person"
+        },
+        "payload": {
+          "$ref": "#/$defs/approvedByPerson"
+        }
+      },
+      "required": [
+        "repo_id",
+        "change_id"
+      ]
     }
   ],
   "$defs": {
@@ -473,6 +488,25 @@
           ]
         },
         "key": {
+          "type": "string"
+        }
+      }
+    },
+    "approvedByPerson": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "head"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "head": {
+          "description": "The validated commit the person approved.",
           "type": "string"
         }
       }

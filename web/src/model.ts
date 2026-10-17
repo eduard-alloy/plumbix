@@ -65,6 +65,8 @@ export interface Change {
   submitted_by?: string
   state: ChangeState
   merge?: Merge
+  /** Set while a person's approval stands; a new run clears it. */
+  human_approval?: { reason: string; head: string; at: string }
   source_head?: string
   created_at: string
   updated_at: string
@@ -234,6 +236,7 @@ export type EventType =
   | 'verdict.issued'
   | 'alert.raised'
   | 'alert.resolved'
+  | 'change.approved_by_person'
 
 export interface PlumbixEvent {
   id: number
@@ -289,10 +292,4 @@ export interface PipelineFile {
   pipeline: PipelineModel | null
   problems: PipelineProblem[]
   last_run?: { run_id: string; head: string; steps: Record<string, { status: string; duration_ms: number }> }
-}
-
-export interface PipelineCheck {
-  valid: boolean
-  order?: string[]
-  errors?: PipelineProblem[]
 }

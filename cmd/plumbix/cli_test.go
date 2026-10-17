@@ -161,6 +161,14 @@ func TestCLIFlow(t *testing.T) {
 	if code, _, errOut := c.run("", "alert", "resolve", "al_nope"); code != 1 || !strings.Contains(errOut, "not_found") {
 		t.Errorf("resolve unknown alert: exit %d, stderr %q", code, errOut)
 	}
+	if code, _, errOut := c.run("", "change", "approve", id); code != 2 || !strings.Contains(errOut, "--reason") {
+		t.Errorf("approve without a reason: exit %d, stderr %q", code, errOut)
+	}
+	// This change's runs errored (no pipeline file), so there is no judged
+	// head for a person to approve; the positive path is an engine and API test.
+	if code, _, errOut := c.run("", "change", "approve", id, "--reason", "looked at it myself"); code != 1 || !strings.Contains(errOut, "invalid_state") || !strings.Contains(errOut, "finished run") {
+		t.Errorf("approve with an errored latest run: exit %d, stderr %q", code, errOut)
+	}
 	if closed := c.mustRun("", "change", "close", id); closed["state"] != "closed" {
 		t.Errorf("close = %v", closed)
 	}
@@ -245,6 +253,7 @@ func TestCLIUsageErrors(t *testing.T) {
 		{"repo", "bogus"},
 		{"change", "show"},
 		{"change", "close"},
+		{"change", "approve"},
 		{"submit"},
 		{"change", "nope"},
 		{"events", "extra"},

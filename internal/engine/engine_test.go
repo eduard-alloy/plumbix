@@ -644,3 +644,97 @@ func TestProposeFilePushesANewBranchOnly(t *testing.T) {
 		t.Errorf("outcome = %s, want needs_human for a pipeline edit", r.Outcome)
 	}
 }
+
+func TestAPersonApprovesAnEscalatedChangeAndItMerges(t *testing.T) {
+	h := newHarness(t, Config{MaxFixRounds: 1})
+	h.repo.Commit("feat", map[string]string{"app.go": "x\n"}, "feature")
+	c := h.submit("feat")
+	h.fake.exit["test"] = 1
+	h.validate(c.ID)
+	r := h.validate(c.ID)
+	if r.Outcome != change.Escalated {
+		t.Fatalf("outcome = %s", r.Outcome)
+	}
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "  "); err == nil || !strings.Contains(err.Error(), "reason") {
+		t.Errorf("empty reason: %v", err)
+	}
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, strings.Repeat("x", MaxApprovalReason+1)); err == nil {
+		t.Error("an overlong reason was accepted")
+	}
+	got, err := h.eng.ApproveByPerson(ctx, c.ID, "the failing test is a known flake; fixed in the next change")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != change.Approved || got.HumanApproval == nil || got.HumanApproval.Head != r.Head || got.HumanApproval.Reason == "" {
+		t.Fatalf("approved change = %+v %+v", got.State, got.HumanApproval)
+	}
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "again"); !errors.Is(err, change.ErrInvalidState) {
+		t.Errorf("approving an approved change: %v", err)
+	}
+	merged, err := h.eng.Merge(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("merge after a person's approval: %v", err)
+	}
+	if merged.State != change.Merged || merged.Merge == nil || merged.Merge.RunID != r.ID {
+		t.Errorf("merged = %+v %+v", merged.State, merged.Merge)
+	}
+}
+
+func TestApprovalRefusalsAndANewRunEndsIt(t *testing.T) {
+	h := newHarness(t, Config{})
+	h.repo.Commit("feat", map[string]string{"app.go": "x\n"}, "feature")
+	c := h.submit("feat")
+	// No run yet: open, so not a state a person approves.
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "why"); !errors.Is(err, change.ErrInvalidState) {
+		t.Errorf("open change: %v", err)
+	}
+	if _, err := h.eng.ApproveByPerson(ctx, "c_nope", "why"); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("unknown change: %v", err)
+	}
+	h.repo.Commit("feat", map[string]string{".plumbix/pipeline.yaml": pipelineYAML + "  - {name: lint, image: x, run: x}\n"}, "pipeline edit")
+	r := h.validate(c.ID)
+	if r.Outcome != change.NeedsHuman {
+		t.Fatalf("outcome = %s, want needs_human for a .plumbix/ edit", r.Outcome)
+	}
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "reviewed the pipeline edit by hand"); err != nil {
+		t.Fatal(err)
+	}
+	// A new push starts a new run, which ends the approval.
+	h.repo.Commit("feat", map[string]string{"more.go": "y\n"}, "more")
+	again := h.validate(c.ID)
+	fresh, _ := h.svc.Get(ctx, c.ID)
+	if fresh.HumanApproval != nil || again.Outcome != change.NeedsHuman {
+		t.Errorf("after a new run: approval %+v outcome %s", fresh.HumanApproval, again.Outcome)
+	}
+	// Merge refuses: the latest run is not an approval and no person approved its head.
+	if _, err := h.eng.Merge(ctx, c.ID); !errors.Is(err, change.ErrInvalidState) {
+		t.Errorf("merge: %v", err)
+	}
+}
+
+func TestApprovalRefusesRejectedAndUnfinishedRuns(t *testing.T) {
+	h := newHarness(t, Config{})
+	h.repo.Commit("feat", map[string]string{".plumbix/pipeline.yaml": pipelineYAML + "  - {name: lint, image: x, run: x}\n"}, "pipeline edit")
+	c := h.submit("feat")
+	if r := h.validate(c.ID); r.Outcome != change.NeedsHuman {
+		t.Fatalf("outcome = %s", r.Outcome)
+	}
+	// Rejected is the validators' explicit no: a person cannot approve it.
+	if err := h.db.SetChangeState(ctx, c.ID, change.NeedsHuman, change.Rejected, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "override"); !errors.Is(err, change.ErrInvalidState) || !strings.Contains(err.Error(), "rejected") {
+		t.Errorf("approving a rejected change: %v", err)
+	}
+	if err := h.db.SetChangeState(ctx, c.ID, change.Rejected, change.NeedsHuman, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// The latest run errored (the pipeline file broke), so there is no judged head to approve.
+	h.repo.Commit("feat", map[string]string{".plumbix/pipeline.yaml": "version: 2\n"}, "break pipeline")
+	if r := h.validate(c.ID); r.Status != run.Errored {
+		t.Fatalf("run = %+v", r)
+	}
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "fine"); !errors.Is(err, change.ErrInvalidState) || !strings.Contains(err.Error(), "finished run") {
+		t.Errorf("approving after an errored run: %v", err)
+	}
+}

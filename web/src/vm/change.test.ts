@@ -82,7 +82,7 @@ describe('changeView for an approved change', () => {
   })
 
   it('offers Merge and Close', () => {
-    expect(v.actions).toEqual({ primary: 'merge', close: true })
+    expect(v.actions).toEqual({ primary: 'merge', close: true, approve: false })
     expect(v.diffRange).toBe('a81d7c0..9f3c1e2')
   })
 })
@@ -103,7 +103,7 @@ describe('changeView for other states', () => {
     ])
     expect(v.findings[0].items[0].criterion).toBe('AC-1')
     expect(v.risks[0].humanRequired).toBe(true)
-    expect(v.actions).toEqual({ primary: null, close: true })
+    expect(v.actions).toEqual({ primary: null, close: true, approve: false })
     expect(v.criteria[2]).toMatchObject({ check: 'check: go test ./internal/hosts/github/...', status: 'met' })
   })
 
@@ -117,7 +117,7 @@ describe('changeView for other states', () => {
     expect(v.verdict.steps.map((s) => s.name)).toEqual(['build'])
     expect(v.iterations[0]).toMatchObject({ n: 1, status: 'running', headline: 'Running', dur: '1m 12s' })
     expect(v.judged).toBe(false)
-    expect(v.actions).toEqual({ primary: null, close: true })
+    expect(v.actions).toEqual({ primary: null, close: true, approve: false })
   })
 
   it('needs_human: the error is the reason, criteria are not judged, Validate again is offered', () => {
@@ -131,7 +131,7 @@ describe('changeView for other states', () => {
     expect(v.critCount).toBe('0 of 1 met')
     expect(v.iterations[0]).toMatchObject({ status: 'errored', headline: 'step build could not run: image golang:1.27 not found' })
     expect(v.evidence.error).toBe('step build could not run: image golang:1.27 not found')
-    expect(v.actions).toEqual({ primary: 'validate', close: true })
+    expect(v.actions).toEqual({ primary: 'validate', close: true, approve: true })
   })
 
   it('open without runs: placeholders everywhere', () => {
@@ -148,10 +148,10 @@ describe('changeView for other states', () => {
     const m = changeView(merged, approvedRuns, plumbix, undefined, NOW)
     expect(m.verdict.sentence).toBe('Merged into main.')
     expect(m.verdict.record).toMatchObject({ commit: '5c0e7a3b9d21', previous: 'a81d7c0bbbbb', strategy: 'squash' })
-    expect(m.actions).toEqual({ primary: null, close: false })
+    expect(m.actions).toEqual({ primary: null, close: false, approve: false })
     const c = changeView(closed, fixRequestedRuns, plumbix, undefined, NOW)
     expect(c.verdict.sentence).toBe('Closed without merging.')
-    expect(c.actions).toEqual({ primary: null, close: false })
+    expect(c.actions).toEqual({ primary: null, close: false, approve: false })
   })
 })
 
@@ -169,6 +169,19 @@ describe('newer commits on the branch', () => {
     expect(sticky.newerCommits).toBe('abcdef0')
     const done = changeView({ ...merged, source_head: 'abcdef0123' }, approvedRuns, plumbix, undefined, NOW)
     expect(done.newerCommits).toBeNull()
+  })
+})
+
+describe('human approval', () => {
+  it('offers Approve on needs_human and escalated changes and shows a standing approval', () => {
+    const nh = changeView(needsHuman, needsHumanRuns, repos[1], undefined, NOW)
+    expect(nh.actions.approve).toBe(true)
+    expect(nh.humanApproval).toBeNull()
+    expect(changeView(approved, approvedRuns, plumbix, undefined, NOW).actions.approve).toBe(false)
+    expect(changeView(fixRequested, fixRequestedRuns, repos[1], undefined, NOW).actions.approve).toBe(false)
+    const byPerson = changeView({ ...needsHuman, state: 'approved', human_approval: { reason: 'pipeline edit read by hand', head: 'abc', at: new Date(NOW.getTime() - 5 * 60000).toISOString() } }, needsHumanRuns, repos[1], undefined, NOW)
+    expect(byPerson.humanApproval).toEqual({ reason: 'pipeline edit read by hand', ago: '5m' })
+    expect(byPerson.actions.primary).toBe('merge')
   })
 })
 

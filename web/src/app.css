@@ -340,3 +340,9 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 .token-state { font-size: 12px; color: var(--text-2); }
 .token-editor .edit { display: flex; gap: 8px; align-items: center; }
 .token-editor .edit input { flex: 1; max-width: 520px; height: 28px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--bg); font: 13px var(--mono); }
+
+/* Human approval (WU-021) */
+.approve-form { display: grid; gap: 8px; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface); max-width: 640px; }
+.approve-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-3); }
+.approve-form textarea { width: 100%; box-sizing: border-box; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--bg); color: var(--text); font: 13px/1.5 var(--ui); resize: vertical; }
+.approve-form .buttons { display: flex; gap: 6px; }

@@ -24,10 +24,12 @@ const (
 	VerdictIssued   Type = "verdict.issued"
 	AlertRaised     Type = "alert.raised"
 	AlertResolved   Type = "alert.resolved"
+	// ApprovedByPerson: a person approved a needs_human or escalated change.
+	ApprovedByPerson Type = "change.approved_by_person"
 )
 
 // Types lists every event type.
-var Types = []Type{ChangeSubmitted, StateChanged, ChangeMerged, RunStarted, StepFinished, RunFinished, VerdictIssued, AlertRaised, AlertResolved}
+var Types = []Type{ChangeSubmitted, StateChanged, ChangeMerged, RunStarted, StepFinished, RunFinished, VerdictIssued, AlertRaised, AlertResolved, ApprovedByPerson}
 
 // Event is the envelope every event shares. The three optional ids are the
 // filter keys; Payload holds what the type needs and is one of the payload
@@ -62,6 +64,11 @@ type (
 		Commit   string `json:"commit"`
 		Previous string `json:"previous"`
 		Strategy string `json:"strategy"`
+	}
+	// ApprovedByPersonPayload: a person approved the change at Head, and why.
+	ApprovedByPersonPayload struct {
+		Reason string `json:"reason"`
+		Head   string `json:"head"`
 	}
 	// RunStartedPayload: a pipeline run began; Iteration is set for a change's run.
 	RunStartedPayload struct {

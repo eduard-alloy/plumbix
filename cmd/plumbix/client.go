@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/eduard-alloy/plumbix/internal/auth"
 	"github.com/eduard-alloy/plumbix/internal/client"
@@ -190,6 +191,7 @@ func runChange(args []string, stdout, stderr io.Writer) int {
 	c := newClientCmd("change", stdout, stderr)
 	repo := c.fs.String("repo", "", "filter by repo id (change list)")
 	state := c.fs.String("state", "", "filter by state (change list)")
+	reason := c.fs.String("reason", "", "why the change is fine despite the verdict (change approve)")
 	pos, ok := c.parse(args)
 	if !ok {
 		return 2
@@ -212,6 +214,12 @@ func runChange(args []string, stdout, stderr io.Writer) int {
 		return c.call(http.MethodGet, "/api/v1/changes/"+url.PathEscape(pos[1]), nil)
 	case len(pos) == 2 && pos[0] == "close":
 		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/close", nil)
+	case len(pos) == 2 && pos[0] == "approve":
+		if strings.TrimSpace(*reason) == "" {
+			return usageError(stderr, "plumbix change approve needs --reason: say why the change is fine despite the verdict")
+		}
+		body, _ := json.Marshal(map[string]string{"reason": *reason})
+		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/approve", body)
 	case len(pos) == 2 && pos[0] == "validate":
 		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/validate", nil)
 	case len(pos) == 2 && pos[0] == "merge":
@@ -219,7 +227,7 @@ func runChange(args []string, stdout, stderr io.Writer) int {
 	case len(pos) == 2 && pos[0] == "runs":
 		return c.call(http.MethodGet, "/api/v1/changes/"+url.PathEscape(pos[1])+"/runs", nil)
 	}
-	return usageError(stderr, "usage: plumbix change list [--repo <id>] [--state <s>] | change show|close|validate|merge|runs <id>")
+	return usageError(stderr, "usage: plumbix change list [--repo <id>] [--state <s>] | change show|close|validate|merge|runs <id> | change approve <id> --reason <why>")
 }
 
 // runAlert handles "plumbix alert list|resolve".
