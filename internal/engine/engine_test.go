@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/gitops"
 	"github.com/eduard-alloy/plumbix/internal/gitops/gittest"
 	"github.com/eduard-alloy/plumbix/internal/host"
 	"github.com/eduard-alloy/plumbix/internal/refvalidator"
@@ -586,5 +587,60 @@ func TestBranchRunRunsConditionalSteps(t *testing.T) {
 	}
 	if s := by["flaky"]; s.Status != "succeeded" || s.Attempts != 0 {
 		t.Errorf("flaky = %+v", s)
+	}
+}
+
+func TestPipelineFileReadsTheBranchHead(t *testing.T) {
+	h := newHarness(t, Config{})
+	v, err := h.eng.PipelineFile(ctx, h.repoID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v.Found || v.Pipeline == nil || len(v.Pipeline.Steps) != 2 || string(v.Content) != pipelineYAML || v.SHA == "" || len(v.Problems) != 0 {
+		t.Errorf("view = %+v", v)
+	}
+	h.repo.Commit("broken", map[string]string{".plumbix/pipeline.yaml": "version: 2\n"}, "break")
+	v, err = h.eng.PipelineFile(ctx, h.repoID, "broken")
+	if err != nil || !v.Found || v.Pipeline != nil || len(v.Problems) == 0 || v.Problems[0].Path != "version" {
+		t.Errorf("broken view = %+v %v", v, err)
+	}
+	h.repo.Commit("bare", map[string]string{".plumbix/pipeline.yaml": "", "x.txt": "x\n"}, "no pipeline")
+	v, err = h.eng.PipelineFile(ctx, h.repoID, "bare")
+	if err != nil || v.Found || v.Pipeline != nil || len(v.Problems) != 1 {
+		t.Errorf("missing view = %+v %v", v, err)
+	}
+	if _, err := h.eng.PipelineFile(ctx, h.repoID, "nope"); !errors.Is(err, gitops.ErrUnknownBranch) {
+		t.Errorf("unknown branch err = %v", err)
+	}
+}
+
+func TestProposeFilePushesANewBranchOnly(t *testing.T) {
+	h := newHarness(t, Config{})
+	content := []byte(pipelineYAML + "  - {name: lint, image: \"golang:1.27\", run: \"go vet ./...\"}\n")
+	p := Proposal{TargetBranch: "main", Branch: "pipeline/add-lint", Path: PipelineFile, Content: content, Message: "Pipeline: add lint"}
+	sha, err := h.eng.ProposeFile(ctx, h.repoID, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	heads, _ := h.eng.ListHeads(ctx, change.Repo{ID: h.repoID, Host: "github", URL: h.repo.Remote})
+	if heads["pipeline/add-lint"] != sha {
+		t.Errorf("remote branch = %s, want %s", heads["pipeline/add-lint"], sha)
+	}
+	main := h.repo.Commit("main", map[string]string{"untouched.txt": "x\n"}, "main goes on")
+	_ = main
+	if _, err := h.eng.ProposeFile(ctx, h.repoID, p); !errors.Is(err, gitops.ErrBranchExists) {
+		t.Errorf("second proposal on the same branch: %v", err)
+	}
+	if _, err := h.eng.ProposeFile(ctx, h.repoID, Proposal{TargetBranch: "main", Branch: "main", Path: PipelineFile, Content: content, Message: "m"}); !errors.Is(err, gitops.ErrBranchExists) {
+		t.Errorf("proposal onto main: %v", err)
+	}
+	if _, err := h.eng.ProposeFile(ctx, h.repoID, Proposal{TargetBranch: "nope", Branch: "pipeline/x", Path: PipelineFile, Content: content, Message: "m"}); !errors.Is(err, gitops.ErrUnknownBranch) {
+		t.Errorf("unknown target: %v", err)
+	}
+	// The proposed branch validates like any other and, touching .plumbix/, needs a person.
+	c := h.submit("pipeline/add-lint")
+	r := h.wait(h.validate(c.ID).ID)
+	if r.Outcome != change.NeedsHuman {
+		t.Errorf("outcome = %s, want needs_human for a pipeline edit", r.Outcome)
 	}
 }

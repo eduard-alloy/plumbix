@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 )
@@ -21,6 +22,9 @@ var (
 	// ErrPushDenied means the host refused Plumbix's credentials, or there
 	// were none to offer. Nothing was changed.
 	ErrPushDenied = errors.New("push denied: the host did not accept Plumbix's credentials")
+	// ErrBranchExists means a branch Plumbix wanted to create is already on
+	// the remote. Nothing was changed.
+	ErrBranchExists = errors.New("branch exists")
 )
 
 // deniedMarkers are the phrases git prints when a remote refuses the
@@ -180,4 +184,72 @@ func short(sha string) string {
 		return sha[:12]
 	}
 	return sha
+}
+
+// CommitFile returns a new commit on parent whose tree is the parent's with
+// one file replaced or added. Plumbix is author and committer. Nothing moves:
+// the caller decides which branch, if any, points at the commit.
+func (m *Mirror) CommitFile(ctx context.Context, parent, path string, content []byte, message string) (string, error) {
+	if path == "" || strings.HasPrefix(path, "/") || hasDotDotSegment(path) {
+		return "", fmt.Errorf("invalid path %q", path)
+	}
+	index, err := os.CreateTemp("", "plumbix-index-")
+	if err != nil {
+		return "", err
+	}
+	index.Close()
+	defer os.Remove(index.Name())
+	env := []string{"GIT_INDEX_FILE=" + index.Name()}
+	if _, err := m.run(ctx, nil, env, "read-tree", parent+"^{tree}"); err != nil {
+		return "", err
+	}
+	blob, err := m.run(ctx, bytes.NewReader(content), nil, "hash-object", "-w", "--stdin")
+	if err != nil {
+		return "", err
+	}
+	if _, err := m.run(ctx, nil, env, "update-index", "--add", "--cacheinfo", "100644,"+strings.TrimSpace(string(blob))+","+path); err != nil {
+		return "", err
+	}
+	tree, err := m.run(ctx, nil, env, "write-tree")
+	if err != nil {
+		return "", err
+	}
+	ident := []string{
+		"GIT_AUTHOR_NAME=" + CommitterName, "GIT_AUTHOR_EMAIL=" + CommitterEmail,
+		"GIT_COMMITTER_NAME=" + CommitterName, "GIT_COMMITTER_EMAIL=" + CommitterEmail,
+	}
+	out, err := m.run(ctx, strings.NewReader(message), ident, "commit-tree", strings.TrimSpace(string(tree)), "-p", parent, "-F", "-")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// PushBranch creates branch on the remote at sha. It never forces: a branch
+// the remote already has, by the mirror's last fetch or by the push itself,
+// is ErrBranchExists. On success the mirror's branch follows.
+func (m *Mirror) PushBranch(ctx context.Context, branch, sha string) error {
+	if _, err := m.Head(ctx, branch); err == nil {
+		return fmt.Errorf("%w: %s", ErrBranchExists, branch)
+	}
+	ref := "refs/heads/" + branch
+	// An empty expected value makes the lease "the ref must not exist".
+	if _, err := m.git(ctx, "push", "-q", m.url, sha+":"+ref, "--force-with-lease="+ref+":"); err != nil {
+		perr := pushError(err, branch)
+		if errors.Is(perr, ErrPushRejected) {
+			return fmt.Errorf("%w: %s", ErrBranchExists, branch)
+		}
+		return perr
+	}
+	_, err := m.git(ctx, "update-ref", ref, sha)
+	return err
+}
+
+func hasDotDotSegment(p string) bool {
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
 }
