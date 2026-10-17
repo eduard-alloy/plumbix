@@ -995,3 +995,34 @@ func TestExternalValidatorTimesOutIntoAValidatorError(t *testing.T) {
 		t.Errorf("step log lacks the timeout line:\n%s", log)
 	}
 }
+
+func TestAVerdictPostedJustBeforeTheDeadlineIsTaken(t *testing.T) {
+	// Polling every 10s against a 3s step: the only way the step can see
+	// the verdict is the last look it takes when its time runs out.
+	old := reviewPoll
+	reviewPoll = 10 * time.Second
+	t.Cleanup(func() { reviewPoll = old })
+	h := newHarness(t, Config{})
+	slow := strings.Replace(externalYAML, "timeout: 20s", "timeout: 3s", 1)
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": slow}, "external review")
+	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	c := h.submit("feat")
+	r, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := h.claimSoon("kai")
+	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"Fine.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}]}`)
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); err != nil {
+		t.Fatal(err)
+	}
+	done := h.wait(r.ID)
+	if done.Outcome != change.Approved {
+		t.Errorf("outcome = %s; the verdict accepted before the deadline was dropped", done.Outcome)
+	}
+	for _, s := range done.Steps {
+		if s.Name == "ai-review" && s.Status != "succeeded" {
+			t.Errorf("external step = %+v", s)
+		}
+	}
+}

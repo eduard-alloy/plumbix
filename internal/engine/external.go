@@ -84,9 +84,12 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 			bg, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			// A verdict posted during the last poll interval was accepted
-			// with 200, so it is honoured rather than dropped.
-			if rv, err := e.store.GetReview(bg, b.ID); err == nil && rv.Status == review.Done {
-				return e.takeVerdict(dir, rv, log)
+			// with 200, so a step that merely ran out of time still takes
+			// it; a cancelled run keeps nothing.
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				if rv, err := e.store.GetReview(bg, b.ID); err == nil && rv.Status == review.Done {
+					return e.takeVerdict(dir, rv, log)
+				}
 			}
 			if err := e.store.ExpireReview(bg, b.ID, e.now().UTC()); err != nil {
 				e.log.Warn("expire review", "review", b.ID, "err", err)

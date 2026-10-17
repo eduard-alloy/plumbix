@@ -201,3 +201,51 @@ func TestFullToolsAllowBashAndAFailedRunPostsNothing(t *testing.T) {
 	}
 	_ = rec
 }
+
+func TestUnstructuredOrGarbledClaudeOutputPostsNothing(t *testing.T) {
+	repo := gittest.New(t)
+	base := repo.Commit("main", map[string]string{"README.md": "# base\n"}, "base")
+	head := repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	for name, result := range map[string]string{
+		"null structured output": `{"type":"result","subtype":"success","is_error":false,"result":"I reviewed it.","structured_output":null}`,
+		"no structured output":   `{"type":"result","subtype":"success","is_error":false,"result":"I reviewed it."}`,
+		"not json":               "Error: something went wrong before any JSON",
+	} {
+		t.Run(name, func(t *testing.T) {
+			fakeClaude(t, result)
+			fs := &fakeServer{brief: newBrief(repo.Remote, head, base)}
+			srv := httptest.NewServer(fs.handler())
+			defer srv.Close()
+			var out, errOut bytes.Buffer
+			err := Run(context.Background(), Options{Client: client.New(strings.TrimPrefix(srv.URL, "http://"), "t"), Reviewer: "kai", Once: true, WorkDir: t.TempDir(), Stdout: &out, Stderr: &errOut})
+			if err == nil || fs.postedID != "" {
+				t.Errorf("err %v, posted %q; want an error and no verdict", err, fs.postedID)
+			}
+		})
+	}
+}
+
+func TestRecordedModelIsTheBriefsOrTheBusiest(t *testing.T) {
+	repo := gittest.New(t)
+	base := repo.Commit("main", map[string]string{"README.md": "# base\n"}, "base")
+	head := repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	twoModels := strings.Replace(approving, `"usage":`, `"modelUsage":{"claude-haiku-5-5":{"inputTokens":50,"outputTokens":10},"claude-opus-5-5":{"inputTokens":1000,"outputTokens":290}},"usage":`, 1)
+	for brief, want := range map[string]string{"": "claude-opus-5-5", "claude-sonnet-5-5": "claude-sonnet-5-5"} {
+		fakeClaude(t, twoModels)
+		b := newBrief(repo.Remote, head, base)
+		b.Model = brief
+		fs := &fakeServer{brief: b}
+		srv := httptest.NewServer(fs.handler())
+		if err := Run(context.Background(), Options{Client: client.New(strings.TrimPrefix(srv.URL, "http://"), "t"), Reviewer: "kai", Once: true, WorkDir: t.TempDir()}); err != nil {
+			t.Fatal(err)
+		}
+		srv.Close()
+		var v struct {
+			Usage struct{ Model string } `json:"usage"`
+		}
+		_ = json.Unmarshal(fs.posted.Verdict, &v)
+		if v.Usage.Model != want {
+			t.Errorf("brief model %q: recorded %q, want %q", brief, v.Usage.Model, want)
+		}
+	}
+}
