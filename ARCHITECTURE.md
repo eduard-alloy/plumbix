@@ -160,20 +160,41 @@ steps:
     secrets: [ANTHROPIC_API_KEY]
 ```
 
+With the optional fields added in WU-019:
+
+```yaml
+  - name: contract
+    image: golang:1.27
+    run:
+      - go build ./cmd/openapi-diff
+      - ./openapi-diff --base "$PLUMBIX_BASE" --head "$PLUMBIX_HEAD"
+    needs: [test]
+    retries: 1
+    allow_failure: true
+    when:
+      paths: ["api/**", "internal/http/*.go"]
+stages:
+  checks: [test, lint, contract]
+```
+
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `version` | yes | Must be `1`. |
 | `steps[].name` | yes | Unique, lowercase letters, digits and dashes. |
 | `steps[].image` | yes | Container image. |
-| `steps[].run` | yes, except validators | Shell script, run with `sh -c`. |
+| `steps[].run` | yes, except validators | Shell script, run with `sh -c`; or a list of commands, run in order as one script that stops at the first failure. |
 | `steps[].needs` | no | Steps that must succeed first. Steps without unmet needs run in parallel. |
 | `steps[].env` | no | Plain environment variables. |
 | `steps[].secrets` | no | Names of secrets from the Plumbix secrets file, exposed as environment variables to this step only. |
 | `steps[].artifacts` | no | Workspace paths to keep as evidence after the step. |
 | `steps[].timeout` | no | Duration such as `10m`. Default comes from config. |
 | `steps[].validator` | no | Marks the step as a validator. It gets validator inputs and must write a verdict. |
+| `steps[].retries` | no | 0 to 5. A failed or timed-out step runs again up to this many more times; only the last attempt counts. The log gets a separator per attempt and the step record says how many attempts there were. |
+| `steps[].allow_failure` | no | A failed or timed-out step does not fail the run and does not skip the steps that need it. Its status stays `failed`, marked as allowed. A criterion that names the step is still unmet. Not on validators. |
+| `steps[].when.paths` | no | Globs (`*`, `?`, `**`). For a change's run the step runs only if a changed file matches; otherwise it is `skipped` with reason `paths`, counts as satisfied for its dependents and as met for a criterion that names it. A plain branch run always runs it. Not on validators. |
+| `stages` | no | Mapping of stage name to step names: a display grouping for the editor and run evidence. A step is in at most one stage; validators are never in one. |
 
-Unknown fields are errors. There are no triggers, conditions, matrices or reusable templates in version 1. Every push runs the whole pipeline.
+Unknown fields are errors. There are no triggers, matrices or reusable templates in version 1. Every push runs the whole pipeline, minus steps whose paths did not change.
 
 **Policy source**: for a change, the list of required validators comes from the **target branch's** version of the pipeline file, not the change's version. An agent cannot remove or swap a validator in the same change it wants approved. A change that edits `.plumbix/` always ends in `needs_human`.
 
@@ -185,7 +206,7 @@ Plumbix mounts these paths into a validator step's container:
 |------|--------|---------|
 | `/workspace` | read-only | The checked-out commit. |
 | `/plumbix/in/change.json` | read-only | Intent, acceptance criteria, constraints, base and head commits, changed files, iteration number, previous findings. |
-| `/plumbix/in/evidence/` | read-only | One folder per earlier step: `status.json` (exit code, duration), `log.txt`, `artifacts/`. |
+| `/plumbix/in/evidence/` | read-only | One folder per earlier step: `status.json` (exit code, duration, attempts, whether a failure was allowed, why a skipped step did not run), `log.txt`, `artifacts/`. |
 | `/plumbix/out/` | write | The validator writes `verdict.json` here. |
 
 `verdict.json`:

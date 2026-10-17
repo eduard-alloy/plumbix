@@ -77,6 +77,14 @@ export interface Step {
   exit_code: number
   duration_ms: number
   error?: string
+  /** Present when above one: the step was retried. */
+  attempts?: number
+  /** The failure was tolerated by the step's allow_failure. */
+  allowed_failure?: boolean
+  /** Why a skipped step did not run. */
+  reason?: 'needs' | 'paths'
+  /** The pipeline stage the step belongs to. */
+  stage?: string
 }
 
 export interface Assessment {

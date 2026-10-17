@@ -154,3 +154,27 @@ func TestMissingInputIsError(t *testing.T) {
 		t.Fatal("expected an error when change.json is missing")
 	}
 }
+
+func TestStepSkippedByItsPathsCountsAsMet(t *testing.T) {
+	crit := []change.Criterion{
+		{ID: "AC-1", Text: "contract check", Check: steps("contract")},
+		{ID: "AC-2", Text: "flaky allowed", Check: steps("flaky")},
+		{ID: "AC-3", Text: "skipped by a need", Check: steps("after")},
+	}
+	evidence := []validation.StepEvidence{
+		{Step: "contract", Status: "skipped", Reason: "paths"},
+		{Step: "flaky", Status: "failed", ExitCode: 1, Attempts: 3, AllowedFailure: true},
+		{Step: "after", Status: "skipped", Reason: "needs"},
+	}
+	v := run(t, setup(t, crit, nil, evidence), time.Second)
+	by := statusByID(v)
+	if c := by["AC-1"]; c.Status != validation.Met || !strings.Contains(c.Reason, "did not need to run") {
+		t.Errorf("AC-1 = %+v, want met because the step's paths did not change", c)
+	}
+	if c := by["AC-2"]; c.Status != validation.Unmet || !strings.Contains(c.Reason, "flaky failed") {
+		t.Errorf("AC-2 = %+v, want unmet: an allowed failure still fails a criterion that names the step", c)
+	}
+	if c := by["AC-3"]; c.Status != validation.Unmet {
+		t.Errorf("AC-3 = %+v, want unmet", c)
+	}
+}

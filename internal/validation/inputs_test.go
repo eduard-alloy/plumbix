@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
@@ -83,6 +84,36 @@ func TestInputFilesMatchSchema(t *testing.T) {
 		data, _ := os.ReadFile(filepath.Join(dir, "evidence", step, "status.json"))
 		if err := validateJSON(t, status, data); err != nil {
 			t.Errorf("%s/status.json does not match the schema: %v", step, err)
+		}
+	}
+}
+
+func TestStepStatusCarriesAttemptsAllowanceAndReason(t *testing.T) {
+	dir := t.TempDir()
+	evidence := []StepEvidence{
+		{Step: "api", Status: "skipped", Reason: "paths"},
+		{Step: "flaky", Status: "failed", ExitCode: 1, DurationMS: 20, Attempts: 3, AllowedFailure: true},
+		{Step: "plain", Status: "succeeded", Attempts: 1},
+	}
+	if err := PrepareInputs(dir, sampleInput(), evidence); err != nil {
+		t.Fatal(err)
+	}
+	api, _, _ := ReadStepStatus(dir, "api")
+	if api.Reason != "paths" || api.Attempts != 0 || api.AllowedFailure {
+		t.Errorf("api status = %+v", api)
+	}
+	flaky, _, _ := ReadStepStatus(dir, "flaky")
+	if flaky.Attempts != 3 || !flaky.AllowedFailure || flaky.Reason != "" {
+		t.Errorf("flaky status = %+v", flaky)
+	}
+	status := compileSchemaRef(t, "validator-input.schema.json", "#/$defs/stepStatus")
+	for _, step := range []string{"api", "flaky", "plain"} {
+		data, _ := os.ReadFile(filepath.Join(dir, "evidence", step, "status.json"))
+		if err := validateJSON(t, status, data); err != nil {
+			t.Errorf("%s/status.json does not match the schema: %v", step, err)
+		}
+		if step == "plain" && strings.Contains(string(data), "reason") {
+			t.Errorf("plain status.json carries empty optional fields: %s", data)
 		}
 	}
 }

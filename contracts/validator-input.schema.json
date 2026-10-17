@@ -185,6 +185,23 @@
         "duration_ms": {
           "type": "integer",
           "minimum": 0
+        },
+        "attempts": {
+          "description": "How many times the step ran; present when above one.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "allowed_failure": {
+          "description": "The failure was tolerated by the step's allow_failure. A criterion that names the step is still unmet.",
+          "type": "boolean"
+        },
+        "reason": {
+          "description": "Why a skipped step did not run: a step it needs did not succeed (needs), or no changed file matched its when.paths (paths). A step skipped by its paths counts as met for check.steps.",
+          "type": "string",
+          "enum": [
+            "needs",
+            "paths"
+          ]
         }
       }
     }

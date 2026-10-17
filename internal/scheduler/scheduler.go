@@ -38,6 +38,11 @@ type Options struct {
 	MemoryMB       int
 	Secrets        map[string]string           // secret values by name
 	Log            func(step string) io.Writer // nil discards logs
+	// ChangedFiles are the paths a change touched, used for when.paths.
+	// ChangesKnown says the list is meaningful; a plain branch run has
+	// nothing to compare, so conditional steps run.
+	ChangedFiles []string
+	ChangesKnown bool
 	// Setup, when set, runs just before a step starts. It sees the steps
 	// finished so far and can add mounts, for example validator inputs.
 	Setup func(step pipeline.Step, finished []StepResult) (StepSetup, error)
@@ -54,6 +59,12 @@ type StepSetup struct {
 	Env               map[string]string // added to the step's env; values the step or its secrets set win
 }
 
+// Reasons a step was skipped.
+const (
+	ReasonNeeds = "needs" // a step it needs did not succeed
+	ReasonPaths = "paths" // no changed file matched its when.paths
+)
+
 // StepResult is one step's outcome.
 type StepResult struct {
 	Name     string
@@ -61,6 +72,18 @@ type StepResult struct {
 	ExitCode int
 	Duration time.Duration
 	Err      error // set for errored steps
+	// Attempts is how many times the step ran; above one after retries.
+	Attempts int
+	// Allowed marks a failure the step's allow_failure tolerates.
+	Allowed bool
+	// Reason says why a step was skipped: ReasonNeeds or ReasonPaths.
+	Reason string
+}
+
+// satisfied reports whether a step that needs this one may start: it
+// succeeded, its failure was allowed, or its paths did not change.
+func (s StepResult) satisfied() bool {
+	return s.Status == Succeeded || s.Allowed || (s.Status == Skipped && s.Reason == ReasonPaths)
 }
 
 // Result lists every step's outcome in file order.
@@ -72,6 +95,17 @@ type Result struct {
 func (r Result) Succeeded() bool {
 	for _, s := range r.Steps {
 		if s.Status != Succeeded {
+			return false
+		}
+	}
+	return true
+}
+
+// Acceptable reports whether every step succeeded, failed with
+// allow_failure, or was skipped because its paths did not change.
+func (r Result) Acceptable() bool {
+	for _, s := range r.Steps {
+		if !s.satisfied() {
 			return false
 		}
 	}
@@ -103,6 +137,12 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 		}
 	}
 
+	for i, st := range steps {
+		if !st.Validator && len(st.OnlyPaths) > 0 && o.ChangesKnown && !anyMatch(st.OnlyPaths, o.ChangedFiles) {
+			settle(i, StepResult{Name: st.Name, Status: Skipped, Reason: ReasonPaths})
+		}
+	}
+
 	for {
 		if ctx.Err() == nil {
 			markSkipped(steps, results, index, settle)
@@ -120,7 +160,7 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 				}
 				results[i].Status = inProgress
 				running++
-				go func(i int) { done <- finished{i, runStep(ctx, r, job)} }(i)
+				go func(i int, st pipeline.Step) { done <- finished{i, runStep(ctx, r, job, st)} }(i, st)
 			}
 		}
 		if running == 0 {
@@ -160,9 +200,9 @@ func markSkipped(steps []pipeline.Step, results []StepResult, index map[string]i
 				continue
 			}
 			for _, n := range st.Needs {
-				s := results[index[n]].Status
-				if s != "" && s != inProgress && s != Succeeded {
-					settle(i, StepResult{Name: st.Name, Status: Skipped})
+				need := results[index[n]]
+				if need.Status != "" && need.Status != inProgress && !need.satisfied() {
+					settle(i, StepResult{Name: st.Name, Status: Skipped, Reason: ReasonNeeds})
 					changed = true
 					break
 				}
@@ -172,19 +212,32 @@ func markSkipped(steps []pipeline.Step, results []StepResult, index map[string]i
 }
 
 // needsSatisfied reports whether a step may start: normal steps need every
-// need to have succeeded, validators need every need to have finished.
+// need satisfied (succeeded, failure allowed, or skipped by its paths),
+// validators need every need to have finished.
 func needsSatisfied(st pipeline.Step, results []StepResult, index map[string]int) bool {
 	for _, n := range st.Needs {
-		s := results[index[n]].Status
+		need := results[index[n]]
 		if st.Validator {
-			if s == "" || s == inProgress {
+			if need.Status == "" || need.Status == inProgress {
 				return false
 			}
-		} else if s != Succeeded {
+		} else if !need.satisfied() {
 			return false
 		}
 	}
 	return true
+}
+
+// anyMatch reports whether any changed file matches one of the globs.
+func anyMatch(globs, files []string) bool {
+	for _, f := range files {
+		for _, g := range globs {
+			if pipeline.MatchPath(g, f) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // finishedSoFar returns the results of steps that have ended.
@@ -248,7 +301,29 @@ func buildJob(st pipeline.Step, o Options, finished []StepResult) (runner.Job, e
 	}, nil
 }
 
-func runStep(ctx context.Context, r runner.Runner, job runner.Job) StepResult {
+// runStep runs a job, again after a failure or timeout while the step has
+// retries left. Only the last attempt's outcome is reported; the log gets
+// a separator before each later attempt.
+func runStep(ctx context.Context, r runner.Runner, job runner.Job, st pipeline.Step) StepResult {
+	total := st.Retries + 1
+	var sr StepResult
+	for attempt := 1; attempt <= total; attempt++ {
+		if attempt > 1 {
+			fmt.Fprintf(job.Log, "\n--- plumbix: attempt %d of %d ---\n", attempt, total)
+		}
+		sr = runOnce(ctx, r, job)
+		sr.Attempts = attempt
+		if (sr.Status != Failed && sr.Status != TimedOut) || ctx.Err() != nil {
+			break
+		}
+	}
+	if st.AllowFailure && (sr.Status == Failed || sr.Status == TimedOut) {
+		sr.Allowed = true
+	}
+	return sr
+}
+
+func runOnce(ctx context.Context, r runner.Runner, job runner.Job) StepResult {
 	res, err := r.Run(ctx, job)
 	sr := StepResult{Name: job.Name, ExitCode: res.ExitCode, Duration: res.Duration}
 	switch {

@@ -76,6 +76,12 @@ type (
 		ExitCode   int    `json:"exit_code"`
 		DurationMS int64  `json:"duration_ms"`
 		Error      string `json:"error,omitempty"`
+		// Attempts is above one when the step was retried.
+		Attempts int `json:"attempts,omitempty"`
+		// AllowedFailure marks a failure the step's allow_failure tolerated.
+		AllowedFailure bool `json:"allowed_failure,omitempty"`
+		// Reason says why a step was skipped: needs or paths.
+		Reason string `json:"reason,omitempty"`
 	}
 	// RunFinishedPayload: a run ended, with its outcome for a change's run.
 	RunFinishedPayload struct {

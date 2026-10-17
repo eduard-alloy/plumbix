@@ -40,10 +40,12 @@ func (db *DB) SetRunCommits(ctx context.Context, id, head, base string) error {
 // RecordStep implements run.Store. A step recorded twice keeps the latest.
 func (db *DB) RecordStep(ctx context.Context, id string, position int, s run.Step) error {
 	_, err := db.sql.ExecContext(ctx,
-		`INSERT INTO steps (run_id, position, name, validator, status, exit_code, duration_ms, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO steps (run_id, position, name, validator, status, exit_code, duration_ms, error, attempts, allowed_failure, reason, stage)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (run_id, name) DO UPDATE SET position = excluded.position, validator = excluded.validator, status = excluded.status,
-		 exit_code = excluded.exit_code, duration_ms = excluded.duration_ms, error = excluded.error`,
-		id, position, s.Name, s.Validator, s.Status, s.ExitCode, s.DurationMS, s.Error)
+		 exit_code = excluded.exit_code, duration_ms = excluded.duration_ms, error = excluded.error,
+		 attempts = excluded.attempts, allowed_failure = excluded.allowed_failure, reason = excluded.reason, stage = excluded.stage`,
+		id, position, s.Name, s.Validator, s.Status, s.ExitCode, s.DurationMS, s.Error, s.Attempts, s.AllowedFailure, s.Reason, s.Stage)
 	return mapErr(err)
 }
 
@@ -72,8 +74,9 @@ func (db *DB) FinishRun(ctx context.Context, id string, f run.Finish) error {
 		}
 		for i, s := range f.Steps {
 			if _, err := tx.ExecContext(ctx,
-				`INSERT INTO steps (run_id, position, name, validator, status, exit_code, duration_ms, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				id, i, s.Name, s.Validator, s.Status, s.ExitCode, s.DurationMS, s.Error); err != nil {
+				`INSERT INTO steps (run_id, position, name, validator, status, exit_code, duration_ms, error, attempts, allowed_failure, reason, stage)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				id, i, s.Name, s.Validator, s.Status, s.ExitCode, s.DurationMS, s.Error, s.Attempts, s.AllowedFailure, s.Reason, s.Stage); err != nil {
 				return mapErr(err)
 			}
 		}
@@ -163,7 +166,7 @@ func (db *DB) queryRuns(ctx context.Context, query string, args ...any) ([]run.R
 }
 
 func (db *DB) withSteps(ctx context.Context, r run.Run) (run.Run, error) {
-	rows, err := db.sql.QueryContext(ctx, `SELECT name, validator, status, exit_code, duration_ms, error FROM steps WHERE run_id = ? ORDER BY position`, r.ID)
+	rows, err := db.sql.QueryContext(ctx, `SELECT name, validator, status, exit_code, duration_ms, error, attempts, allowed_failure, reason, stage FROM steps WHERE run_id = ? ORDER BY position`, r.ID)
 	if err != nil {
 		return run.Run{}, err
 	}
@@ -171,7 +174,7 @@ func (db *DB) withSteps(ctx context.Context, r run.Run) (run.Run, error) {
 	r.Steps = []run.Step{}
 	for rows.Next() {
 		var s run.Step
-		if err := rows.Scan(&s.Name, &s.Validator, &s.Status, &s.ExitCode, &s.DurationMS, &s.Error); err != nil {
+		if err := rows.Scan(&s.Name, &s.Validator, &s.Status, &s.ExitCode, &s.DurationMS, &s.Error, &s.Attempts, &s.AllowedFailure, &s.Reason, &s.Stage); err != nil {
 			return run.Run{}, err
 		}
 		r.Steps = append(r.Steps, s)

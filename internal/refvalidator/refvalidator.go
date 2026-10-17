@@ -78,7 +78,7 @@ func assess(ctx context.Context, c change.Criterion, inDir, workspace string, o 
 }
 
 func assessSteps(cv validation.CriterionVerdict, steps []string, inDir string) (validation.CriterionVerdict, error) {
-	var failed, missing []string
+	var failed, missing, notNeeded []string
 	for _, s := range steps {
 		st, ok, err := validation.ReadStepStatus(inDir, s)
 		if err != nil {
@@ -87,6 +87,8 @@ func assessSteps(cv validation.CriterionVerdict, steps []string, inDir string) (
 		switch {
 		case !ok:
 			missing = append(missing, s)
+		case st.Status == "skipped" && st.Reason == validation.ReasonPaths:
+			notNeeded = append(notNeeded, s)
 		case st.Status != "succeeded":
 			failed = append(failed, fmt.Sprintf("%s %s", s, st.Status))
 		default:
@@ -98,6 +100,10 @@ func assessSteps(cv validation.CriterionVerdict, steps []string, inDir string) (
 		cv.Status, cv.Reason = validation.Unmet, "step "+strings.Join(failed, ", ")
 	case len(missing) > 0:
 		cv.Status, cv.Reason = validation.Unknown, "no evidence for step "+strings.Join(missing, ", ")
+	case len(notNeeded) == len(steps):
+		cv.Status, cv.Reason = validation.Met, "step "+strings.Join(steps, ", ")+" did not need to run: no changed file matched its paths"
+	case len(notNeeded) > 0:
+		cv.Status, cv.Reason = validation.Met, "step "+strings.Join(steps, ", ")+" succeeded ("+strings.Join(notNeeded, ", ")+" did not need to run)"
 	default:
 		cv.Status, cv.Reason = validation.Met, "step "+strings.Join(steps, ", ")+" succeeded"
 	}

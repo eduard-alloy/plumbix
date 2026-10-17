@@ -116,3 +116,32 @@ func TestOldResultsGetAnEmptyValidatorsList(t *testing.T) {
 		t.Fatalf("validators = %#v, want an empty list", r.Result)
 	}
 }
+
+func TestStepDetailsRoundTrip(t *testing.T) {
+	db := withChange(t)
+	if err := db.CreateRun(ctx, run.Run{ID: "run_1", RepoID: "r_1", ChangeID: "c_1", Iteration: 1, Status: run.Running, StartedAt: t0}); err != nil {
+		t.Fatal(err)
+	}
+	flaky := run.Step{Name: "flaky", Status: "failed", ExitCode: 1, DurationMS: 50, Attempts: 3, AllowedFailure: true, Stage: "checks"}
+	api := run.Step{Name: "api", Status: "skipped", Reason: "paths", Stage: "checks"}
+	for i, s := range []run.Step{flaky, api} {
+		if err := db.RecordStep(ctx, "run_1", i, s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := db.GetRun(ctx, "run_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []run.Step{flaky, api}; !reflect.DeepEqual(got.Steps, want) {
+		t.Errorf("recorded steps:\n got %+v\nwant %+v", got.Steps, want)
+	}
+	plain := run.Step{Name: "build", Status: "succeeded", DurationMS: 10}
+	if err := db.FinishRun(ctx, "run_1", run.Finish{Status: run.Finished, Outcome: change.Approved, Result: &validation.Result{State: change.Approved}, Steps: []run.Step{plain, flaky, api}, At: t0.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = db.GetRun(ctx, "run_1")
+	if want := []run.Step{plain, flaky, api}; !reflect.DeepEqual(got.Steps, want) {
+		t.Errorf("finished steps:\n got %+v\nwant %+v", got.Steps, want)
+	}
+}

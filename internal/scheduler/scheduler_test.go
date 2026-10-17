@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"io"
 	"maps"
 	"strings"
 	"sync"
@@ -396,4 +397,178 @@ func TestSetupEnvFillsOnlyWhatTheStepDidNotSet(t *testing.T) {
 	if fake.jobs["c"].Env["AI_MODEL"] != "from-secret" {
 		t.Errorf("c env = %v; the secret must win", fake.jobs["c"].Env)
 	}
+}
+
+func TestRetriesRerunFailedAndTimedOutSteps(t *testing.T) {
+	p := mustParse(t, `  - {name: flaky, image: x, run: x, retries: 2}
+  - {name: hopeless, image: x, run: x, retries: 2}
+  - {name: slow, image: x, run: x, retries: 1}
+  - {name: broken, image: x, run: x, retries: 3}
+  - {name: fine, image: x, run: x, retries: 2}
+`)
+	var mu sync.Mutex
+	attempts := map[string]int{}
+	fake := newFake(func(_ context.Context, job runner.Job) (runner.Result, error) {
+		mu.Lock()
+		attempts[job.Name]++
+		n := attempts[job.Name]
+		mu.Unlock()
+		switch job.Name {
+		case "flaky":
+			if n < 3 {
+				return runner.Result{ExitCode: 1}, nil
+			}
+		case "hopeless":
+			return runner.Result{ExitCode: 2}, nil
+		case "slow":
+			return runner.Result{TimedOut: true, ExitCode: -1}, nil
+		case "broken":
+			return runner.Result{}, errors.New("engine unavailable")
+		}
+		return runner.Result{}, nil
+	})
+	var logs sync.Map
+	o := opts(4)
+	o.Log = func(step string) io.Writer {
+		b := &lockedBuffer{}
+		logs.Store(step, b)
+		return b
+	}
+	res := Execute(context.Background(), p, fake, o)
+	byName := map[string]StepResult{}
+	for _, s := range res.Steps {
+		byName[s.Name] = s
+	}
+	want := map[string]struct {
+		status   Status
+		attempts int
+	}{
+		"flaky": {Succeeded, 3}, "hopeless": {Failed, 3}, "slow": {TimedOut, 2}, "broken": {Errored, 1}, "fine": {Succeeded, 1},
+	}
+	for name, w := range want {
+		got := byName[name]
+		if got.Status != w.status || got.Attempts != w.attempts {
+			t.Errorf("%s = %s after %d attempts, want %s after %d", name, got.Status, got.Attempts, w.status, w.attempts)
+		}
+		if attempts[name] != w.attempts {
+			t.Errorf("%s ran %d times, want %d", name, attempts[name], w.attempts)
+		}
+	}
+	if byName["hopeless"].ExitCode != 2 {
+		t.Errorf("hopeless exit = %d, want the last attempt's", byName["hopeless"].ExitCode)
+	}
+	b, _ := logs.Load("flaky")
+	if log := b.(*lockedBuffer).String(); !strings.Contains(log, "attempt 2 of 3") || !strings.Contains(log, "attempt 3 of 3") || strings.Contains(log, "attempt 1 of") {
+		t.Errorf("flaky log = %q", log)
+	}
+	if res.Succeeded() {
+		t.Error("Succeeded() = true with failed steps")
+	}
+}
+
+func TestAllowedFailureDoesNotSkipDependents(t *testing.T) {
+	p := mustParse(t, `  - {name: a, image: x, run: x, allow_failure: true}
+  - {name: b, image: x, run: x, needs: [a]}
+  - {name: c, image: x, run: x}
+  - {name: d, image: x, run: x, needs: [c]}
+`)
+	fake := newFake(func(_ context.Context, job runner.Job) (runner.Result, error) {
+		if job.Name == "a" || job.Name == "c" {
+			return runner.Result{ExitCode: 1}, nil
+		}
+		return runner.Result{}, nil
+	})
+	res := Execute(context.Background(), p, fake, opts(4))
+	got := statusOf(t, res)
+	want := map[string]Status{"a": Failed, "b": Succeeded, "c": Failed, "d": Skipped}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s = %s, want %s", k, got[k], v)
+		}
+	}
+	for _, s := range res.Steps {
+		switch s.Name {
+		case "a":
+			if !s.Allowed {
+				t.Error("a's failure is not marked allowed")
+			}
+		case "c":
+			if s.Allowed {
+				t.Error("c's failure is marked allowed")
+			}
+		case "d":
+			if s.Reason != ReasonNeeds {
+				t.Errorf("d reason = %q, want %q", s.Reason, ReasonNeeds)
+			}
+		}
+	}
+	if res.Succeeded() {
+		t.Error("Succeeded() = true: an allowed failure is still a failure for the run as a whole")
+	}
+	if res.Acceptable() {
+		t.Error("Acceptable() = true although c failed without allow_failure")
+	}
+	only := Execute(context.Background(), mustParse(t, "  - {name: a, image: x, run: x, allow_failure: true}\n"), newFake(func(context.Context, runner.Job) (runner.Result, error) { return runner.Result{ExitCode: 1}, nil }), opts(1))
+	if only.Succeeded() || !only.Acceptable() {
+		t.Errorf("allowed failure alone: Succeeded %v Acceptable %v", only.Succeeded(), only.Acceptable())
+	}
+}
+
+func TestPathConditionsSkipStepsWhoseFilesDidNotChange(t *testing.T) {
+	src := `  - {name: api, image: x, run: x, when: {paths: ["api/**", "docs/*.md"]}}
+  - {name: after, image: x, run: x, needs: [api]}
+  - {name: always, image: x, run: x}
+`
+	cases := []struct {
+		name    string
+		o       Options
+		wantAPI Status
+		reason  string
+	}{
+		{"no match", Options{ChangesKnown: true, ChangedFiles: []string{"internal/a.go", "docs/sub/x.md"}}, Skipped, ReasonPaths},
+		{"match", Options{ChangesKnown: true, ChangedFiles: []string{"api/v1/spec.yaml"}}, Succeeded, ""},
+		{"changes unknown", Options{}, Succeeded, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := mustParse(t, src)
+			fake := newFake(ok)
+			o := opts(4)
+			o.ChangesKnown, o.ChangedFiles = c.o.ChangesKnown, c.o.ChangedFiles
+			res := Execute(context.Background(), p, fake, o)
+			got := statusOf(t, res)
+			if got["api"] != c.wantAPI || got["after"] != Succeeded || got["always"] != Succeeded {
+				t.Fatalf("statuses = %v", got)
+			}
+			for _, s := range res.Steps {
+				if s.Name == "api" && s.Reason != c.reason {
+					t.Errorf("api reason = %q, want %q", s.Reason, c.reason)
+				}
+			}
+			if _, ran := fake.jobs["api"]; ran == (c.wantAPI == Skipped) {
+				t.Errorf("api ran = %v", ran)
+			}
+			if !res.Acceptable() {
+				t.Error("Acceptable() = false")
+			}
+		})
+	}
+}
+
+// lockedBuffer is a bytes.Buffer safe for concurrent writers.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
 }

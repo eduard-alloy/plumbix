@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -347,5 +348,21 @@ func TestFailedWritesEmitNothing(t *testing.T) {
 	}
 	if len(notified) != 1 || notified[0].Type != events.ChangeSubmitted {
 		t.Errorf("notified = %+v; only the successful submit should emit", notified)
+	}
+}
+
+func TestStepFinishedPayloadCarriesRetriesAndReasons(t *testing.T) {
+	schema := compileEventsSchema(t)
+	for _, p := range []events.StepFinishedPayload{
+		{Step: "flaky", Status: "failed", ExitCode: 1, DurationMS: 5, Attempts: 3, AllowedFailure: true},
+		{Step: "api", Status: "skipped", Reason: "paths"},
+		{Step: "after", Status: "skipped", Reason: "needs"},
+		{Step: "build", Status: "succeeded", DurationMS: 10},
+	} {
+		validateEvent(t, schema, events.Event{ID: 1, Type: events.StepFinished, RepoID: "r_1", RunID: "run_1", Time: t0, Payload: p})
+	}
+	data, _ := json.Marshal(events.StepFinishedPayload{Step: "build", Status: "succeeded"})
+	if s := string(data); strings.Contains(s, "attempts") || strings.Contains(s, "reason") || strings.Contains(s, "allowed") {
+		t.Errorf("plain step payload carries empty optional fields: %s", s)
 	}
 }
