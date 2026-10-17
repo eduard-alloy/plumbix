@@ -183,12 +183,12 @@ export function SettingsPage() {
         ))}
 
         <h2>AI review</h2>
-        <p className="lead">The AI validator runs as a pipeline step with the key below. Guidance is handed to every validator as instructions from you, kept apart from repository content. The model reaches validator steps as PLUMBIX_AI_MODEL; leave it empty for the validator's default.</p>
+        <p className="lead">Guidance is handed to every validator as instructions from you, kept apart from repository content. The model applies to both kinds of AI review: the container validator reads it as PLUMBIX_AI_MODEL, and external reviewers (plumbix review --watch) pass it to Claude Code as --model. Leave it empty for each one's default: claude-opus-5-5 in the container, and whatever Claude Code defaults to on the reviewer's machine, which may be a larger model than this task needs.</p>
         {aiKey && <SecretRow secret={aiKey} onChanged={reload} />}
         <form onSubmit={(e) => void saveGuidance(e)}>
           <div className="field">
             <label htmlFor="ai-model">Model</label>
-            <input id="ai-model" value={model} onChange={(e) => setModel(e.target.value)} placeholder="claude-opus-5-5" disabled={!view} />
+            <input id="ai-model" value={model} onChange={(e) => setModel(e.target.value)} placeholder="claude-sonnet-5-5" disabled={!view} />
           </div>
           <fieldset className="field tools" disabled={!view}>
             <legend>Reviewer tools</legend>

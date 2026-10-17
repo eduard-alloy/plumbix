@@ -90,6 +90,7 @@ describe('Settings page', () => {
   it('shows which external reviewers the server has heard from, or how to start one', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'Settings' })
+    expect(document.body.textContent).toContain('external reviewers (plumbix review --watch) pass it to Claude Code as --model')
     const section = (await screen.findByRole('heading', { name: 'External reviewers' })).parentElement!
     await waitFor(() => expect(section.textContent).toContain('No reviewer has polled since the server started'))
     expect(section.textContent).toContain('plumbix review install')
