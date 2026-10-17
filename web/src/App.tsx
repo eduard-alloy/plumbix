@@ -6,6 +6,7 @@ import { ChangePage } from './pages/ChangePage'
 import { SignInPage } from './pages/SignInPage'
 import { AlertsPage } from './pages/AlertsPage'
 import { ReposPage } from './pages/ReposPage'
+import { PipelinesPage } from './pages/PipelinesPage'
 import { DesignPage } from './pages/DesignPage'
 import { SettingsPage } from './pages/SettingsPage'
 
@@ -27,6 +28,7 @@ function Routed() {
       {route.screen === 'change' && <ChangePage id={route.id} />}
       {route.screen === 'alerts' && <AlertsPage />}
       {route.screen === 'repos' && <ReposPage />}
+      {route.screen === 'pipelines' && <PipelinesPage repoId={route.repoId} />}
       {route.screen === 'design' && <DesignPage />}
       {route.screen === 'settings' && <SettingsPage />}
     </Shell>

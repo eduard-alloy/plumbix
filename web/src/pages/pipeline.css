@@ -1,0 +1,113 @@
+/* Pipeline editor (design 2a). Rows: header, toolbar, canvas, edit bar. */
+.pipe-page { display: flex; flex-direction: column; min-height: 100%; }
+.pipe-header .ref { font-size: 12px; color: var(--text-2); }
+.pipe-header .spacer { flex: 1; }
+.pipe-header .segmented.mono button { font-family: var(--mono); font-size: 12px; }
+.pipe-empty { padding: 32px 20px; color: var(--text-2); }
+.pipe-problems { max-width: 720px; padding: 24px 20px; display: grid; gap: 8px; }
+.pipe-problems h2 { margin: 0; font-size: 14px; }
+.pipe-problems p { margin: 0; color: var(--text-2); }
+.pipe-problems ul { margin: 0; padding-left: 18px; font-size: 12px; color: var(--s-red); }
+.pipe-problems pre { margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); font: 12px/20px var(--mono); overflow: auto; }
+
+.pipe-toolbar { height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 20px; border-bottom: 1px solid var(--border); }
+.pipe-toolbar button { height: 28px; font-size: 12px; }
+.pipe-toolbar button:disabled { opacity: 0.45; }
+.pipe-toolbar .divider { width: 1px; height: 18px; margin: 0 4px; background: var(--border-strong); }
+.pipe-toolbar .hint { margin-left: auto; font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.pipe-canvas { position: relative; flex: 1; min-height: 320px; overflow: auto; padding: 16px; background: var(--surface); }
+.bands { display: flex; flex-direction: column; min-width: max-content; }
+.bands.with-panel .band-grid { margin-right: 360px; }
+.band-wrap { display: flex; flex-direction: column; }
+.band-link { width: 2px; height: 18px; margin-left: 22px; background: var(--border-strong); }
+.band { width: max-content; min-width: 100%; box-sizing: border-box; padding: 10px 12px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.band-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.band-n { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; background: var(--band-chip); color: var(--band-fg); font: 600 12px var(--mono); }
+.band-name { font: 600 13px var(--mono); }
+.band-sub { font-size: 12px; color: var(--text-2); }
+.band-est { font-size: 11px; color: var(--text-3); }
+.band-grid { position: relative; }
+.band-lines { position: absolute; inset: 0; overflow: visible; }
+.card { position: absolute; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 5px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); text-align: left; font: inherit; }
+.card:hover { border-color: var(--text-3); }
+.card.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+.card .l1, .card .l2 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.card .name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 13px var(--mono); }
+.card .image { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-3); }
+.card .last { font-size: 11px; color: var(--text-2); white-space: nowrap; }
+.card .last.none { color: var(--text-3); }
+.card .cmd { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-2); }
+.card .chips { display: flex; gap: 4px; flex: none; }
+.chip-sm { display: inline-flex; align-items: center; gap: 4px; height: 16px; padding: 0 5px; border: 1px solid var(--border); border-radius: 3px; font: 11px/16px var(--mono); color: var(--text-2); white-space: nowrap; }
+.chip-sm.removable button { border: 0; background: transparent; color: var(--text-3); font-size: 12px; padding: 0; line-height: 1; }
+.chip-sm.removable button:hover { color: var(--text); }
+
+/* Floating inspector */
+.inspector { position: absolute; top: 12px; right: 12px; bottom: 12px; width: 340px; box-sizing: border-box; padding: 14px 16px 18px 16px; overflow: auto; z-index: 2; border-radius: 10px; border: 1px solid color-mix(in oklch, var(--border-strong) 70%, transparent); background: color-mix(in oklch, var(--bg) 58%, transparent); backdrop-filter: blur(18px) saturate(1.5); -webkit-backdrop-filter: blur(18px) saturate(1.5); box-shadow: inset 0 1px 0 color-mix(in oklch, white 40%, transparent), 0 16px 40px -16px oklch(0 0 0 / 0.28); display: flex; flex-direction: column; gap: 10px; font-size: 12px; }
+.inspector .close { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border: 0; border-radius: var(--r-md); background: transparent; color: var(--text-3); font-size: 16px; }
+.inspector .close:hover { background: var(--hover); color: var(--text); }
+.inspector header { display: flex; align-items: baseline; justify-content: space-between; padding-right: 44px; }
+.inspector header b { font-size: 13px; }
+.inspector label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; color: var(--text-3); font-size: 11px; }
+.inspector label > input, .inspector label > textarea, .inspector .row input, .inspector select { height: 28px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text); font: 12px var(--ui); font-weight: 400; box-sizing: border-box; }
+.inspector label > textarea { height: auto; padding: 6px 8px; resize: vertical; line-height: 1.5; }
+.inspector label .dim { font-weight: 400; }
+.inspector .group { display: flex; flex-direction: column; gap: 6px; }
+.inspector .group .label, .inspector .stepper .label { font-weight: 600; color: var(--text-3); font-size: 11px; }
+.inspector .chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.inspector .chips input.dashed { height: 22px; min-width: 120px; padding: 0 6px; border: 1px dashed var(--border-strong); border-radius: 3px; background: transparent; font: 11px var(--mono); }
+.inspector select { height: 22px; padding: 0 4px; border-style: dashed; font-size: 11px; }
+.inspector .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.inspector .stepper .row { display: flex; align-items: center; gap: 6px; }
+.inspector .stepper button { width: 26px; height: 26px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text); font-size: 14px; }
+.inspector .stepper span.mono { min-width: 16px; text-align: center; }
+.inspector .switch-row { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; }
+.inspector .switch-row span > b { display: block; font-size: 12px; }
+.inspector .switch { position: relative; width: 28px; height: 16px; margin-top: 2px; border: 0; border-radius: 8px; background: var(--border-strong); padding: 0; }
+.inspector .switch.on { background: var(--text); }
+.inspector .switch .knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg); transition: left 0.12s; }
+.inspector .switch.on .knob { left: 14px; }
+.inspector .env-row { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 4px; align-items: center; }
+.inspector .env-row input { height: 26px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text); font: 11px var(--mono); min-width: 0; }
+.inspector .env-row input.wide { grid-column: 1 / 4; }
+.inspector .env-row .secret-note { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inspector .env-row .toggle { height: 22px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: 3px; background: var(--bg); color: var(--text-2); font: 11px var(--mono); }
+.inspector .env-row .toggle.on { background: var(--surface-2); color: var(--text); }
+.inspector .env-row .quiet { height: 22px; padding: 0 4px; }
+.inspector .add { align-self: start; height: 24px; padding: 0 6px; }
+.inspector .row { display: flex; gap: 6px; align-items: center; }
+.inspector .row.between { justify-content: space-between; }
+.inspector .danger { color: var(--s-red); align-self: start; }
+.inspector .fixed { margin: 0; padding: 8px 10px; border-radius: 5px; background: var(--surface-2); color: var(--text-2); }
+.inspector .ids { display: flex; flex-wrap: wrap; gap: 4px; }
+.inspector section { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--border); }
+.inspector section h4 { margin: 0; font-size: 12px; }
+.inspector section p { margin: 0; color: var(--text-2); }
+.inspector section .warn { color: var(--s-amber); }
+
+/* YAML view */
+.yaml-view { flex: 1; padding: 0 0 24px; }
+.yaml-view pre { margin: 0; font: 12px/20px var(--mono); }
+.yaml-view .yl { display: grid; grid-template-columns: 52px 14px 1fr; }
+.yaml-view .yl.add { background: var(--diff-add); }
+.yaml-view .yl .ln { text-align: right; padding-right: 12px; color: var(--text-3); user-select: none; }
+.yaml-view .yl .mark { color: var(--s-green); user-select: none; }
+.yaml-view .foot { margin: 12px 20px 0; font-size: 12px; color: var(--text-3); }
+
+/* Edit bar */
+.edit-bar { position: sticky; bottom: 0; border-top: 1px solid var(--border-strong); background: var(--bg); padding: 10px 20px; display: flex; flex-direction: column; gap: 10px; }
+.edit-row { display: flex; align-items: center; gap: 12px; }
+.edit-row .summary { flex: 1; font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.edit-row .err, .save-form .err { color: var(--s-red); font-size: 12px; }
+.save-form { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px 14px; align-items: start; }
+.save-form label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--text-3); }
+.save-form label.wide { grid-column: 1 / 3; }
+.save-form input, .save-form textarea { height: 28px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--bg); color: var(--text); font: 13px var(--ui); font-weight: 400; box-sizing: border-box; }
+.save-form textarea { height: auto; padding: 6px 10px; resize: vertical; line-height: 1.5; }
+.save-form .criteria { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.save-form .criteria .label { font-size: 11px; font-weight: 600; color: var(--text-3); }
+.save-form .actions { grid-column: 1 / 4; display: flex; justify-content: flex-end; }
+.saved { display: flex; align-items: center; gap: 10px; }
+.saved .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--s-blue); }
+.saved > span { flex: 1; }

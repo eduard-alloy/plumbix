@@ -1,6 +1,6 @@
 // The API client. Every call goes to the same origin with the session
 // cookie; a 401 anywhere means the browser is not signed in.
-import type { Alert, Change, Diff, Repo, RepoSettings, Run, SecretCheck, SettingsView } from './model'
+import type { PipelineCheck, PipelineFile, Alert, Change, Diff, Repo, RepoSettings, Run, SecretCheck, SettingsView } from './model'
 
 export class ApiError extends Error {
   constructor(
@@ -93,6 +93,20 @@ export const api = {
   setRepoToken: (id: string, value: string) => request<void>('PUT', `/api/v1/repos/${encodeURIComponent(id)}/token`, { value }),
   removeRepoToken: (id: string) => request<void>('DELETE', `/api/v1/repos/${encodeURIComponent(id)}/token`),
   checkRepoToken: (id: string) => request<SecretCheck>('POST', `/api/v1/repos/${encodeURIComponent(id)}/token/check`),
+  pipelineFile: (id: string, branch?: string) => request<PipelineFile>('GET', `/api/v1/repos/${encodeURIComponent(id)}/pipeline${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`),
+  proposePipeline: (id: string, body: { branch: string; title: string; intent: string; content: string; target_branch?: string }) =>
+    request<Change>('POST', `/api/v1/repos/${encodeURIComponent(id)}/pipeline/changes`, body),
+  checkPipeline: (content: string) => requestYAML<PipelineCheck>('/api/v1/pipelines/check', content),
+}
+
+/** requestYAML posts a pipeline file as YAML and reads the JSON answer. */
+async function requestYAML<T>(path: string, content: string): Promise<T> {
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/yaml' }, body: content, credentials: 'same-origin' })
+  if (!res.ok) {
+    if (res.status === 401) for (const fn of unauthorizedListeners) fn()
+    throw new ApiError(res.status, `http_${res.status}`, `HTTP ${res.status}`)
+  }
+  return (await res.json()) as T
 }
 
 /** stepLogUrl is where a step's raw log can be opened. */

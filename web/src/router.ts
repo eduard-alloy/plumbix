@@ -1,7 +1,7 @@
 // A small pathname router: the app has five screens and no nested routes.
 import { useCallback, useSyncExternalStore } from 'react'
 
-export type Route = { screen: 'changes' } | { screen: 'change'; id: string } | { screen: 'login' } | { screen: 'alerts' } | { screen: 'repos' } | { screen: 'design' } | { screen: 'settings' }
+export type Route = { screen: 'changes' } | { screen: 'change'; id: string } | { screen: 'login' } | { screen: 'alerts' } | { screen: 'repos' } | { screen: 'pipelines'; repoId?: string } | { screen: 'design' } | { screen: 'settings' }
 
 export function parseRoute(pathname: string): Route {
   const parts = pathname.split('/').filter(Boolean)
@@ -10,6 +10,7 @@ export function parseRoute(pathname: string): Route {
   if (parts[0] === 'login') return { screen: 'login' }
   if (parts[0] === 'alerts') return { screen: 'alerts' }
   if (parts[0] === 'repos') return { screen: 'repos' }
+  if (parts[0] === 'pipelines') return parts[1] ? { screen: 'pipelines', repoId: decodeURIComponent(parts[1]) } : { screen: 'pipelines' }
   if (parts[0] === 'design') return { screen: 'design' }
   if (parts[0] === 'settings') return { screen: 'settings' }
   return { screen: 'changes' }
@@ -27,6 +28,8 @@ export function pathFor(r: Route): string {
       return '/alerts'
     case 'repos':
       return '/repos'
+    case 'pipelines':
+      return r.repoId ? `/pipelines/${encodeURIComponent(r.repoId)}` : '/pipelines'
     case 'design':
       return '/design'
     case 'settings':

@@ -1,7 +1,7 @@
 // A fake server for page tests: fetch answers from fixtures, EventSource is
 // a hand-driven stub. Tests mutate `db` and call `emit` to simulate change.
 import { vi } from 'vitest'
-import type { Alert, Change, Diff, PlumbixEvent, Repo, Run } from '../model'
+import type { Alert, Change, Diff, PipelineFile, PlumbixEvent, Repo, Run } from '../model'
 import * as fx from './fixtures'
 
 export interface FakeDB {
@@ -20,6 +20,10 @@ export interface FakeDB {
   repoGuidance: Record<string, string>
   repoTokens: Record<string, string>
   repoChecks: Record<string, { ok: boolean; message: string }>
+  pipelines: Record<string, PipelineFile>
+  /** proposals records every pipeline change the page posted. */
+  proposals: { repo: string; branch: string; title: string; intent: string; content: string; target_branch?: string }[]
+  proposeResult: 'ok' | 'branch_exists' | 'push_denied'
 }
 
 const KNOWN_SECRETS = [
@@ -58,6 +62,9 @@ export function freshDB(): FakeDB {
     repoGuidance: {},
     repoTokens: {},
     repoChecks: {},
+    pipelines: structuredClone(fx.pipelineFiles),
+    proposals: [],
+    proposeResult: 'ok',
   }
 }
 
@@ -165,6 +172,25 @@ export function fakeFetch(db: FakeDB): typeof fetch {
         delete db.secrets[key]
         delete db.secretUpdated[key]
         return new Response(null, { status: 204 })
+      }
+    }
+    if (path === '/api/v1/pipelines/check' && method === 'POST') {
+      const content = String(init?.body ?? '')
+      return content.includes('INVALID') ? json(200, { valid: false, errors: [{ path: 'steps', line: 2, message: 'invalid' }] }) : json(200, { valid: true, order: [] })
+    }
+    const pipe = path.match(/^\/api\/v1\/repos\/([^/]+)\/pipeline(\/changes)?(\?.*)?$/)
+    if (pipe) {
+      const [, id, changes] = pipe
+      if (!db.repos.some((r) => r.id === id)) return error(404, 'not_found', `repo ${id}`)
+      if (!changes) return db.pipelines[id] ? json(200, db.pipelines[id]) : error(404, 'not_found', 'branch')
+      if (method === 'POST') {
+        const body = JSON.parse(String(init?.body)) as { branch: string; title: string; intent: string; content: string; target_branch?: string }
+        if (db.proposeResult === 'branch_exists') return error(409, 'branch_exists', `branch exists: ${body.branch}`)
+        if (db.proposeResult === 'push_denied') return error(409, 'push_denied', 'push denied; set a token for repository ' + id + ' in Settings and try again')
+        db.proposals.push({ repo: id, ...body })
+        const c: Change = { ...fx.running, id: 'c_pipeline0001', repo_id: id, source_branch: body.branch, target_branch: body.target_branch ?? 'main', title: body.title, intent: body.intent, state: 'running', submitted_by: 'pipeline editor' }
+        db.changes.push(c)
+        return json(201, c)
       }
     }
     const repoSettings = path.match(/^\/api\/v1\/repos\/([^/]+)\/settings$/)
