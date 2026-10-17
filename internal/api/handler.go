@@ -115,6 +115,14 @@ func writeProblems(w http.ResponseWriter, message string, problems []change.Prob
 	}})
 }
 
+// writeJSONErr is writeJSON for callers that must know whether the body
+// reached the client.
+func writeJSONErr(w http.ResponseWriter, status int, v any) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	return json.NewEncoder(w).Encode(v)
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

@@ -177,9 +177,10 @@ func unit(o InstallOptions) string {
 
 // systemdWord quotes a word for a unit file when it needs it.
 func systemdWord(w string) string {
-	if w != "" && !strings.ContainsAny(w, " \t\"'\\$;#") {
+	if w != "" && !strings.ContainsAny(w, " \t\"'\\$;#%") {
 		return w
 	}
-	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+	// systemd expands %-specifiers even inside quotes, so % is doubled.
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, `%`, `%%`)
 	return `"` + r.Replace(w) + `"`
 }

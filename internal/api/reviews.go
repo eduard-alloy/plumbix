@@ -70,15 +70,15 @@ func (h *reviewHandlers) next(w http.ResponseWriter, r *http.Request) {
 		if ok {
 			// The claim happened in the store; if the poller hung up meanwhile
 			// the token would be lost with it, so the claim is given back.
-			if clientGone(r) {
+			if clientGone(r) || writeJSONErr(w, http.StatusOK, b) != nil {
+				// The poller hung up, or the brief did not reach it: the token
+				// would be lost with it, so the claim is given back.
 				bg, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				if err := h.engine.ReleaseReview(bg, b.ID); err != nil {
 					h.log.Warn("release review after the client left", "review", b.ID, "err", err)
 				}
-				return
 			}
-			writeJSON(w, http.StatusOK, b)
 			return
 		}
 		remaining := time.Until(deadline)

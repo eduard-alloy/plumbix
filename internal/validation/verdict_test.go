@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -97,5 +98,21 @@ func TestMinimalApprove(t *testing.T) {
 	src := `{"plumbix": "verdict/v1", "outcome": "approve", "summary": "all good", "criteria": [], "findings": [], "risks": []}`
 	if _, err := ReadVerdict(writeVerdict(t, src), criteria); err != nil {
 		t.Fatalf("minimal approve rejected: %v", err)
+	}
+}
+
+func TestUsageMayCarryTurnsAndCost(t *testing.T) {
+	raw := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"ok","criteria":[{"id":"AC-1","status":"met","reason":"r","evidence":["x"]}],"usage":{"model":"m","input_tokens":1,"output_tokens":2,"turns":13,"cost_usd":3.06}}`)
+	v, err := ParseVerdict(raw, []change.Criterion{{ID: "AC-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Usage == nil || v.Usage.Turns != 13 || v.Usage.CostUSD != 3.06 {
+		t.Errorf("usage = %+v", v.Usage)
+	}
+	// Absent, they stay out of the JSON a container validator writes.
+	out, _ := json.Marshal(Verdict{Plumbix: VerdictVersion, Outcome: "approve", Summary: "ok", Usage: &Usage{Model: "m", InputTokens: 1, OutputTokens: 2}})
+	if strings.Contains(string(out), "turns") || strings.Contains(string(out), "cost_usd") {
+		t.Errorf("empty usage extras were written: %s", out)
 	}
 }

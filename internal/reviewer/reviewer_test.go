@@ -128,7 +128,7 @@ func TestOneReviewRunsClaudeInAWorktreeAndPostsTheVerdict(t *testing.T) {
 	if v["plumbix"] != "verdict/v1" || v["outcome"] != "approve" || !strings.Contains(string(fs.posted.Verdict), `"AC-1"`) {
 		t.Errorf("verdict = %s", fs.posted.Verdict)
 	}
-	if usage, _ := v["usage"].(map[string]any); usage == nil || usage["input_tokens"] != float64(1200) {
+	if usage, _ := v["usage"].(map[string]any); usage == nil || usage["input_tokens"] != float64(1200) || usage["turns"] != float64(3) || usage["cost_usd"] != 0.0421 {
 		t.Errorf("verdict usage = %v", v["usage"])
 	}
 	// claude ran non-interactively, read-only, with the brief's prompt and schema, in a checkout of head.

@@ -63,7 +63,9 @@
       "properties": {
         "model": { "type": "string", "minLength": 1 },
         "input_tokens": { "type": "integer", "minimum": 0 },
-        "output_tokens": { "type": "integer", "minimum": 0 }
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "turns": { "description": "Agentic turns an external reviewer took.", "type": "integer", "minimum": 0 },
+        "cost_usd": { "description": "The reviewer's estimated spend, in US dollars.", "type": "number", "minimum": 0 }
       }
     }
   },
