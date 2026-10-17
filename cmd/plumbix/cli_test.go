@@ -164,11 +164,10 @@ func TestCLIFlow(t *testing.T) {
 	if code, _, errOut := c.run("", "change", "approve", id); code != 2 || !strings.Contains(errOut, "--reason") {
 		t.Errorf("approve without a reason: exit %d, stderr %q", code, errOut)
 	}
-	if approved := c.mustRun("", "change", "approve", id, "--reason", "looked at it myself"); approved["state"] != "approved" || approved["human_approval"] == nil {
-		t.Errorf("approve = %v", approved)
-	}
-	if code, _, errOut := c.run("", "change", "approve", id, "--reason", "again"); code != 1 || !strings.Contains(errOut, "invalid_state") {
-		t.Errorf("approve twice: exit %d, stderr %q", code, errOut)
+	// This change's runs errored (no pipeline file), so there is no judged
+	// head for a person to approve; the positive path is an engine and API test.
+	if code, _, errOut := c.run("", "change", "approve", id, "--reason", "looked at it myself"); code != 1 || !strings.Contains(errOut, "invalid_state") || !strings.Contains(errOut, "finished run") {
+		t.Errorf("approve with an errored latest run: exit %d, stderr %q", code, errOut)
 	}
 	if closed := c.mustRun("", "change", "close", id); closed["state"] != "closed" {
 		t.Errorf("close = %v", closed)
@@ -205,12 +204,11 @@ func TestCLIFlow(t *testing.T) {
 	if resumed := c.events("--after", "2", "--max", "1"); len(resumed) != 1 || resumed[0]["id"] != float64(3) {
 		t.Errorf("events --after 2 = %v", resumed)
 	}
-	// After id 3 the first change produced exactly nine more events: the
-	// errored run's end and state, the revalidation's four, the person's
-	// approval and its state change, and the close.
-	closed := c.events("--change", id, "--after", "3", "--max", "9")
+	// After id 3 the first change produced exactly seven more events: the
+	// errored run's end and state, the revalidation's four, and the close.
+	closed := c.events("--change", id, "--after", "3", "--max", "7")
 	last := closed[len(closed)-1]
-	if len(closed) != 9 || last["type"] != "change.state_changed" || last["change_id"] != id || last["payload"].(map[string]any)["to"] != "closed" {
+	if len(closed) != 7 || last["type"] != "change.state_changed" || last["change_id"] != id || last["payload"].(map[string]any)["to"] != "closed" {
 		t.Errorf("events --change = %v; want the change's own events ending in its close", closed)
 	}
 	for _, e := range closed {

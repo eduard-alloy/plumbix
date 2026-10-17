@@ -36,15 +36,15 @@ func (e *Engine) ApproveByPerson(ctx context.Context, changeID, reason string) (
 	if err != nil {
 		return change.Change{}, err
 	}
-	var last *run.Run
-	for i := len(runs) - 1; i >= 0; i-- {
-		if runs[i].Status != run.Running {
-			last = &runs[i]
-			break
-		}
-	}
-	if last == nil || last.Head == "" {
+	// The same run the merge will land: the latest one, and it must have
+	// finished with a judged head. An errored or cancelled last run leaves
+	// nothing to approve.
+	if len(runs) == 0 {
 		return change.Change{}, fmt.Errorf("%w: change %s has no finished run to approve", change.ErrInvalidState, changeID)
+	}
+	last := &runs[len(runs)-1]
+	if last.Status != run.Finished || last.Head == "" {
+		return change.Change{}, fmt.Errorf("%w: change %s has no finished run to approve (the latest run %s)", change.ErrInvalidState, changeID, last.Status)
 	}
 	if err := e.store.ApproveByPerson(ctx, changeID, c.State, reason, last.Head, e.now().UTC()); err != nil {
 		return change.Change{}, err
