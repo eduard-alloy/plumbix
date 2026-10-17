@@ -91,7 +91,21 @@ func TestReviewsAreClaimedOnceAndAnsweredOnce(t *testing.T) {
 	if exp, _ := db.GetReview(ctx, "rv_2"); exp.Status != review.Expired {
 		t.Errorf("expired review = %+v", exp)
 	}
-	// Events: two requested, two claimed, in order, valid against the schema.
+	// A restart closes a run's open reviews: nothing is left to claim or answer.
+	r3 := review.Review{ID: "rv_3", RunID: "run_2", RepoID: "r_1", ChangeID: "c_2", Step: "ai-review", Brief: brief, CreatedAt: at.Add(3 * time.Hour), ExpiresAt: at.Add(5 * time.Hour)}
+	if err := db.CreateReview(ctx, r3); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ExpireRunReviews(ctx, "run_2", at.Add(4*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := db.GetReview(ctx, "rv_3"); got.Status != review.Expired {
+		t.Errorf("review of a recovered run = %+v", got)
+	}
+	if _, ok, _ := db.ClaimReview(ctx, "", "kai", "hz", at.Add(4*time.Hour)); ok {
+		t.Error("a review of a recovered run was handed out")
+	}
+	// Events: three requested, two claimed, in order, valid against the schema.
 	after, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
 	fresh := after[len(before):]
 	var types []events.Type
@@ -99,7 +113,7 @@ func TestReviewsAreClaimedOnceAndAnsweredOnce(t *testing.T) {
 		types = append(types, e.Type)
 		validateEvent(t, schema, e)
 	}
-	want := []events.Type{events.ReviewRequested, events.ReviewRequested, events.ReviewClaimed, events.ReviewClaimed}
+	want := []events.Type{events.ReviewRequested, events.ReviewRequested, events.ReviewClaimed, events.ReviewClaimed, events.ReviewRequested}
 	if len(types) != len(want) {
 		t.Fatalf("events = %v, want %v", types, want)
 	}

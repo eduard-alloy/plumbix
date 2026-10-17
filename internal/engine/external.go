@@ -159,6 +159,11 @@ func (e *Engine) PostReviewVerdict(ctx context.Context, id, token string, raw []
 		}
 		return err
 	}
+	// The claim and its token come first, so a stranger learns nothing
+	// about the verdict's problems and gets the same 409 for every attempt.
+	if rv.Status != review.Claimed || rv.TokenHash != hashToken(token) || !rv.ExpiresAt.After(e.now()) {
+		return fmt.Errorf("%w: review %s is %s, or the token is not the one handed out with its brief", change.ErrConflict, id, rv.Status)
+	}
 	c, err := e.store.GetChange(ctx, rv.ChangeID)
 	if err != nil {
 		return err

@@ -402,6 +402,9 @@ func (e *Engine) Recover(ctx context.Context) error {
 	}
 	for _, r := range stale {
 		e.log.Warn("recovering interrupted run", "run", r.ID, "change", r.ChangeID)
+		if err := e.store.ExpireRunReviews(ctx, r.ID, e.now().UTC()); err != nil {
+			e.log.Warn("expire the run's open reviews", "run", r.ID, "err", err)
+		}
 		e.finishErrored(ctx, r, errors.New("interrupted: the Plumbix server stopped during this run"), false)
 	}
 	return nil

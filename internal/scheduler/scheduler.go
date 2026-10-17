@@ -140,7 +140,8 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 		results[i].Name = st.Name
 	}
 	done := make(chan finished)
-	running := 0
+	running := 0    // steps in flight, external ones included
+	containers := 0 // steps holding a container slot; a waiting external step holds none
 	// settle records a step's final result and tells the Finished hook.
 	settle := func(i int, r StepResult) {
 		results[i] = r
@@ -159,9 +160,6 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 		if ctx.Err() == nil {
 			markSkipped(steps, results, index, settle)
 			for i, st := range steps {
-				if running >= o.MaxParallel {
-					break
-				}
 				if results[i].Status != "" || !needsSatisfied(st, results, index) {
 					continue
 				}
@@ -176,6 +174,9 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 					go func(i int, st pipeline.Step) { done <- finished{i, runExternal(ctx, o, st, setup, log)} }(i, st)
 					continue
 				}
+				if containers >= o.MaxParallel {
+					continue
+				}
 				job, err := buildJob(st, o, finishedSoFar(results))
 				if err != nil {
 					settle(i, StepResult{Name: st.Name, Status: Errored, Err: err})
@@ -183,20 +184,23 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 				}
 				results[i].Status = inProgress
 				running++
+				containers++
 				go func(i int, st pipeline.Step) { done <- finished{i, runStep(ctx, r, job, st)} }(i, st)
 			}
 		}
 		if running == 0 {
 			break
 		}
+		var f finished
 		select {
-		case f := <-done:
-			settle(f.index, f.result)
-			running--
+		case f = <-done:
 		case <-ctx.Done():
-			f := <-done
-			settle(f.index, f.result)
-			running--
+			f = <-done
+		}
+		settle(f.index, f.result)
+		running--
+		if !steps[f.index].External {
+			containers--
 		}
 	}
 

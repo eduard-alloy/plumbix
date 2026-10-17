@@ -144,7 +144,7 @@ func ToVerdict(raw []byte, criteria []change.Criterion, usage validation.Usage) 
 	return v, nil
 }
 
-// criterionIDs lists the ids of a change's criteria, in order.
+// CriterionIDs lists the ids of a change's criteria, in order.
 func CriterionIDs(criteria []change.Criterion) []string {
 	ids := make([]string, 0, len(criteria))
 	for _, c := range criteria {

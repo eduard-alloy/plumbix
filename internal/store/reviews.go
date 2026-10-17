@@ -96,6 +96,14 @@ func (db *DB) ExpireReview(ctx context.Context, id string, at time.Time) error {
 	return err
 }
 
+// ExpireRunReviews closes the open reviews of one run.
+func (db *DB) ExpireRunReviews(ctx context.Context, runID string, at time.Time) error {
+	_, err := db.sql.ExecContext(ctx,
+		`UPDATE reviews SET status = ?, finished_at = ? WHERE run_id = ? AND status IN (?, ?)`,
+		review.Expired, formatTime(at), runID, review.Pending, review.Claimed)
+	return mapErr(err)
+}
+
 // GetReview returns one review. ErrNotFound when there is none.
 func (db *DB) GetReview(ctx context.Context, id string) (review.Review, error) {
 	return scanReview(db.sql.QueryRowContext(ctx, `SELECT `+reviewColumns+` FROM reviews WHERE id = ?`, id))

@@ -918,11 +918,15 @@ func TestExternalValidatorPublishesABriefAndTakesThePostedVerdict(t *testing.T) 
 	if _, ok, _ := h.eng.ClaimReview(ctx, "", "otto"); ok {
 		t.Error("a claimed review was handed out twice")
 	}
-	// A verdict that fails the checks is refused and the review stays open.
+	// A verdict that fails the checks is refused and the review stays open;
+	// with a wrong token the checks are not even reached.
 	bad := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"ok","criteria":[{"id":"AC-9","status":"met","reason":"x","evidence":["app.go"]}]}`)
 	var inv *validation.InvalidVerdictError
 	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, bad); !errors.As(err, &inv) {
 		t.Errorf("invalid verdict: %v", err)
+	}
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, "wrong-token", bad); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("invalid verdict with a wrong token: %v, want ErrConflict", err)
 	}
 	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"The feature does what the intent says.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}]}`)
 	if err := h.eng.PostReviewVerdict(ctx, b.ID, "wrong-token", good); !errors.Is(err, change.ErrConflict) {

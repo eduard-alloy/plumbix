@@ -73,5 +73,8 @@ type Store interface {
 	// matches: ErrNotFound for an unknown review, ErrConflict otherwise.
 	PostReviewVerdict(ctx context.Context, id, tokenHash string, verdict json.RawMessage, at time.Time) error
 	ExpireReview(ctx context.Context, id string, at time.Time) error
+	// ExpireRunReviews closes every open review of a run, for a run that
+	// will never consume a verdict (the server restarted while it waited).
+	ExpireRunReviews(ctx context.Context, runID string, at time.Time) error
 	GetReview(ctx context.Context, id string) (Review, error)
 }
