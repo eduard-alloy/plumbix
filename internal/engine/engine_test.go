@@ -902,6 +902,7 @@ func TestExternalValidatorPublishesABriefAndTakesThePostedVerdict(t *testing.T) 
 		t.Fatal(err)
 	}
 	b := h.claimSoon("kai")
+	time.Sleep(2 * reviewPoll) // let the step log kai's claim before anything else happens
 	if b.RunID != r.ID || b.ChangeID != c.ID || b.Step != "ai-review" || b.Token == "" || b.Head == "" || b.Base == "" || b.RepoURL != h.repo.Remote || b.Iteration != 1 {
 		t.Errorf("brief = %+v", b)
 	}
@@ -932,7 +933,19 @@ func TestExternalValidatorPublishesABriefAndTakesThePostedVerdict(t *testing.T) 
 	if err := h.eng.PostReviewVerdict(ctx, b.ID, "wrong-token", good); !errors.Is(err, change.ErrConflict) {
 		t.Errorf("wrong token: %v", err)
 	}
-	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); err != nil {
+	// kai's poll was cut off: the claim goes back, otto takes it, kai's token is dead.
+	if err := h.eng.ReleaseReview(ctx, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * reviewPoll) // let the step see the release
+	b2, ok, err := h.eng.ClaimReview(ctx, "", "otto")
+	if err != nil || !ok || b2.ID != b.ID || b2.Token == b.Token {
+		t.Fatalf("re-claim = %+v %v %v", b2, ok, err)
+	}
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("a released token still worked: %v", err)
+	}
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b2.Token, good); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); !errors.Is(err, change.ErrConflict) {
@@ -961,7 +974,7 @@ func TestExternalValidatorPublishesABriefAndTakesThePostedVerdict(t *testing.T) 
 		t.Errorf("validators = %+v; want ai-review approve with the posted summary", done.Result.Validators)
 	}
 	log, _ := os.ReadFile(h.eng.LogPath(r.ID, "ai-review"))
-	for _, want := range []string{"waiting for an external reviewer", "claimed by kai", "verdict posted"} {
+	for _, want := range []string{"waiting for an external reviewer", "claimed by kai", "claim by kai was released", "claimed by otto", "verdict posted by otto"} {
 		if !strings.Contains(string(log), want) {
 			t.Errorf("step log lacks %q:\n%s", want, log)
 		}

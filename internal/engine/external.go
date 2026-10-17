@@ -77,7 +77,7 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 
 	ticker := time.NewTicker(reviewPoll)
 	defer ticker.Stop()
-	claimed := false
+	holder := "" // the reviewer last written to the log
 	for {
 		select {
 		case <-ctx.Done():
@@ -109,10 +109,16 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 			}
 			return errored(err)
 		}
-		// A claim and its verdict can land within one poll, so the claim
-		// line is written whenever it has not been yet.
-		if !claimed && (rv.Status == review.Claimed || rv.Status == review.Done) {
-			claimed = true
+		// The log follows the holder: a claim, a release (the claim went
+		// back because the reviewer never got the brief), a new claim. A
+		// claim and its verdict can land within one poll, so the claim line
+		// is written whenever the holder is new.
+		switch {
+		case holder != "" && rv.Status == review.Pending:
+			fmt.Fprintf(log, "the claim by %s was released; waiting for a reviewer again\n", holder)
+			holder = ""
+		case rv.Reviewer != "" && rv.Reviewer != holder && (rv.Status == review.Claimed || rv.Status == review.Done):
+			holder = rv.Reviewer
 			fmt.Fprintf(log, "claimed by %s at %s\n", rv.Reviewer, rv.ClaimedAt.UTC().Format(time.RFC3339))
 		}
 		if rv.Status == review.Done {

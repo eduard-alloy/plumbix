@@ -197,13 +197,16 @@ func TestLifecycleEmitsEvents(t *testing.T) {
 	if _, ok, err := db.ClaimReview(ctx, "", "reviewer", "h", at.Add(18*time.Second)); err != nil || !ok {
 		t.Fatalf("claim: %v %v", ok, err)
 	}
+	if err := db.ReleaseReview(ctx, "rv_1"); err != nil {
+		t.Fatal(err)
+	}
 
 	want := []events.Type{
 		events.ChangeSubmitted, events.RunStarted, events.StateChanged, events.StepFinished,
 		events.RunFinished, events.VerdictIssued, events.StateChanged, events.ChangeMerged, events.StateChanged,
 		events.AlertRaised, events.AlertResolved, events.AlertRaised, events.AlertResolved,
 		events.ChangeSubmitted, events.StateChanged, events.ApprovedByPerson, events.StateChanged, events.ChangeRefreshed,
-		events.RunStarted, events.ReviewRequested, events.ReviewClaimed,
+		events.RunStarted, events.ReviewRequested, events.ReviewClaimed, events.ReviewReleased,
 	}
 	var got []events.Type
 	for i, e := range notified {

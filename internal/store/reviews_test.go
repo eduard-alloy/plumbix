@@ -115,7 +115,7 @@ func TestReviewsAreClaimedOnceAndAnsweredOnce(t *testing.T) {
 	if _, ok, _ := db.ClaimReview(ctx, "", "kai", "hz", at.Add(4*time.Hour)); ok {
 		t.Error("a review of a recovered run was handed out")
 	}
-	// Events: requested twice, claimed twice, claimed again after the release, requested once more; all valid against the schema.
+	// Events: requested twice, claimed twice, released, claimed again, requested once more; all valid against the schema.
 	after, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
 	fresh := after[len(before):]
 	var types []events.Type
@@ -123,7 +123,7 @@ func TestReviewsAreClaimedOnceAndAnsweredOnce(t *testing.T) {
 		types = append(types, e.Type)
 		validateEvent(t, schema, e)
 	}
-	want := []events.Type{events.ReviewRequested, events.ReviewRequested, events.ReviewClaimed, events.ReviewClaimed, events.ReviewClaimed, events.ReviewRequested}
+	want := []events.Type{events.ReviewRequested, events.ReviewRequested, events.ReviewClaimed, events.ReviewClaimed, events.ReviewReleased, events.ReviewClaimed, events.ReviewRequested}
 	if len(types) != len(want) {
 		t.Fatalf("events = %v, want %v", types, want)
 	}

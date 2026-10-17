@@ -97,19 +97,36 @@ func (db *DB) ExpireReview(ctx context.Context, id string, at time.Time) error {
 }
 
 // ReleaseReview returns a claimed review to pending with no reviewer and
-// no token, so the next claim can take it.
+// no token, so the next claim can take it, and emits review.released. A
+// review that is not claimed is left as it is.
 func (db *DB) ReleaseReview(ctx context.Context, id string) error {
-	res, err := db.sql.ExecContext(ctx,
-		`UPDATE reviews SET status = ?, reviewer = '', token_hash = '', claimed_at = '' WHERE id = ? AND status = ?`,
-		review.Pending, id, review.Claimed)
-	if err != nil {
-		return mapErr(err)
-	}
-	if n, _ := res.RowsAffected(); n == 1 {
-		return nil
-	}
-	_, err = db.GetReview(ctx, id)
-	return err
+	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		var r review.Review
+		var was string
+		if err := tx.QueryRowContext(ctx, `SELECT reviewer FROM reviews WHERE id = ? AND status = ?`, id, review.Claimed).Scan(&was); err != nil {
+			if !errors.Is(mapErr(err), change.ErrNotFound) {
+				return mapErr(err)
+			}
+			// Unknown, or simply not claimed: only the former is an error.
+			var n int
+			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM reviews WHERE id = ?`, id).Scan(&n); err != nil {
+				return mapErr(err)
+			}
+			if n == 0 {
+				return change.ErrNotFound
+			}
+			return nil
+		}
+		var err error
+		if r, err = scanReview(tx.QueryRowContext(ctx,
+			`UPDATE reviews SET status = ?, reviewer = '', token_hash = '', claimed_at = '' WHERE id = ? AND status = ? RETURNING `+reviewColumns,
+			review.Pending, id, review.Claimed)); err != nil {
+			return err
+		}
+		_, err = emit(events.Event{Type: events.ReviewReleased, Time: time.Now().UTC(), RepoID: r.RepoID, ChangeID: r.ChangeID, RunID: r.RunID,
+			Payload: events.ReviewReleasedPayload{ReviewID: r.ID, Reviewer: was}})
+		return err
+	})
 }
 
 // ExpireRunReviews closes the open reviews of one run.
