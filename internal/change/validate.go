@@ -93,6 +93,9 @@ type ChangeInput struct {
 	AcceptanceCriteria []Criterion `json:"acceptance_criteria"`
 	Constraints        []string    `json:"constraints"`
 	SubmittedBy        string      `json:"submitted_by"`
+	// PlumbixBranch is set by the server for branches it created; a client
+	// cannot claim it.
+	PlumbixBranch bool `json:"-"`
 }
 
 // normalizeRepo fills defaults and checks every rule.

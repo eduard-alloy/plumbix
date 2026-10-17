@@ -8,9 +8,9 @@ import { useNow, useStore } from '../store'
 import { StatePill, type PillStatus } from '../ui/StatePill'
 import { LogPanel, type LogTarget } from '../ui/LogPanel'
 import { DiffView, type Highlight } from '../ui/DiffView'
-import { changeView, refusalNotice, type NoticeVM, type StepVM } from '../vm/change'
+import { changeView, refusalNotice, type NoticeVM, type StepVM, refreshNotice } from '../vm/change'
 
-type Busy = 'merge' | 'close' | 'validate' | 'approve' | null
+type Busy = 'merge' | 'close' | 'validate' | 'approve' | 'refresh' | null
 
 export function ChangePage({ id }: { id: string }) {
   const { state, actions } = useStore()
@@ -71,7 +71,7 @@ export function ChangePage({ id }: { id: string }) {
   }
 
   const v = changeView(c, runs, repo, selected, now)
-  const ctx = { src: c.source_branch, tgt: c.target_branch, head: v.header.head, base: v.header.base }
+  const ctx = { src: c.source_branch, tgt: c.target_branch, head: v.header.head, base: v.header.base, plumbixBranch: !!c.plumbix_branch }
 
   async function merge() {
     setBusy('merge')
@@ -130,10 +130,30 @@ export function ChangePage({ id }: { id: string }) {
     }
   }
 
+  async function refresh() {
+    setBusy('refresh')
+    setNotice(null)
+    try {
+      actions.setChange(await api.refresh(c!.id))
+      setNotice(refreshNotice('refreshing', ctx))
+      void actions.refreshChange(c!.id)
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setNotice(refreshNotice(e.code, ctx, e.message))
+        void actions.refreshChange(c!.id)
+      }
+    } finally {
+      setBusy(null)
+    }
+  }
+
   function noticeAction(n: NoticeVM) {
     switch (n.action) {
       case 'validate':
         void validate()
+        break
+      case 'refresh':
+        void refresh()
         break
       case 'merge':
         void merge()
@@ -301,6 +321,11 @@ export function ChangePage({ id }: { id: string }) {
             {v.actions.approve && !approving && (
               <button className="secondary" onClick={() => setApproving(true)} disabled={busy !== null}>
                 Approve
+              </button>
+            )}
+            {v.actions.refresh && (
+              <button className="secondary" onClick={() => void refresh()} disabled={busy !== null} title={`Merge ${c.target_branch} into ${c.source_branch} and validate again`}>
+                {busy === 'refresh' ? 'Updating…' : `Update from ${c.target_branch}`}
               </button>
             )}
           </div>

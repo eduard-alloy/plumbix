@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { changeView, refusalNotice } from './change'
+import { changeView, refreshNotice, refusalNotice } from './change'
 import { approved, approvedRuns, closed, fixRequested, fixRequestedRuns, merged, needsHuman, needsHumanRuns, NOW, open, repos, running, runningRuns } from '../test/fixtures'
 
 const plumbix = repos[0]
@@ -82,7 +82,7 @@ describe('changeView for an approved change', () => {
   })
 
   it('offers Merge and Close', () => {
-    expect(v.actions).toEqual({ primary: 'merge', close: true, approve: false })
+    expect(v.actions).toEqual({ primary: 'merge', close: true, approve: false, refresh: false })
     expect(v.diffRange).toBe('a81d7c0..9f3c1e2')
   })
 })
@@ -103,7 +103,7 @@ describe('changeView for other states', () => {
     ])
     expect(v.findings[0].items[0].criterion).toBe('AC-1')
     expect(v.risks[0].humanRequired).toBe(true)
-    expect(v.actions).toEqual({ primary: null, close: true, approve: false })
+    expect(v.actions).toEqual({ primary: null, close: true, approve: false, refresh: false })
     expect(v.criteria[2]).toMatchObject({ check: 'check: go test ./internal/hosts/github/...', status: 'met' })
   })
 
@@ -117,7 +117,7 @@ describe('changeView for other states', () => {
     expect(v.verdict.steps.map((s) => s.name)).toEqual(['build'])
     expect(v.iterations[0]).toMatchObject({ n: 1, status: 'running', headline: 'Running', dur: '1m 12s' })
     expect(v.judged).toBe(false)
-    expect(v.actions).toEqual({ primary: null, close: true, approve: false })
+    expect(v.actions).toEqual({ primary: null, close: true, approve: false, refresh: false })
   })
 
   it('needs_human: the error is the reason, criteria are not judged, Validate again is offered', () => {
@@ -131,7 +131,7 @@ describe('changeView for other states', () => {
     expect(v.critCount).toBe('0 of 1 met')
     expect(v.iterations[0]).toMatchObject({ status: 'errored', headline: 'step build could not run: image golang:1.27 not found' })
     expect(v.evidence.error).toBe('step build could not run: image golang:1.27 not found')
-    expect(v.actions).toEqual({ primary: 'validate', close: true, approve: true })
+    expect(v.actions).toEqual({ primary: 'validate', close: true, approve: true, refresh: false })
   })
 
   it('open without runs: placeholders everywhere', () => {
@@ -148,10 +148,10 @@ describe('changeView for other states', () => {
     const m = changeView(merged, approvedRuns, plumbix, undefined, NOW)
     expect(m.verdict.sentence).toBe('Merged into main.')
     expect(m.verdict.record).toMatchObject({ commit: '5c0e7a3b9d21', previous: 'a81d7c0bbbbb', strategy: 'squash' })
-    expect(m.actions).toEqual({ primary: null, close: false, approve: false })
+    expect(m.actions).toEqual({ primary: null, close: false, approve: false, refresh: false })
     const c = changeView(closed, fixRequestedRuns, plumbix, undefined, NOW)
     expect(c.verdict.sentence).toBe('Closed without merging.')
-    expect(c.actions).toEqual({ primary: null, close: false, approve: false })
+    expect(c.actions).toEqual({ primary: null, close: false, approve: false, refresh: false })
   })
 })
 
@@ -200,5 +200,41 @@ describe('refusalNotice', () => {
     expect(refusalNotice('invalid_state', ctx)).toMatchObject({ title: 'Not merged: this change is no longer approved', action: 'iterations' })
     expect(refusalNotice('validating', ctx)).toMatchObject({ title: 'Validating again', action: null })
     expect(refusalNotice('something_else', ctx)).toMatchObject({ title: 'Not merged', action: null })
+  })
+})
+
+describe('changeView for a branch Plumbix created', () => {
+  it('offers Update from main only when the change is neither final nor running', () => {
+    const own = { ...needsHuman, plumbix_branch: true }
+    expect(changeView(own, needsHumanRuns, plumbix, undefined, NOW).actions.refresh).toBe(true)
+    expect(changeView(needsHuman, needsHumanRuns, plumbix, undefined, NOW).actions.refresh).toBe(false)
+    expect(changeView({ ...own, state: 'approved' }, needsHumanRuns, plumbix, undefined, NOW).actions.refresh).toBe(true)
+    expect(changeView({ ...own, state: 'running' }, runningRuns, plumbix, undefined, NOW).actions.refresh).toBe(false)
+    expect(changeView({ ...own, state: 'merged' }, needsHumanRuns, plumbix, undefined, NOW).actions.refresh).toBe(false)
+    expect(changeView({ ...own, state: 'closed' }, needsHumanRuns, plumbix, undefined, NOW).actions.refresh).toBe(false)
+  })
+})
+
+describe('refusalNotice for a branch Plumbix created', () => {
+  it('offers Update from main instead of a command when main moved', () => {
+    const tm = refusalNotice('target_moved', { src: 'pipeline/stage-checks', tgt: 'main', head: '322bdb0', base: '5f64ef8', plumbixBranch: true })
+    expect(tm).toMatchObject({ title: 'Not merged: main moved', cmd: '', action: 'refresh', actionLabel: 'Update from main' })
+    expect(tm.body).toContain('Plumbix can bring main into pipeline/stage-checks')
+  })
+})
+
+describe('refreshNotice', () => {
+  const ctx = { src: 'pipeline/stage-checks', tgt: 'main', head: '322bdb0', base: '5f64ef8', plumbixBranch: true }
+  it('explains what Update from main did or why it did nothing', () => {
+    expect(refreshNotice('refreshing', ctx)).toMatchObject({ title: 'Updating from main', action: null })
+    expect(refreshNotice('refreshing', ctx).body).toContain('merged main into pipeline/stage-checks')
+    expect(refreshNotice('already_current', ctx)).toMatchObject({ title: 'Already up to date with main', action: null })
+    const conflict = refreshNotice('merge_conflict', ctx, 'merge conflict: .plumbix/pipeline.yaml')
+    expect(conflict).toMatchObject({ title: 'Not updated: main conflicts with pipeline/stage-checks', action: null })
+    expect(conflict.body).toContain('.plumbix/pipeline.yaml')
+    expect(refreshNotice('not_plumbix_branch', ctx, 'x')).toMatchObject({ title: 'Not updated: this branch is not Plumbix’s', action: null })
+    expect(refreshNotice('push_denied', ctx)).toMatchObject({ title: 'Not updated: the host refused the push', action: 'settings' })
+    expect(refreshNotice('invalid_state', ctx)).toMatchObject({ title: 'Not updated: the change moved on', action: null })
+    expect(refreshNotice('something_else', ctx)).toMatchObject({ title: 'Not updated', action: null })
   })
 })

@@ -204,10 +204,10 @@ func (db *DB) CreateChange(ctx context.Context, c change.Change) error {
 	}
 	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO changes (id, repo_id, source_branch, target_branch, title, intent, acceptance_criteria, constraints, submitted_by, state, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO changes (id, repo_id, source_branch, target_branch, title, intent, acceptance_criteria, constraints, submitted_by, state, created_at, updated_at, plumbix_branch)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			c.ID, c.RepoID, c.SourceBranch, c.TargetBranch, c.Title, c.Intent, string(criteria), string(constraints),
-			c.SubmittedBy, string(c.State), formatTime(c.CreatedAt), formatTime(c.UpdatedAt)); err != nil {
+			c.SubmittedBy, string(c.State), formatTime(c.CreatedAt), formatTime(c.UpdatedAt), c.PlumbixBranch); err != nil {
 			return mapErr(err)
 		}
 		_, err := emit(events.Event{Type: events.ChangeSubmitted, Time: c.CreatedAt, RepoID: c.RepoID, ChangeID: c.ID,
@@ -217,7 +217,7 @@ func (db *DB) CreateChange(ctx context.Context, c change.Change) error {
 }
 
 const changeColumns = `c.id, c.repo_id, c.source_branch, c.target_branch, c.title, c.intent, c.acceptance_criteria, c.constraints, c.submitted_by, c.state, c.created_at, c.updated_at,
-	m.commit_sha, m.previous_sha, m.strategy, m.run_id, m.merged_at, COALESCE(b.head, ''), c.approved_reason, c.approved_head, c.approved_at`
+	m.commit_sha, m.previous_sha, m.strategy, m.run_id, m.merged_at, COALESCE(b.head, ''), c.approved_reason, c.approved_head, c.approved_at, c.plumbix_branch`
 
 // changeFrom joins each change with its merge, if any, and the last head
 // the poller saw on its source branch.
@@ -317,7 +317,7 @@ func scanChange(s scanner) (change.Change, error) {
 	var apReason, apHead, apAt string
 	if err := s.Scan(&c.ID, &c.RepoID, &c.SourceBranch, &c.TargetBranch, &c.Title, &c.Intent,
 		&criteria, &constraints, &c.SubmittedBy, &state, &created, &updated,
-		&mCommit, &mPrevious, &mStrategy, &mRun, &mAt, &c.SourceHead, &apReason, &apHead, &apAt); err != nil {
+		&mCommit, &mPrevious, &mStrategy, &mRun, &mAt, &c.SourceHead, &apReason, &apHead, &apAt, &c.PlumbixBranch); err != nil {
 		return change.Change{}, mapErr(err)
 	}
 	c.State = change.State(state)

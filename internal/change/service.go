@@ -87,7 +87,7 @@ func (s *Service) Submit(ctx context.Context, in ChangeInput) (Change, error) {
 	c := Change{
 		ID: NewID("c_"), RepoID: in.RepoID, SourceBranch: in.SourceBranch, TargetBranch: in.TargetBranch,
 		Title: in.Title, Intent: in.Intent, AcceptanceCriteria: in.AcceptanceCriteria,
-		Constraints: in.Constraints, SubmittedBy: in.SubmittedBy,
+		Constraints: in.Constraints, SubmittedBy: in.SubmittedBy, PlumbixBranch: in.PlumbixBranch,
 		State: Open, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.store.CreateChange(ctx, c); err != nil {

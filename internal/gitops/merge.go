@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -25,6 +26,9 @@ var (
 	// ErrBranchExists means a branch Plumbix wanted to create is already on
 	// the remote. Nothing was changed.
 	ErrBranchExists = errors.New("branch exists")
+	// ErrMergeConflict means two branches change the same lines, so no merge
+	// commit was made. The error names the paths.
+	ErrMergeConflict = errors.New("merge conflict")
 )
 
 // deniedMarkers are the phrases git prints when a remote refuses the
@@ -223,6 +227,58 @@ func (m *Mirror) CommitFile(ctx context.Context, parent, path string, content []
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// MergeBranches creates a merge commit of theirs into ours, with Plumbix as
+// author and committer, and returns it. Nothing moves: the caller decides
+// which branch points at the commit. ErrNotContained when theirs is already
+// contained in ours (a merge would add nothing); ErrMergeConflict, naming
+// the paths, when the trees do not merge cleanly.
+func (m *Mirror) MergeBranches(ctx context.Context, ours, theirs, message string) (string, error) {
+	if _, err := m.git(ctx, "merge-base", "--is-ancestor", theirs, ours); err == nil {
+		return "", fmt.Errorf("%w: %s already contains %s", ErrNotContained, short(ours), short(theirs))
+	}
+	// merge-tree writes the merged tree without a worktree. Exit 1 means
+	// conflicts; the output then lists the tree, then the conflicted paths.
+	cmd := m.command(ctx, "merge-tree", "--write-tree", "--name-only", "-z", ours, theirs)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+			return "", fmt.Errorf("git merge-tree: %w: %s", err, strings.TrimSpace(stderr.String()))
+		}
+		return "", fmt.Errorf("%w: %s", ErrMergeConflict, strings.Join(conflictedPaths(stdout.Bytes()), ", "))
+	}
+	out := stdout.Bytes()
+	tree := strings.TrimSpace(strings.SplitN(string(out), "\x00", 2)[0])
+	ident := []string{
+		"GIT_AUTHOR_NAME=" + CommitterName, "GIT_AUTHOR_EMAIL=" + CommitterEmail,
+		"GIT_COMMITTER_NAME=" + CommitterName, "GIT_COMMITTER_EMAIL=" + CommitterEmail,
+	}
+	sha, err := m.run(ctx, strings.NewReader(message), ident, "commit-tree", tree, "-p", ours, "-p", theirs, "-F", "-")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(sha)), nil
+}
+
+// conflictedPaths reads the paths from merge-tree's NUL-separated output:
+// the tree id, then one path per conflicted file, then informational
+// messages after an empty field.
+func conflictedPaths(out []byte) []string {
+	fields := strings.Split(string(out), "\x00")
+	var paths []string
+	for _, f := range fields[1:] {
+		if f == "" {
+			break
+		}
+		paths = append(paths, f)
+	}
+	if len(paths) == 0 {
+		return []string{"unknown paths"}
+	}
+	return paths
 }
 
 // PushBranch creates branch on the remote at sha. It never forces: a branch

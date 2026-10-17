@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/gitops"
 	"github.com/eduard-alloy/plumbix/internal/gitops/gittest"
 	"github.com/eduard-alloy/plumbix/internal/host"
@@ -143,11 +144,16 @@ func newHarnessWith(t *testing.T, cfg Config, strategy string) *harness {
 	return h
 }
 
-func (h *harness) submit(branch string) change.Change {
+func (h *harness) submit(branch string) change.Change { return h.submitAs(branch, false) }
+
+// submitAs submits a change on branch; own marks the branch as one Plumbix
+// created, as the pipeline editor's endpoint does.
+func (h *harness) submitAs(branch string, own bool) change.Change {
 	h.t.Helper()
 	c, err := h.svc.Submit(ctx, change.ChangeInput{
 		RepoID: h.repoID, SourceBranch: branch, TargetBranch: "main", Title: "t", Intent: "i",
 		AcceptanceCriteria: []change.Criterion{{Text: "tests pass", Check: &change.Check{Steps: []string{"test"}}}},
+		PlumbixBranch:      own,
 	})
 	if err != nil {
 		h.t.Fatal(err)
@@ -736,5 +742,124 @@ func TestApprovalRefusesRejectedAndUnfinishedRuns(t *testing.T) {
 	}
 	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "fine"); !errors.Is(err, change.ErrInvalidState) || !strings.Contains(err.Error(), "finished run") {
 		t.Errorf("approving after an errored run: %v", err)
+	}
+}
+
+func TestRefreshBringsTheTargetIntoAPlumbixBranchAndRevalidates(t *testing.T) {
+	h := newHarness(t, Config{})
+	content := []byte(pipelineYAML + "  - {name: lint, image: \"golang:1.27\", run: \"go vet ./...\"}\n")
+	if _, err := h.eng.ProposeFile(ctx, h.repoID, Proposal{TargetBranch: "main", Branch: "pipeline/add-lint", Path: PipelineFile, Content: content, Message: "Pipeline: add lint"}); err != nil {
+		t.Fatal(err)
+	}
+	c := h.submitAs("pipeline/add-lint", true)
+	r1 := h.validate(c.ID)
+	if r1.Outcome != change.NeedsHuman {
+		t.Fatalf("outcome = %s", r1.Outcome)
+	}
+	if _, err := h.eng.Refresh(ctx, c.ID); !errors.Is(err, ErrAlreadyCurrent) {
+		t.Errorf("refresh while current: %v, want ErrAlreadyCurrent", err)
+	}
+	// A person approves, then main moves: the merge would be refused with target_moved.
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "pipeline edit read by hand"); err != nil {
+		t.Fatal(err)
+	}
+	main2 := h.repo.Commit("main", map[string]string{"untouched.txt": "x\n"}, "main goes on")
+	if _, err := h.eng.Merge(ctx, c.ID); !errors.Is(err, ErrTargetMoved) {
+		t.Fatalf("merge after main moved: %v", err)
+	}
+	before, _ := h.db.EventsAfter(ctx, 0, events.Filter{ChangeID: c.ID}, 100)
+	got, err := h.eng.Refresh(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != change.Running || got.HumanApproval != nil {
+		t.Errorf("after refresh: state %s approval %+v; want running with the approval cleared", got.State, got.HumanApproval)
+	}
+	repo := change.Repo{ID: h.repoID, Host: "github", URL: h.repo.Remote}
+	heads, _ := h.eng.ListHeads(ctx, repo)
+	tip, err := h.eng.Commits(ctx, repo, "", heads["pipeline/add-lint"])
+	if err != nil || len(tip) != 1 {
+		t.Fatalf("tip = %+v %v", tip, err)
+	}
+	if len(tip[0].Parents) != 2 || tip[0].Parents[0] != r1.Head || tip[0].Parents[1] != main2 || tip[0].Author != gitops.CommitterName {
+		t.Errorf("branch tip = %+v; want a Plumbix merge of %s and %s", tip[0], short(r1.Head), short(main2))
+	}
+	after, _ := h.db.EventsAfter(ctx, 0, events.Filter{ChangeID: c.ID}, 100)
+	var refreshed *events.Event
+	for i := len(before); i < len(after); i++ {
+		if after[i].Type == events.ChangeRefreshed {
+			refreshed = &after[i]
+		}
+	}
+	if refreshed == nil {
+		t.Fatalf("no change.refreshed event among %+v", after[len(before):])
+	}
+	raw, _ := json.Marshal(refreshed.Payload)
+	var p events.ChangeRefreshedPayload
+	if json.Unmarshal(raw, &p) != nil || p.FromHead != r1.Head || p.Head != tip[0].SHA || p.TargetHead != main2 {
+		t.Errorf("payload = %s", raw)
+	}
+	runs, _ := h.db.ListRuns(ctx, c.ID)
+	r2 := h.wait(runs[len(runs)-1].ID)
+	if r2.Iteration != 2 || r2.Base != main2 || r2.Head != tip[0].SHA || r2.Outcome != change.NeedsHuman {
+		t.Errorf("new run = iteration %d base %s head %s outcome %s", r2.Iteration, short(r2.Base), short(r2.Head), r2.Outcome)
+	}
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "still fine after the refresh"); err != nil {
+		t.Fatal(err)
+	}
+	merged, err := h.eng.Merge(ctx, c.ID)
+	if err != nil || merged.State != change.Merged {
+		t.Errorf("merge after refresh: %v %s", err, merged.State)
+	}
+}
+
+func TestRefreshRefusesBranchesThatAreNotPlumbixsAndConflicts(t *testing.T) {
+	h := newHarness(t, Config{})
+	if _, err := h.eng.Refresh(ctx, "c_nope"); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("unknown change: %v", err)
+	}
+	// An agent's branch: the flag is off, whatever the commits say.
+	h.repo.Commit("feat", map[string]string{"app.go": "x\n"}, "feature")
+	theirs := h.submit("feat")
+	h.validate(theirs.ID)
+	h.repo.Commit("main", map[string]string{"other.txt": "x\n"}, "main moves")
+	if _, err := h.eng.Refresh(ctx, theirs.ID); !errors.Is(err, ErrNotPlumbixBranch) {
+		t.Errorf("agent branch: %v, want ErrNotPlumbixBranch", err)
+	}
+	// Plumbix created the branch, but someone pushed a commit of their own onto it.
+	content := []byte(pipelineYAML + "  - {name: lint, image: x, run: x}\n")
+	if _, err := h.eng.ProposeFile(ctx, h.repoID, Proposal{TargetBranch: "main", Branch: "pipeline/touched", Path: PipelineFile, Content: content, Message: "m"}); err != nil {
+		t.Fatal(err)
+	}
+	h.repo.Commit("pipeline/touched", map[string]string{"hand.txt": "edited by hand\n"}, "by hand")
+	touched := h.submitAs("pipeline/touched", true)
+	h.validate(touched.ID)
+	h.repo.Commit("main", map[string]string{"other.txt": "y\n"}, "main moves again")
+	if _, err := h.eng.Refresh(ctx, touched.ID); !errors.Is(err, ErrNotPlumbixBranch) {
+		t.Errorf("touched branch: %v, want ErrNotPlumbixBranch", err)
+	}
+	// Both sides edit the pipeline file: no merge, nothing pushed, nothing started.
+	if _, err := h.eng.ProposeFile(ctx, h.repoID, Proposal{TargetBranch: "main", Branch: "pipeline/clash", Path: PipelineFile, Content: content, Message: "m"}); err != nil {
+		t.Fatal(err)
+	}
+	clash := h.submitAs("pipeline/clash", true)
+	r := h.validate(clash.ID)
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": pipelineYAML + "  - {name: web, image: x, run: x}\n"}, "main edits the pipeline too")
+	if _, err := h.eng.Refresh(ctx, clash.ID); !errors.Is(err, gitops.ErrMergeConflict) || !strings.Contains(err.Error(), PipelineFile) {
+		t.Errorf("conflict: %v, want ErrMergeConflict naming the file", err)
+	}
+	heads, _ := h.eng.ListHeads(ctx, change.Repo{ID: h.repoID, Host: "github", URL: h.repo.Remote})
+	if heads["pipeline/clash"] != r.Head {
+		t.Errorf("branch moved to %s after a refused refresh", short(heads["pipeline/clash"]))
+	}
+	if got, _ := h.db.GetChange(ctx, clash.ID); got.State != change.NeedsHuman {
+		t.Errorf("state after a refused refresh = %s", got.State)
+	}
+	// Final changes are left alone.
+	if err := h.db.SetChangeState(ctx, clash.ID, change.NeedsHuman, change.Closed, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.eng.Refresh(ctx, clash.ID); !errors.Is(err, change.ErrInvalidState) {
+		t.Errorf("closed change: %v, want ErrInvalidState", err)
 	}
 }

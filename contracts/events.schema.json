@@ -183,9 +183,50 @@
         "repo_id",
         "change_id"
       ]
+    },
+    {
+      "description": "Plumbix merged the target branch into a branch it created (a pipeline editor change) and pushed the result; the run.started event of the new iteration follows.",
+      "properties": {
+        "type": {
+          "const": "change.refreshed"
+        },
+        "payload": {
+          "$ref": "#/$defs/changeRefreshed"
+        }
+      },
+      "required": [
+        "repo_id",
+        "change_id"
+      ]
     }
   ],
   "$defs": {
+    "changeRefreshed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from_head",
+        "head",
+        "target_head"
+      ],
+      "properties": {
+        "from_head": {
+          "description": "The branch's head before the refresh.",
+          "type": "string",
+          "minLength": 1
+        },
+        "head": {
+          "description": "The merge commit the branch now points at.",
+          "type": "string",
+          "minLength": 1
+        },
+        "target_head": {
+          "description": "The target branch's head that the merge brought in.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "changeState": {
       "type": "string",
       "enum": [

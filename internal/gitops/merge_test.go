@@ -279,3 +279,47 @@ func TestPushBranchRefusesABranchThatAppearedAfterTheFetch(t *testing.T) {
 		t.Error("the mirror learned a branch the push did not create")
 	}
 }
+
+func TestMergeBranchesMergesAndReportsConflicts(t *testing.T) {
+	r := gittest.New(t)
+	base := r.Commit("main", map[string]string{"a.txt": "a\n", "shared.txt": "one\n"}, "base")
+	m := mirrorOf(t, r.Remote)
+	ours, err := m.CommitFile(ctx, base, "f.txt", []byte("f\n"), "ours")
+	if err != nil {
+		t.Fatal(err)
+	}
+	theirs := r.Commit("main", map[string]string{"b.txt": "b\n"}, "main goes on")
+	if err := m.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	sha, err := m.MergeBranches(ctx, ours, theirs, "Merge main into pipeline/x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := m.Commit(ctx, sha)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Parents) != 2 || c.Parents[0] != ours || c.Parents[1] != theirs || c.Author != CommitterName || c.Email != CommitterEmail || c.Subject != "Merge main into pipeline/x" {
+		t.Errorf("merge commit = %+v", c)
+	}
+	for _, f := range []string{"a.txt", "b.txt", "f.txt", "shared.txt"} {
+		if _, ok, err := m.Show(ctx, sha, f); err != nil || !ok {
+			t.Errorf("%s missing from the merged tree (%v)", f, err)
+		}
+	}
+	// Both sides edit the same line: no merge, and the path is named.
+	mine, _ := m.CommitFile(ctx, base, "shared.txt", []byte("mine\n"), "mine")
+	other := r.Commit("main", map[string]string{"shared.txt": "other\n"}, "other")
+	if err := m.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, err = m.MergeBranches(ctx, mine, other, "m")
+	if !errors.Is(err, ErrMergeConflict) || !strings.Contains(err.Error(), "shared.txt") {
+		t.Errorf("conflict: err = %v, want ErrMergeConflict naming shared.txt", err)
+	}
+	// Already contained: a merge of an ancestor is refused rather than an empty merge commit.
+	if _, err := m.MergeBranches(ctx, ours, base, "m"); !errors.Is(err, ErrNotContained) {
+		t.Errorf("merging an ancestor: err = %v, want ErrNotContained", err)
+	}
+}

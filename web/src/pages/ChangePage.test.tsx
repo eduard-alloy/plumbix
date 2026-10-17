@@ -204,6 +204,46 @@ describe('Newer commits', () => {
     fireEvent.click(within(note).getByRole('button', { name: 'Validate again' }))
     await waitFor(() => expect(verdict.textContent).toContain('Validating iteration'))
   })
+
+  it('lets a person update a Plumbix branch from main and goes live', async () => {
+    const c = db.changes.find((x) => x.id === needsHuman.id)!
+    c.plumbix_branch = true
+    const verdict = await open(needsHuman.id)
+    fireEvent.click(screen.getByRole('button', { name: 'Update from main' }))
+    const notice = await screen.findByRole('status')
+    expect(notice.textContent).toContain('Updating from main')
+    await waitFor(() => expect(verdict.textContent).toContain('Validating iteration'))
+    expect(screen.queryByRole('button', { name: 'Update from main' })).toBeNull()
+  })
+
+  it('offers Update from main when a merge is refused because main moved on a Plumbix branch', async () => {
+    const c = db.changes.find((x) => x.id === approved.id)!
+    c.plumbix_branch = true
+    db.mergeResult = 'target_moved'
+    await open(approved.id)
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    const notice = await screen.findByRole('status')
+    expect(notice.textContent).toContain('Not merged: main moved')
+    expect(notice.textContent).not.toContain('git fetch')
+    fireEvent.click(within(notice).getByRole('button', { name: 'Update from main' }))
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Updating from main'))
+  })
+
+  it('says when there is nothing to update or the merge conflicts', async () => {
+    const c = db.changes.find((x) => x.id === needsHuman.id)!
+    c.plumbix_branch = true
+    db.refreshResult = 'already_current'
+    await open(needsHuman.id)
+    fireEvent.click(screen.getByRole('button', { name: 'Update from main' }))
+    expect((await screen.findByRole('status')).textContent).toContain('Already up to date with main')
+    fireEvent.click(within(screen.getByRole('status')).getByRole('button', { name: 'Dismiss' }))
+    db.refreshResult = 'merge_conflict'
+    fireEvent.click(screen.getByRole('button', { name: 'Update from main' }))
+    const conflict = await screen.findByRole('status')
+    expect(conflict.textContent).toContain('main conflicts with chore/go-1.27')
+    expect(conflict.textContent).toContain('.plumbix/pipeline.yaml')
+    expect(screen.getByRole('button', { name: 'Update from main' })).toBeTruthy()
+  })
 })
 
 describe('Validator outcomes', () => {

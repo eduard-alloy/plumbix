@@ -108,7 +108,7 @@ export interface ChangeView {
   risks: RiskVM[]
   iterations: IterationVM[]
   evidence: { label: string; runId: string; error: string; steps: StepVM[] }
-  actions: { primary: 'merge' | 'validate' | null; close: boolean; approve: boolean }
+  actions: { primary: 'merge' | 'validate' | null; close: boolean; approve: boolean; refresh: boolean }
   /** A person's standing approval, for the verdict panel. */
   humanApproval: { reason: string; ago: string } | null
   diffRange: string
@@ -291,6 +291,7 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       primary: c.state === 'approved' ? 'merge' : c.state === 'needs_human' || c.state === 'escalated' ? 'validate' : null,
       close: !['merged', 'closed'].includes(c.state),
       approve: c.state === 'needs_human' || c.state === 'escalated',
+      refresh: !!c.plumbix_branch && !['merged', 'closed', 'running'].includes(c.state),
     },
     humanApproval: c.human_approval ? { reason: c.human_approval.reason, ago: ago(minutesBetween(c.human_approval.at, now)) } : null,
     diffRange: withHead ? `${shortSha(withHead.base)}..${shortSha(withHead.head)}` : '',
@@ -303,17 +304,36 @@ export interface NoticeVM {
   title: string
   body: string
   cmd: string
-  action: 'validate' | 'copy' | 'merge' | 'iterations' | 'settings' | null
+  action: 'validate' | 'copy' | 'merge' | 'iterations' | 'settings' | 'refresh' | null
   actionLabel: string
+}
+
+/** NoticeCtx names the branches and commits a notice talks about; plumbixBranch
+ * says Plumbix created the source branch and can update it itself. */
+export interface NoticeCtx {
+  src: string
+  tgt: string
+  head: string
+  base: string
+  plumbixBranch?: boolean
 }
 
 /** refusalNotice turns a merge refusal code (or 'validating') into the
  * design's next-step notice. */
-export function refusalNotice(code: string, ctx: { src: string; tgt: string; head: string; base: string }): NoticeVM {
+export function refusalNotice(code: string, ctx: NoticeCtx): NoticeVM {
   switch (code) {
     case 'source_moved':
       return { title: `Not merged: new commits on ${ctx.src}`, body: `The verdict is for ${ctx.head}. The branch has moved since. Validate again; merge becomes available if the new head is approved.`, cmd: '', action: 'validate', actionLabel: 'Validate again' }
     case 'target_moved':
+      if (ctx.plumbixBranch) {
+        return {
+          title: `Not merged: ${ctx.tgt} moved`,
+          body: `${ctx.tgt} moved since the verdict, which was for base ${ctx.base}. Plumbix can bring ${ctx.tgt} into ${ctx.src} and validate the result; a standing approval is given again afterwards.`,
+          cmd: '',
+          action: 'refresh',
+          actionLabel: `Update from ${ctx.tgt}`,
+        }
+      }
       return {
         title: `Not merged: ${ctx.tgt} moved`,
         body: `${ctx.tgt} moved since the verdict, which was for base ${ctx.base}. Bring ${ctx.tgt} into the branch and push. Plumbix validates the new head.`,
@@ -337,5 +357,30 @@ export function refusalNotice(code: string, ctx: { src: string; tgt: string; hea
       return { title: 'Validating again', body: `Plumbix is validating ${ctx.src} again. This page updates as steps finish.`, cmd: '', action: null, actionLabel: '' }
     default:
       return { title: 'Not merged', body: 'The server refused the merge. Reload the change and try again.', cmd: '', action: null, actionLabel: '' }
+  }
+}
+
+/** refreshNotice turns the outcome of Update from main ('refreshing' for
+ * success, or the server's refusal code) into a notice. message is the
+ * server's text, used where it names paths or commits. */
+export function refreshNotice(code: string, ctx: NoticeCtx, message = ''): NoticeVM {
+  const none = { cmd: '', action: null, actionLabel: '' } as const
+  switch (code) {
+    case 'refreshing':
+      return { title: `Updating from ${ctx.tgt}`, body: `Plumbix merged ${ctx.tgt} into ${ctx.src} and is validating the result. This page updates as steps finish.`, ...none }
+    case 'already_current':
+      return { title: `Already up to date with ${ctx.tgt}`, body: `${ctx.src} contains everything on ${ctx.tgt}. Nothing was pushed.`, ...none }
+    case 'merge_conflict':
+      return { title: `Not updated: ${ctx.tgt} conflicts with ${ctx.src}`, body: `Both changed the same lines. Nothing was pushed. ${message}`, ...none }
+    case 'not_plumbix_branch':
+      return { title: 'Not updated: this branch is not Plumbix’s', body: `Plumbix only updates branches it created and nobody else has pushed to. ${message}`, ...none }
+    case 'push_denied':
+      return { title: 'Not updated: the host refused the push', body: `The host did not accept Plumbix's token for a push to ${ctx.src}, or there is none for this repository. Set a token with push rights for the repository in Settings, then try again. Nothing was pushed.`, cmd: '', action: 'settings', actionLabel: 'Open repository settings' }
+    case 'push_rejected':
+      return { title: `Not updated: ${ctx.src} moved during the update`, body: 'Nothing was pushed. Reload the change and try again.', ...none }
+    case 'invalid_state':
+      return { title: 'Not updated: the change moved on', body: 'The change is running, merged or closed. Reload the page to see where it stands.', ...none }
+    default:
+      return { title: 'Not updated', body: message || 'The server refused the update. Reload the change and try again.', ...none }
   }
 }

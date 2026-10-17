@@ -186,7 +186,7 @@ func runSubmit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return c.call(http.MethodPost, "/api/v1/changes", body)
 }
 
-// runChange handles "plumbix change list|show|close".
+// runChange handles "plumbix change list|show|close|validate|refresh|merge|runs|approve".
 func runChange(args []string, stdout, stderr io.Writer) int {
 	c := newClientCmd("change", stdout, stderr)
 	repo := c.fs.String("repo", "", "filter by repo id (change list)")
@@ -222,12 +222,14 @@ func runChange(args []string, stdout, stderr io.Writer) int {
 		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/approve", body)
 	case len(pos) == 2 && pos[0] == "validate":
 		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/validate", nil)
+	case len(pos) == 2 && pos[0] == "refresh":
+		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/refresh", nil)
 	case len(pos) == 2 && pos[0] == "merge":
 		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/merge", nil)
 	case len(pos) == 2 && pos[0] == "runs":
 		return c.call(http.MethodGet, "/api/v1/changes/"+url.PathEscape(pos[1])+"/runs", nil)
 	}
-	return usageError(stderr, "usage: plumbix change list [--repo <id>] [--state <s>] | change show|close|validate|merge|runs <id> | change approve <id> --reason <why>")
+	return usageError(stderr, "usage: plumbix change list [--repo <id>] [--state <s>] | change show|close|validate|refresh|merge|runs <id> | change approve <id> --reason <why>")
 }
 
 // runAlert handles "plumbix alert list|resolve".

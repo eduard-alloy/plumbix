@@ -80,6 +80,7 @@ export const api = {
   merge: (id: string) => request<Change>('POST', `/api/v1/changes/${encodeURIComponent(id)}/merge`),
   close: (id: string) => request<Change>('POST', `/api/v1/changes/${encodeURIComponent(id)}/close`),
   approve: (id: string, reason: string) => request<Change>('POST', `/api/v1/changes/${encodeURIComponent(id)}/approve`, { reason }),
+  refresh: (id: string) => request<Change>('POST', `/api/v1/changes/${encodeURIComponent(id)}/refresh`),
   validate: (id: string) => request<Run>('POST', `/api/v1/changes/${encodeURIComponent(id)}/validate`),
   alerts: (all = false) => request<{ alerts: Alert[] }>('GET', `/api/v1/alerts${all ? '?include_resolved=true' : ''}`).then((r) => r.alerts),
   resolveAlert: (id: string) => request<Alert>('POST', `/api/v1/alerts/${encodeURIComponent(id)}/resolve`),
