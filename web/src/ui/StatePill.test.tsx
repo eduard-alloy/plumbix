@@ -27,6 +27,14 @@ describe('StatePill', () => {
     }
   })
 
+  it('carries the colours sampled from the reference renders, light then dark', () => {
+    expect(tokens).toContain('--status-open-bg: light-dark(#EBF3FE, #13233E);')
+    expect(tokens).toContain('--status-open-fg: light-dark(#224B8F, #72A5F9);')
+    expect(tokens).toContain('--status-open-border: light-dark(#6CA1F8, #3B82F6);')
+    expect(tokens).toContain('--status-merged-bg: light-dark(#DAF0B9, #3E6019);')
+    expect(tokens).not.toMatch(/--status-[a-z-]+: [^;]*color-mix/)
+  })
+
   it('gives open, merged and closed a colour of their own', () => {
     expect(ENCODING.open.palette).toBe('open')
     expect(ENCODING.merged.palette).toBe('merged')

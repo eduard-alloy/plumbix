@@ -66,7 +66,7 @@ Modes:
 | alert open / resolved | Open / Resolved | needs-human / closed | ! / check |
 | info (notices) | Next step | minor | i |
 
-Palette → `color: var(--status-<key>-fg)`, `background: var(--status-<key>-bg)`, `border: 1.5px solid var(--status-<key>-border)`. The keys, base colours and derivation rules are `status-palette.css` and `status-palette.md` in this folder (handoff of 2026-10-17); `src/tokens.css` carries them as `light-dark()` tokens so the pill follows the system theme. The pill keeps its 20px shape and inline SVG icons; the palette's 38px badge with icon fonts and dark glow was not adopted. Colour never stands alone: there is always an icon and a label (visible or screen-reader only).
+Palette → `color: var(--status-<key>-fg)`, `background: var(--status-<key>-bg)`, `border: 1.5px solid var(--status-<key>-border)`. The keys and base colours are `status-palette.css` and `status-palette.md` in this folder (handoff of 2026-10-17); the fg, bg and border values in `src/tokens.css` are sampled from the reference renders `status-palette-light.png` and `status-palette-dark.png`, since the export's derivation formulas gave much fainter fills than the renders, which include the badge's glow. They are `light-dark()` pairs so the pill follows the system theme. The pill keeps its 20px shape and inline SVG icons; the palette's 38px badge with icon fonts and dark glow was not adopted. Colour never stands alone: there is always an icon and a label (visible or screen-reader only).
 
 ---
 
