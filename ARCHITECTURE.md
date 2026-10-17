@@ -190,7 +190,7 @@ stages:
 | `steps[].timeout` | no | Duration such as `10m`. Default comes from config. |
 | `steps[].validator` | no | Marks the step as a validator. It gets validator inputs and must write a verdict. |
 | `steps[].retries` | no | 0 to 5. A failed or timed-out step runs again up to this many more times; only the last attempt counts. The log gets a separator per attempt and the step record says how many attempts there were. |
-| `steps[].allow_failure` | no | A failed or timed-out step does not fail the run and does not skip the steps that need it. Its status stays `failed`, marked as allowed. A criterion that names the step is still unmet. Not on validators. |
+| `steps[].allow_failure` | no | A failed or timed-out step does not fail the run and does not skip the steps that need it. Its status stays `failed` or `timed_out`, marked as allowed. A criterion that names the step is still unmet. Not on validators. |
 | `steps[].when.paths` | no | Globs (`*`, `?`, `**`). For a change's run the step runs only if a changed file matches; otherwise it is `skipped` with reason `paths`, counts as satisfied for its dependents and as met for a criterion that names it. A plain branch run always runs it. Not on validators. |
 | `stages` | no | Mapping of stage name to step names: a display grouping for the editor and run evidence. A step is in at most one stage; validators are never in one. |
 
