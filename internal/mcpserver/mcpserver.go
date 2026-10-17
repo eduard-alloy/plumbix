@@ -153,7 +153,7 @@ type (
 	}
 	waitIn struct {
 		ChangeID       string `json:"change_id"`
-		TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema:"how long to wait; default 900, at most 3300"`
+		TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema:"how long to wait; default 240, at most 3300; call again after a timeout"`
 	}
 	approveIn struct {
 		ChangeID string `json:"change_id"`
