@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<title>Plumbix · pipeline</title>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:light dark;
+--bg:light-dark(oklch(0.992 0.002 265),oklch(0.165 0.006 265));
+--surface:light-dark(oklch(0.974 0.003 265),oklch(0.198 0.007 265));
+--surface-2:light-dark(oklch(0.948 0.004 265),oklch(0.238 0.008 265));
+--hover:light-dark(oklch(0.962 0.004 265),oklch(0.215 0.008 265));
+--border:light-dark(oklch(0.91 0.005 265),oklch(0.275 0.008 265));
+--border-strong:light-dark(oklch(0.83 0.007 265),oklch(0.36 0.01 265));
+--text:light-dark(oklch(0.21 0.012 265),oklch(0.94 0.004 265));
+--text-2:light-dark(oklch(0.41 0.012 265),oklch(0.77 0.008 265));
+--text-3:light-dark(oklch(0.52 0.012 265),oklch(0.65 0.008 265));
+--accent:light-dark(oklch(0.5 0.18 275),oklch(0.75 0.13 275));
+--accent-bg:light-dark(oklch(0.95 0.03 275),oklch(0.28 0.06 275));
+--s-neutral:light-dark(oklch(0.46 0.012 265),oklch(0.74 0.008 265));--s-neutral-bg:light-dark(oklch(0.945 0.004 265),oklch(0.245 0.008 265));
+--s-blue:light-dark(oklch(0.49 0.12 230),oklch(0.78 0.11 230));--s-blue-bg:light-dark(oklch(0.95 0.03 230),oklch(0.27 0.045 230));
+--s-green:light-dark(oklch(0.48 0.12 152),oklch(0.79 0.13 152));--s-green-bg:light-dark(oklch(0.95 0.035 152),oklch(0.265 0.045 152));
+--s-amber:light-dark(oklch(0.5 0.11 70),oklch(0.81 0.12 75));--s-amber-bg:light-dark(oklch(0.955 0.04 80),oklch(0.27 0.045 70));
+--s-red:light-dark(oklch(0.5 0.17 25),oklch(0.75 0.14 25));--s-red-bg:light-dark(oklch(0.95 0.025 25),oklch(0.27 0.05 25));
+--s-violet:light-dark(oklch(0.5 0.17 320),oklch(0.77 0.13 320));--s-violet-bg:light-dark(oklch(0.95 0.03 320),oklch(0.27 0.05 320));
+--diff-add:light-dark(oklch(0.96 0.03 152),oklch(0.235 0.035 152));--diff-del:light-dark(oklch(0.96 0.025 25),oklch(0.235 0.035 25));
+--ui:'IBM Plex Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace}
+[data-theme=light]{color-scheme:light}[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:oklch(0.9 0.004 265);font-family:var(--ui);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+input::placeholder,textarea::placeholder{color:var(--text-3)}
+</style>
+</helmet>
+<section data-screen-label="Pipeline options" style="display:flex;flex-direction:column;gap:20px;padding:48px">
+  <div style="display:flex;flex-direction:column;gap:4px;max-width:900px">
+    <h1 style="margin:0;font-size:20px;font-weight:600;color:oklch(0.21 0.012 265)">Pipeline page</h1>
+    <p style="margin:0;font-size:13px;color:oklch(0.41 0.012 265);text-wrap:pretty">Same pipeline, inspector, YAML toggle and save flow in all three. Only the drawing differs. The frames share one state, so an edit in one shows up in all three. Try: click a step, shift-click a second one, then merge or group them. Add a step after test. Change a step's needs. Then save as a change.</p>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:48px;align-items:flex-start">
+  <sc-for list="{{ frames }}" as="fr" hint-placeholder-count="3">
+  <sc-if value="{{ fr.hdr }}"><div style="flex-basis:100%;display:flex;align-items:baseline;gap:10px;margin-top:{{ fr.hdrMt }};padding-bottom:8px;border-bottom:1px solid oklch(0.8 0.006 265);font-family:'IBM Plex Sans',sans-serif;color:oklch(0.21 0.012 265)"><span style="font-size:16px;font-weight:600">{{ fr.hdrTitle }}</span><span style="font-size:13px;color:oklch(0.41 0.012 265)">{{ fr.hdrNote }}</span></div></sc-if>
+  <div id="{{ fr.id }}" style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:baseline;gap:10px;font-family:'IBM Plex Sans',sans-serif;color:oklch(0.21 0.012 265)"><span style="padding:2px 7px;border-radius:4px;background:oklch(0.21 0.012 265);color:#fff;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600">{{ fr.id }}</span><span style="font-size:15px;font-weight:600">{{ fr.name }}</span><span style="font-size:13px;color:oklch(0.41 0.012 265)">{{ fr.note }}</span></div>
+    <div data-theme="{{ theme }}" style="width:1440px;height:880px;display:grid;grid-template-columns:208px minmax(0,1fr);overflow:hidden;border:1px solid oklch(0.8 0.006 265);border-radius:8px;background:var(--bg);color:var(--text);font-family:var(--ui);font-size:13px;line-height:1.45">
+      <nav style="display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--surface)">
+        <div style="height:44px;display:flex;align-items:center;gap:8px;padding:0 16px"><span style="width:10px;height:10px;border-radius:2px;background:var(--text)"></span><span style="font-family:var(--mono);font-size:13px;font-weight:600">plumbix</span></div>
+        <div style="display:flex;flex-direction:column;gap:1px;padding:4px 8px">
+          <a href="Plumbix.dc.html" style="display:flex;align-items:center;height:28px;padding:0 8px;border-radius:5px;color:var(--text-2);font-weight:500;text-decoration:none"><span style="flex:1">Changes</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">4</span></a>
+          <a href="Plumbix.dc.html" style="display:flex;align-items:center;height:28px;padding:0 8px;border-radius:5px;color:var(--text-2);font-weight:500;text-decoration:none"><span style="flex:1">Alerts</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">2</span></a>
+          <a href="Plumbix.dc.html" style="display:flex;align-items:center;height:28px;padding:0 8px;border-radius:5px;color:var(--text-2);font-weight:500;text-decoration:none"><span style="flex:1">Repositories</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">3</span></a>
+          <span aria-current="page" style="display:flex;align-items:center;height:28px;padding:0 8px;border-radius:5px;background:var(--surface-2);font-weight:500"><span style="flex:1">Pipelines</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">3</span></span>
+        </div>
+        <div style="flex:1"></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:12px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--text-2)"><span style="width:6px;height:6px;border-radius:50%;background:var(--s-blue)"></span>Live<span style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text-3)">127.0.0.1:6400</span></div>
+      </nav>
+
+      <main style="display:grid;grid-template-rows:44px 44px minmax(0,1fr) auto;min-width:0;min-height:0">
+        <div style="display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:1px solid var(--border)">
+          <h1 style="margin:0;font-size:14px;font-weight:600">Pipeline</h1>
+          <div role="group" aria-label="Repository" style="display:flex;gap:2px;padding:2px;border:1px solid var(--border);border-radius:6px">
+            <sc-for list="{{ repoOpts }}" as="o" hint-placeholder-count="3"><button onClick="{{ o.pick }}" aria-pressed="{{ o.on }}" style="height:22px;padding:0 8px;border:0;border-radius:4px;background:{{ o.bg }};color:{{ o.fg }};font-family:var(--mono);font-size:12px;font-weight:500;cursor:pointer" style-hover="color:var(--text)">{{ o.label }}{{ o.dot }}</button></sc-for>
+          </div>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--text-2)">{{ file }} <span style="color:var(--text-3)">at</span> {{ ref }}</span>
+          <span style="flex:1"></span>
+          <div role="group" aria-label="View" style="display:flex;gap:2px;padding:2px;border:1px solid var(--border);border-radius:6px">
+            <button onClick="{{ toVisual }}" aria-pressed="{{ isVisual }}" style="height:22px;padding:0 10px;border:0;border-radius:4px;background:{{ visBg }};font-size:12px;font-weight:500;cursor:pointer">Visual</button>
+            <button onClick="{{ toYaml }}" aria-pressed="{{ isYaml }}" style="height:22px;padding:0 10px;border:0;border-radius:4px;background:{{ yamlBg }};font-size:12px;font-weight:500;cursor:pointer">YAML</button>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:6px;padding:0 20px;border-bottom:1px solid var(--border)">
+          <button onClick="{{ tb.add }}" style="height:28px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px;font-weight:500;cursor:pointer" style-hover="background:var(--hover)">+ Step</button>
+          <button onClick="{{ tb.after }}" disabled="{{ tb.noOne }}" style="height:28px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px;cursor:pointer;opacity:{{ tb.oneOp }}" style-hover="background:var(--hover)">Add after</button>
+          <button onClick="{{ tb.parallel }}" disabled="{{ tb.noOne }}" style="height:28px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px;cursor:pointer;opacity:{{ tb.oneOp }}" style-hover="background:var(--hover)">Add in parallel</button>
+          <span style="width:1px;height:18px;margin:0 6px;background:var(--border)"></span>
+          <button onClick="{{ tb.merge }}" disabled="{{ tb.noMulti }}" style="height:28px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px;cursor:pointer;opacity:{{ tb.multiOp }}" style-hover="background:var(--hover)">Merge into one step</button>
+          <button onClick="{{ tb.group }}" disabled="{{ tb.noMulti }}" style="height:28px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px;cursor:pointer;opacity:{{ tb.multiOp }}" style-hover="background:var(--hover)">Group as stage</button>
+          <span style="width:1px;height:18px;margin:0 6px;background:var(--border)"></span>
+          <button onClick="{{ tb.remove }}" disabled="{{ tb.noSel }}" style="height:28px;padding:0 10px;border:0;border-radius:5px;background:transparent;color:var(--text-2);font-size:12px;cursor:pointer;opacity:{{ tb.selOp }}" style-hover="background:var(--hover);color:var(--s-red)">Remove</button>
+          <span style="flex:1"></span>
+          <span style="font-size:12px;color:var(--text-3)">{{ tb.hint }}</span>
+        </div>
+
+        <div style="position:relative;display:grid;grid-template-columns:{{ fr.cols }};min-height:0">
+          <div style="min-width:0;min-height:0;overflow:auto;background:var(--surface)">
+            <sc-if value="{{ isYaml }}">
+              <div style="padding:10px 0;font-family:var(--mono);font-size:12px;line-height:20px;background:var(--bg);min-height:100%">
+                <sc-for list="{{ yaml }}" as="y" hint-placeholder-count="30"><div style="display:grid;grid-template-columns:52px 16px max-content;padding-right:20px;background:{{ y.bg }}"><span style="padding-right:10px;text-align:right;color:var(--text-3);user-select:none">{{ y.n }}</span><span style="color:var(--s-green);user-select:none">{{ y.mark }}</span><span style="white-space:pre">{{ y.t }}</span></div></sc-for>
+                <div style="margin:14px 0 0 68px;font-family:var(--ui);font-size:12px;color:var(--text-3)">Read-only here. Edit visually, or change the file in the repo and submit it as a change.</div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ fr.isGraph }}">
+              <sc-if value="{{ isVisual }}">
+                <div onClick="{{ clearSel }}" style="position:relative;width:{{ g.w }};height:{{ g.h }};min-width:100%;min-height:100%">
+                  <svg width="{{ g.w }}" height="{{ g.h }}" style="position:absolute;left:0;top:0;overflow:visible" aria-hidden="true">
+                    <sc-for list="{{ g.edges }}" as="e" hint-placeholder-count="6"><path d="{{ e.d }}" fill="none" stroke="{{ e.c }}" stroke-width="{{ e.w }}"></path></sc-for>
+                    <line x1="{{ g.barX }}" y1="{{ g.barTop }}" x2="{{ g.barX }}" y2="{{ g.barBot }}" stroke="var(--border-strong)" stroke-width="2"></line>
+                  </svg>
+                  <sc-for list="{{ g.groups }}" as="gr" hint-placeholder-count="1">
+                    <div style="position:absolute;left:{{ gr.x }};top:{{ gr.y }};width:{{ gr.w }};height:{{ gr.h }};border:1px dashed var(--border-strong);border-radius:8px;pointer-events:none"><span style="position:absolute;left:8px;top:-9px;padding:0 4px;background:var(--surface);font-family:var(--mono);font-size:11px;line-height:16px;color:var(--text-3)">stage {{ gr.name }}</span></div>
+                  </sc-for>
+                  <div style="position:absolute;left:{{ g.vLabelX }};top:10px;font-size:11px;font-weight:600;color:var(--text-3)">Validators · always last</div>
+                  <div style="position:absolute;left:20px;top:10px;font-size:11px;font-weight:600;color:var(--text-3)">Steps</div>
+                  <sc-for list="{{ g.nodes }}" as="nd" hint-placeholder-count="6">
+                    <button onClick="{{ nd.pick }}" aria-pressed="{{ nd.sel }}" style="position:absolute;left:{{ nd.x }};top:{{ nd.y }};width:180px;height:56px;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:0 10px;border:1px solid {{ nd.bc }};border-radius:6px;background:var(--bg);box-shadow:{{ nd.ring }};text-align:left;cursor:pointer" style-hover="border-color:var(--text-3)">
+                      <span style="width:100%;font-family:var(--mono);font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ nd.id }}</span>
+                      <span style="display:flex;align-items:baseline;gap:8px;width:100%"><span style="flex:1;min-width:0;font-family:var(--mono);font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ nd.sub }}</span><span style="font-family:var(--mono);font-size:11px;color:var(--text-2);white-space:nowrap">{{ nd.last }}</span></span>
+                    </button>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </sc-if>
+
+            <sc-if value="{{ fr.isStages }}">
+              <sc-if value="{{ isVisual }}">
+                <div onClick="{{ clearSel }}" style="display:flex;gap:10px;align-items:flex-start;padding:16px 16px;min-height:100%;width:max-content;min-width:100%">
+                  <sc-for list="{{ stg }}" as="col" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:flex-start;gap:10px">
+                      <sc-if value="{{ col.isV }}"><span style="align-self:stretch;width:2px;min-height:300px;background:var(--border-strong);border-radius:1px"></span></sc-if>
+                      <div style="width:188px;display:flex;flex-direction:column;gap:6px">
+                        <div style="display:flex;align-items:baseline;gap:6px;padding:0 2px 4px;border-bottom:1px solid var(--border)"><span style="font-size:12px;font-weight:600">{{ col.title }}</span><span style="font-size:11px;color:var(--text-3)">{{ col.sub }}</span></div>
+                        <sc-for list="{{ col.items }}" as="it" hint-placeholder-count="2">
+                          <sc-if value="{{ it.hdr }}"><div style="margin-top:4px;font-family:var(--mono);font-size:11px;color:var(--text-3)">stage {{ it.name }}</div></sc-if>
+                          <sc-if value="{{ it.card }}">
+                            <button onClick="{{ it.pick }}" aria-pressed="{{ it.sel }}" style="display:flex;flex-direction:column;gap:4px;width:100%;padding:8px 10px;margin-left:{{ it.ml }};width:{{ it.w }};border:1px solid {{ it.bc }};border-left:{{ it.bl }};border-radius:6px;background:var(--bg);box-shadow:{{ it.ring }};text-align:left;cursor:pointer" style-hover="border-color:var(--text-3)">
+                              <span style="display:flex;align-items:baseline;gap:6px;width:100%"><span style="font-family:var(--mono);font-size:13px;font-weight:500">{{ it.id }}</span><span style="flex:1"></span><span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">{{ it.last }}</span></span>
+                              <span style="font-family:var(--mono);font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%">{{ it.image }}</span>
+                              <span style="display:flex;flex-wrap:wrap;gap:4px">
+                                <sc-for list="{{ it.needs }}" as="nn" hint-placeholder-count="0"><span style="padding:0 5px;border:1px solid var(--border);border-radius:3px;font-family:var(--mono);font-size:11px;color:var(--text-2)">after {{ nn }}</span></sc-for>
+                                <sc-for list="{{ it.flags }}" as="fl" hint-placeholder-count="0"><span style="padding:0 5px;border-radius:3px;background:var(--surface-2);font-size:11px;color:var(--text-2)">{{ fl }}</span></sc-for>
+                              </span>
+                            </button>
+                          </sc-if>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </sc-if>
+
+            <sc-if value="{{ fr.isBands }}">
+              <sc-if value="{{ isVisual }}">
+                <div onClick="{{ clearSel }}" style="display:flex;flex-direction:column;padding:16px;min-height:100%;width:max-content;min-width:100%">
+                  <sc-for list="{{ bands }}" as="b" hint-placeholder-count="4">
+                    <sc-if value="{{ b.hasLink }}"><div aria-hidden="true" style="height:18px;padding-left:22px"><span style="display:block;width:2px;height:100%;background:var(--border-strong)"></span></div></sc-if>
+                    <div style="display:flex;flex-direction:column;gap:10px;padding:10px 12px 12px;border:1px solid var(--border);border-radius:8px;background:{{ b.bg }}">
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <span style="min-width:22px;height:22px;padding:0 5px;display:grid;place-items:center;border-radius:5px;background:{{ b.chip }};color:{{ b.fg }};font-family:var(--mono);font-size:12px;font-weight:600">{{ b.n }}</span>
+                        <span style="font-family:var(--mono);font-size:13px;font-weight:600">{{ b.name }}</span>
+                        <span style="font-size:12px;color:var(--text-2)">{{ b.sub }}</span>
+                        <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">{{ b.est }}</span>
+                      </div>
+                      <div style="position:relative;width:{{ b.w }};height:{{ b.h }};margin-right:{{ fr.gutter }}">
+                        <svg width="{{ b.w }}" height="{{ b.h }}" style="position:absolute;left:0;top:0;overflow:visible" aria-hidden="true">
+                          <sc-for list="{{ b.edges }}" as="e" hint-placeholder-count="1"><path d="{{ e.d }}" fill="none" stroke="{{ e.c }}" stroke-width="{{ e.w }}"></path><circle cx="{{ e.ex }}" cy="{{ e.ey }}" r="3" fill="{{ e.c }}"></circle></sc-for>
+                        </svg>
+                        <sc-for list="{{ b.cards }}" as="c" hint-placeholder-count="2">
+                          <button onClick="{{ c.pick }}" aria-pressed="{{ c.sel }}" style="position:absolute;left:{{ c.x }};top:{{ c.y }};width:360px;height:60px;display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 10px;border:1px solid {{ c.bc }};border-radius:6px;background:var(--bg);box-shadow:{{ c.ring }};text-align:left;cursor:pointer;overflow:hidden" style-hover="border-color:var(--text-3)">
+                            <span style="display:flex;align-items:baseline;gap:8px;width:100%">
+                              <span style="flex:none;max-width:150px;font-family:var(--mono);font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.id }}</span>
+                              <span style="flex:1;min-width:0;font-family:var(--mono);font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.image }}</span>
+                              <span style="flex:none;display:flex;align-items:center;gap:5px;align-self:center"><sc-if value="{{ c.hasLast }}"><dc-import name="StatePill" status="succeeded" mode="icon" hint-size="14px,14px"></dc-import></sc-if><span style="font-family:var(--mono);font-size:11px;color:var(--text-2);white-space:nowrap">{{ c.last }}</span></span>
+                            </span>
+                            <span style="display:flex;align-items:center;gap:4px;width:100%;overflow:hidden">
+                              <span style="flex:1;min-width:0;margin-right:4px;font-family:var(--mono);font-size:11px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:var(--text-3)">$ </span>{{ c.cmd }}</span>
+                              <sc-for list="{{ c.chips }}" as="ch" hint-placeholder-count="2"><span title="{{ ch.title }}" style="flex:none;padding:0 5px;border:1px solid {{ ch.bc }};border-radius:3px;background:{{ ch.bg }};font-family:var(--mono);font-size:11px;line-height:16px;color:{{ ch.fg }};white-space:nowrap">{{ ch.t }}</span></sc-for>
+                            </span>
+                          </button>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </sc-if>
+
+            <sc-if value="{{ fr.isList }}">
+              <sc-if value="{{ isVisual }}">
+                <div style="background:var(--bg);min-height:100%">
+                  <div aria-hidden="true" style="display:grid;grid-template-columns:minmax(240px,1.5fr) minmax(0,0.9fr) minmax(0,1fr) 56px 50px minmax(0,1fr) 60px;gap:12px;align-items:center;height:28px;padding:0 20px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-3)"><span>Step</span><span>Needs</span><span>Image</span><span>Timeout</span><span>Retries</span><span>Conditions</span><span style="text-align:right">Last</span></div>
+                  <sc-for list="{{ lst }}" as="r" hint-placeholder-count="8">
+                    <sc-if value="{{ r.hdr }}"><div style="display:flex;align-items:baseline;gap:8px;padding:{{ r.pad }};border-bottom:1px solid var(--border);background:var(--surface)"><span style="font-size:12px;font-weight:600">{{ r.title }}</span><span style="font-size:11px;color:var(--text-3)">{{ r.sub }}</span></div></sc-if>
+                    <sc-if value="{{ r.row }}">
+                      <button onClick="{{ r.pick }}" aria-pressed="{{ r.sel }}" style="display:grid;grid-template-columns:minmax(240px,1.5fr) minmax(0,0.9fr) minmax(0,1fr) 56px 50px minmax(0,1fr) 60px;gap:12px;align-items:center;width:100%;height:36px;padding:0 20px;border:0;border-bottom:1px solid var(--border);background:{{ r.bg }};box-shadow:{{ r.ring }};text-align:left;cursor:pointer" style-hover="background:var(--hover)">
+                        <span style="display:flex;align-items:center;gap:6px;padding-left:{{ r.indent }};min-width:0"><span style="font-family:var(--mono);font-size:12px;color:var(--text-3)">{{ r.branch }}</span><span style="font-family:var(--mono);font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.id }}</span><sc-if value="{{ r.hasGroup }}"><span title="Stage" style="padding:0 5px;border-radius:3px;background:var(--surface-2);font-family:var(--mono);font-size:11px;color:var(--text-2);white-space:nowrap">stage {{ r.group }}</span></sc-if></span>
+                        <span style="display:flex;gap:4px;overflow:hidden"><sc-for list="{{ r.needs }}" as="nn" hint-placeholder-count="0"><span style="padding:0 5px;border:1px solid var(--border);border-radius:3px;font-family:var(--mono);font-size:11px;color:var(--text-2);white-space:nowrap">{{ nn }}</span></sc-for><span style="font-size:12px;color:var(--text-3)">{{ r.noNeeds }}</span></span>
+                        <span style="font-family:var(--mono);font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.image }}</span>
+                        <span style="font-family:var(--mono);font-size:12px;color:var(--text-2)">{{ r.timeout }}</span>
+                        <span style="font-family:var(--mono);font-size:12px;color:var(--text-2)">{{ r.retries }}</span>
+                        <span style="font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.cond }}</span>
+                        <span style="font-family:var(--mono);font-size:12px;color:var(--text-3);text-align:right;white-space:nowrap">{{ r.last }}</span>
+                      </button>
+                    </sc-if>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </sc-if>
+          </div>
+
+          <sc-if value="{{ fr.showAside }}">
+            <aside aria-label="Step" style="position:{{ fr.aPos }};top:{{ fr.aInset }};right:{{ fr.aInset }};bottom:{{ fr.aInset }};width:{{ fr.aW }};z-index:2;min-height:0;overflow:auto;border:{{ fr.aBorder }};border-left:{{ fr.aBorderL }};border-radius:{{ fr.aRadius }};background:{{ fr.aBg }};backdrop-filter:{{ fr.aBlur }};-webkit-backdrop-filter:{{ fr.aBlur }};box-shadow:{{ fr.aShadow }}">
+              <sc-if value="{{ fr.isBands }}"><button onClick="{{ clearSel }}" aria-label="Close panel" title="Close (Esc)" style="position:absolute;top:8px;right:8px;z-index:1;width:26px;height:26px;border:0;border-radius:5px;background:transparent;color:var(--text-2);font-size:16px;cursor:pointer" style-hover="background:color-mix(in oklch, var(--text) 8%, transparent);color:var(--text)">×</button></sc-if>
+              <sc-if value="{{ ip.none }}">
+                <div style="display:flex;flex-direction:column;gap:10px;padding:16px">
+                  <span style="font-size:12px;font-weight:600;color:var(--text-3)">Pipeline</span>
+                  <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px;font-size:12px"><span style="color:var(--text-3)">steps</span><span style="font-family:var(--mono)">{{ ip.stats.steps }}</span><span style="color:var(--text-3)">validators</span><span style="font-family:var(--mono)">{{ ip.stats.vals }}</span><span style="color:var(--text-3)">named stages</span><span style="font-family:var(--mono)">{{ ip.stats.groups }}</span><span style="color:var(--text-3)">longest path</span><span style="font-family:var(--mono)">{{ ip.stats.path }}</span><span style="color:var(--text-3)">last run on main</span><span style="font-family:var(--mono)">{{ ip.stats.last }}</span></div>
+                  <p style="margin:6px 0 0;font-size:12px;color:var(--text-2);text-wrap:pretty">Select a step to edit it. Shift-click to select several, then merge them into one step or group them as a stage. Steps with no needs start in parallel.</p>
+                </div>
+              </sc-if>
+              <sc-if value="{{ ip.multi }}">
+                <div style="display:flex;flex-direction:column;gap:10px;padding:16px">
+                  <span style="font-size:12px;font-weight:600;color:var(--text-3)">{{ ip.multiLabel }}</span>
+                  <div style="display:flex;flex-wrap:wrap;gap:4px"><sc-for list="{{ ip.selIds }}" as="sid" hint-placeholder-count="2"><span style="padding:1px 6px;border:1px solid var(--border-strong);border-radius:4px;font-family:var(--mono);font-size:12px">{{ sid }}</span></sc-for></div>
+                  <div style="display:flex;flex-direction:column;gap:4px;padding-top:8px;border-top:1px solid var(--border)">
+                    <span style="font-weight:600">Merge into one step</span>
+                    <span style="font-size:12px;color:var(--text-2);text-wrap:pretty">One container runs their commands in order, with one log. Needs, env and evidence are combined.</span>
+                    <sc-if value="{{ ip.imgWarn }}"><span style="font-size:12px;color:var(--s-amber)">Images differ. The merged step uses {{ ip.firstImage }}.</span></sc-if>
+                    <button onClick="{{ tb.merge }}" style="align-self:flex-start;margin-top:4px;height:28px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px;font-weight:500;cursor:pointer" style-hover="background:var(--hover)">Merge {{ ip.n }} steps</button>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:4px;padding-top:8px;border-top:1px solid var(--border)">
+                    <span style="font-weight:600">Group as stage</span>
+                    <span style="font-size:12px;color:var(--text-2);text-wrap:pretty">They stay separate steps with their own logs, and show as one row in run evidence.</span>
+                    <div style="display:flex;gap:6px;margin-top:4px"><input value="{{ ip.groupName }}" onChange="{{ ip.onGroupName }}" aria-label="Stage name" style="flex:1;min-width:0;height:28px;padding:0 8px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-family:var(--mono);font-size:12px"><button onClick="{{ tb.group }}" style="height:28px;padding:0 10px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:12px;font-weight:500;cursor:pointer" style-hover="background:var(--hover)">Group</button></div>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ ip.one }}">
+                <div style="display:flex;flex-direction:column">
+                  <div style="display:flex;align-items:center;gap:8px;padding:12px {{ fr.hdrPr }} 12px 16px;border-bottom:1px solid var(--border)"><span style="font-size:12px;font-weight:600;color:var(--text-3)">{{ ip.kindLabel }}</span><span style="flex:1"></span><span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">{{ ip.lastLabel }}</span></div>
+                  <div style="display:flex;flex-direction:column;gap:12px;padding:12px 16px 20px">
+                    <label style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--text-2)">Name</span><input value="{{ ip.s.id }}" onChange="{{ ip.on.id }}" style="height:28px;padding:0 8px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-family:var(--mono);font-size:13px"></label>
+                    <label style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--text-2)">Image</span><input value="{{ ip.s.image }}" onChange="{{ ip.on.image }}" style="height:28px;padding:0 8px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-family:var(--mono);font-size:12px"></label>
+                    <label style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--text-2)">Commands <span style="color:var(--text-3)">· one per line, run in order</span></span><textarea value="{{ ip.runText }}" onChange="{{ ip.on.run }}" rows="{{ ip.runRows }}" style="padding:6px 8px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-family:var(--mono);font-size:12px;line-height:18px;resize:vertical"></textarea></label>
+                    <sc-if value="{{ ip.isStep }}">
+                      <div style="display:flex;flex-direction:column;gap:4px">
+                        <span style="font-size:12px;color:var(--text-2)">Needs <span style="color:var(--text-3)">· starts after these finish</span></span>
+                        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">
+                          <sc-for list="{{ ip.needs }}" as="nn" hint-placeholder-count="1"><span style="display:inline-flex;align-items:center;gap:2px;height:22px;padding:0 2px 0 6px;border:1px solid var(--border-strong);border-radius:4px;font-family:var(--mono);font-size:12px">{{ nn.id }}<button onClick="{{ nn.remove }}" aria-label="Remove dependency" style="width:18px;height:18px;border:0;border-radius:3px;background:transparent;color:var(--text-3);cursor:pointer" style-hover="background:var(--hover);color:var(--text)">×</button></span></sc-for>
+                          <sc-if value="{{ ip.noNeeds }}"><span style="font-size:12px;color:var(--text-3)">none · starts right away</span></sc-if>
+                          <sc-if value="{{ ip.canAddNeed }}"><select value="" onChange="{{ ip.onAddNeed }}" aria-label="Add dependency" style="height:22px;padding:0 4px;border:1px dashed var(--border-strong);border-radius:4px;background:var(--bg);font-size:12px;color:var(--text-2)"><option value="">+ add</option><sc-for list="{{ ip.needOpts }}" as="no" hint-placeholder-count="0"><option value="{{ no }}">{{ no }}</option></sc-for></select></sc-if>
+                        </div>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:4px">
+                        <span style="font-size:12px;color:var(--text-2)">Run only if these paths changed</span>
+                        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">
+                          <sc-for list="{{ ip.paths }}" as="pp" hint-placeholder-count="0"><span style="display:inline-flex;align-items:center;gap:2px;height:22px;padding:0 2px 0 6px;border:1px solid var(--border-strong);border-radius:4px;font-family:var(--mono);font-size:12px">{{ pp.v }}<button onClick="{{ pp.remove }}" aria-label="Remove path" style="width:18px;height:18px;border:0;border-radius:3px;background:transparent;color:var(--text-3);cursor:pointer" style-hover="background:var(--hover);color:var(--text)">×</button></span></sc-for>
+                          <input value="{{ ip.pathDraft }}" onChange="{{ ip.onPathDraft }}" onKeyDown="{{ ip.onPathKey }}" placeholder="{{ ip.pathPh }}" aria-label="Add path" style="width:130px;height:22px;padding:0 6px;border:1px dashed var(--border-strong);border-radius:4px;background:var(--bg);font-family:var(--mono);font-size:12px">
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ ip.isVal }}"><div style="font-size:12px;color:var(--text-2);text-wrap:pretty">Validators run after every step has finished and read what the steps left in <span style="font-family:var(--mono)">evidence/</span>. Their place in the pipeline is fixed.</div></sc-if>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                      <label style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--text-2)">Timeout</span><input value="{{ ip.s.timeout }}" onChange="{{ ip.on.timeout }}" style="height:28px;padding:0 8px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-family:var(--mono);font-size:12px"></label>
+                      <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--text-2)">Retries</span><div style="display:flex;align-items:center;height:28px;border:1px solid var(--border-strong);border-radius:5px"><button onClick="{{ ip.retDown }}" aria-label="Fewer retries" style="width:28px;height:26px;border:0;background:transparent;cursor:pointer">−</button><span style="flex:1;text-align:center;font-family:var(--mono);font-size:12px">{{ ip.s.retries }}</span><button onClick="{{ ip.retUp }}" aria-label="More retries" style="width:28px;height:26px;border:0;background:transparent;cursor:pointer">+</button></div></div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <sc-for list="{{ ip.switches }}" as="sw" hint-placeholder-count="2">
+                        <button role="switch" aria-checked="{{ sw.on }}" onClick="{{ sw.toggle }}" style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;align-items:start;padding:0;border:0;background:transparent;text-align:left;cursor:pointer">
+                          <span style="position:relative;width:28px;height:16px;margin-top:1px;border-radius:8px;background:{{ sw.track }}"><span style="position:absolute;top:2px;left:{{ sw.knob }};width:12px;height:12px;border-radius:50%;background:var(--bg)"></span></span>
+                          <span style="display:flex;flex-direction:column"><span style="font-size:13px">{{ sw.label }}</span><span style="font-size:12px;color:var(--text-3);text-wrap:pretty">{{ sw.sub }}</span></span>
+                        </button>
+                      </sc-for>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <span style="font-size:12px;color:var(--text-2)">Environment and secrets</span>
+                      <sc-for list="{{ ip.env }}" as="en" hint-placeholder-count="1">
+                        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto auto;gap:4px;align-items:center">
+                          <input value="{{ en.k }}" onChange="{{ en.onK }}" aria-label="Variable name" style="min-width:0;height:26px;padding:0 6px;border:1px solid var(--border-strong);border-radius:4px;background:var(--bg);font-family:var(--mono);font-size:12px">
+                          <input value="{{ en.v }}" onChange="{{ en.onV }}" aria-label="{{ en.vLabel }}" placeholder="{{ en.ph }}" style="min-width:0;height:26px;padding:0 6px;border:1px solid var(--border-strong);border-radius:4px;background:{{ en.vbg }};font-family:var(--mono);font-size:12px">
+                          <button onClick="{{ en.toggleSecret }}" aria-pressed="{{ en.secret }}" title="Value is the name of a secret stored by Plumbix" style="height:26px;padding:0 6px;border:1px solid var(--border-strong);border-radius:4px;background:{{ en.sbg }};font-size:11px;cursor:pointer">secret</button>
+                          <button onClick="{{ en.remove }}" aria-label="Remove variable" style="width:22px;height:26px;border:0;background:transparent;color:var(--text-3);cursor:pointer" style-hover="color:var(--text)">×</button>
+                        </div>
+                      </sc-for>
+                      <button onClick="{{ ip.addEnv }}" style="align-self:flex-start;height:24px;padding:0 6px;border:0;border-radius:4px;background:transparent;color:var(--text-2);font-size:12px;cursor:pointer" style-hover="background:var(--hover)">+ variable</button>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <span style="font-size:12px;color:var(--text-2)">Evidence outputs <span style="color:var(--text-3)">· kept for validators</span></span>
+                      <sc-for list="{{ ip.evidence }}" as="ev" hint-placeholder-count="1">
+                        <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px"><input value="{{ ev.v }}" onChange="{{ ev.on }}" aria-label="Evidence path" style="min-width:0;height:26px;padding:0 6px;border:1px solid var(--border-strong);border-radius:4px;background:var(--bg);font-family:var(--mono);font-size:12px"><button onClick="{{ ev.remove }}" aria-label="Remove path" style="width:22px;height:26px;border:0;background:transparent;color:var(--text-3);cursor:pointer" style-hover="color:var(--text)">×</button></div>
+                      </sc-for>
+                      <button onClick="{{ ip.addEvidence }}" style="align-self:flex-start;height:24px;padding:0 6px;border:0;border-radius:4px;background:transparent;color:var(--text-2);font-size:12px;cursor:pointer" style-hover="background:var(--hover)">+ path</button>
+                    </div>
+                    <sc-if value="{{ ip.hasGroup }}"><div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2)">In stage <span style="font-family:var(--mono);color:var(--text)">{{ ip.s.group }}</span><button onClick="{{ ip.ungroup }}" style="height:22px;padding:0 6px;border:0;border-radius:4px;background:transparent;color:var(--text-2);font-size:12px;cursor:pointer" style-hover="background:var(--hover)">Remove from stage</button></div></sc-if>
+                    <div style="padding-top:10px;border-top:1px solid var(--border)"><button onClick="{{ tb.remove }}" style="height:26px;padding:0 8px;margin-left:-8px;border:0;border-radius:4px;background:transparent;color:var(--text-2);font-size:12px;cursor:pointer" style-hover="background:var(--hover);color:var(--s-red)">Remove step</button><span style="font-size:12px;color:var(--text-3)">{{ ip.removeNote }}</span></div>
+                  </div>
+                </div>
+              </sc-if>
+            </aside>
+          </sc-if>
+        </div>
+
+        <sc-if value="{{ bar.show }}">
+          <div style="display:flex;flex-direction:column;border-top:1px solid var(--border-strong);background:var(--bg)">
+            <sc-if value="{{ bar.saved }}">
+              <div role="status" style="display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 20px">
+                <span style="display:flex"><dc-import name="StatePill" status="running" mode="icon" hint-size="14px,14px"></dc-import></span>
+                <span><span style="font-weight:600">Change opened.</span> <span style="font-family:var(--mono)">{{ bar.savedId }}</span> on <span style="font-family:var(--mono)">{{ bar.savedBranch }}</span> is validating with the pipeline on main. The new pipeline applies when it merges.</span>
+                <span style="display:flex;gap:6px"><a href="Plumbix.dc.html" style="height:26px;padding:0 10px;display:inline-flex;align-items:center;border:1px solid var(--border-strong);border-radius:5px;color:var(--text);font-size:12px;font-weight:500;text-decoration:none">Open change</a><button onClick="{{ bar.dismiss }}" aria-label="Dismiss" style="width:26px;height:26px;border:0;border-radius:5px;background:transparent;color:var(--text-3);cursor:pointer">×</button></span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ bar.dirty }}">
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 20px">
+                <span style="font-weight:600;white-space:nowrap">{{ bar.count }}</span>
+                <span style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-family:var(--mono);font-size:12px;color:var(--text-2)">{{ bar.summary }}</span>
+                <sc-if value="{{ bar.hasErr }}"><span style="font-size:12px;color:var(--s-red)">{{ bar.err }}</span></sc-if>
+                <button onClick="{{ bar.discard }}" style="height:30px;padding:0 12px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:13px;font-weight:500;cursor:pointer" style-hover="background:var(--hover)">Discard</button>
+                <button onClick="{{ bar.openSave }}" aria-expanded="{{ bar.saveOpen }}" style="height:30px;padding:0 14px;border:1px solid var(--text);border-radius:5px;background:var(--text);color:var(--bg);font-size:13px;font-weight:500;cursor:pointer" style-hover="opacity:0.86">Save as change</button>
+              </div>
+              <sc-if value="{{ bar.saveOpen }}">
+                <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) minmax(0,1fr);gap:16px;padding:4px 20px 14px">
+                  <div style="display:flex;flex-direction:column;gap:8px">
+                    <label style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--text-2)">Branch</span><input value="{{ bar.branch }}" onChange="{{ bar.onBranch }}" style="height:28px;padding:0 8px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-family:var(--mono);font-size:12px"></label>
+                    <label style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--text-2)">Title</span><input value="{{ bar.title }}" onChange="{{ bar.onTitle }}" style="height:28px;padding:0 8px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:13px"></label>
+                  </div>
+                  <label style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--text-2)">Intent</span><textarea value="{{ bar.intent }}" onChange="{{ bar.onIntent }}" rows="4" style="padding:6px 8px;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg);font-size:13px;line-height:1.45;resize:vertical"></textarea></label>
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <span style="font-size:12px;color:var(--text-2)">Acceptance criteria <span style="color:var(--text-3)">· added for you</span></span>
+                    <div style="display:flex;flex-direction:column;gap:3px;font-size:12px"><span><span style="font-family:var(--mono);color:var(--text-2)">AC-1</span> The pipeline file parses and has no cycles <span style="font-family:var(--mono);color:var(--text-3)">plumbix pipeline check</span></span><span><span style="font-family:var(--mono);color:var(--text-2)">AC-2</span> Every step image can be pulled <span style="font-family:var(--mono);color:var(--text-3)">plumbix pipeline check --pull</span></span></div>
+                    <span style="font-size:12px;color:var(--text-3);text-wrap:pretty">This change is validated with the pipeline currently on main, so it cannot weaken its own checks.</span>
+                    <button onClick="{{ bar.push }}" disabled="{{ bar.pushing }}" style="align-self:flex-start;height:30px;padding:0 14px;border:1px solid var(--text);border-radius:5px;background:var(--text);color:var(--bg);font-size:13px;font-weight:500;cursor:pointer" style-hover="opacity:0.86">{{ bar.pushLabel }}</button>
+                  </div>
+                </div>
+              </sc-if>
+            </sc-if>
+          </div>
+        </sc-if>
+      </main>
+    </div>
+  </div>
+  </sc-for>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;,&quot;system&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const V = (id, image, run, timeout, last, extra) => ({ id, image, run, needs: [], timeout, retries: 0, allowFail: false, env: [], evidence: [], paths: [], group: null, last, ...extra });
+const VALS = () => [
+  V('validate', 'plumbix/validate:1', ['plumbix-validate --criteria .plumbix/change.json'], '2m', 4, { evidence: ['evidence/validate/result.json'] }),
+  V('ai-review', 'plumbix/ai-review:1', ['plumbix-ai-review --diff $PLUMBIX_BASE..$PLUMBIX_HEAD'], '5m', 38, { env: [{ k: 'ANTHROPIC_API_KEY', v: 'ai-review', secret: true }], evidence: ['evidence/ai-review/review.json'] })
+];
+const PIPES = {
+  'ledger-api': { file: '.plumbix/pipeline.yaml', ref: 'main · 4f81c2a', steps: [
+    V('build', 'golang:1.26', ['go build ./...'], '10m', 44, { evidence: ['evidence/build/'] }),
+    V('lint', 'golangci/golangci-lint:v1.61', ['golangci-lint run ./...'], '5m', 12, { evidence: ['evidence/lint/report.json'] }),
+    V('test', 'golang:1.26', ['go test ./... -count=1 -race'], '15m', 96, { needs: ['build'], retries: 1, env: [{ k: 'LEDGER_TEST_TZ', v: 'UTC', secret: false }], evidence: ['evidence/test/log.txt', 'evidence/test/junit.xml'] }),
+    V('migrate', 'golang:1.26', ['go run ./cmd/migrate --check'], '5m', 18, { needs: ['build'], group: 'db', env: [{ k: 'DATABASE_URL', v: 'ledger-ci-db', secret: true }], evidence: ['evidence/migrate/plan.sql'] }),
+    V('integration', 'golang:1.26', ['go test ./integration/... -tags=integration'], '20m', 141, { needs: ['migrate'], group: 'db', retries: 2, env: [{ k: 'DATABASE_URL', v: 'ledger-ci-db', secret: true }], evidence: ['evidence/integration/log.txt'] }),
+    V('contract', 'golang:1.26', ['go run ./cmd/openapi-diff --base $PLUMBIX_BASE --head $PLUMBIX_HEAD'], '5m', 9, { needs: ['build'], allowFail: true, paths: ['api/**', 'internal/http/**'], evidence: ['evidence/contract/diff.txt'] })
+  ], validators: VALS() },
+  plumbix: { file: '.plumbix/pipeline.yaml', ref: 'main · a81d7c0', steps: [
+    V('build', 'golang:1.26', ['go build ./...'], '10m', 42, { evidence: ['evidence/build/'] }),
+    V('test', 'golang:1.26', ['go test ./... -count=1'], '15m', 118, { needs: ['build'], evidence: ['evidence/test/log.txt'] }),
+    V('lint', 'golangci/golangci-lint:v1.61', ['golangci-lint run ./...'], '5m', 11, { evidence: ['evidence/lint/report.json'] })
+  ], validators: VALS() },
+  'infra-scripts': { file: '.plumbix/pipeline.yaml', ref: 'main · 0d3e9b8', steps: [
+    V('shellcheck', 'koalaman/shellcheck:stable', ['shellcheck scripts/*.sh'], '2m', 5, { evidence: ['evidence/shellcheck/report.txt'] }),
+    V('bats', 'bats/bats:1.11', ['bats test/'], '5m', 26, { needs: ['shellcheck'], evidence: ['evidence/bats/tap.txt'] })
+  ], validators: [VALS()[0]] }
+};
+const clone = o => JSON.parse(JSON.stringify(o));
+const fmt = s => { s = Math.round(s); return s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's'; };
+const NW = 180, NH = 56, CG = 30, RG = 22;
+
+function levels(steps) {
+  const by = Object.fromEntries(steps.map(s => [s.id, s])), memo = {};
+  const lv = (id, seen) => { if (memo[id] != null) return memo[id]; const s = by[id]; if (!s || seen.has(id)) return 0; seen.add(id); const v = s.needs.length ? 1 + Math.max(...s.needs.map(n => lv(n, seen))) : 0; memo[id] = v; return v; };
+  steps.forEach(s => lv(s.id, new Set()));
+  return memo;
+}
+function ordered(steps, L, groupsFirst) {
+  const idx = Object.fromEntries(steps.map((s, i) => [s.id, i]));
+  const k = s => s.group || (groupsFirst ? '~' : '');
+  return steps.slice().sort((a, b) => (L[a.id] - L[b.id]) || (k(a) < k(b) ? -1 : k(a) > k(b) ? 1 : 0) || idx[a.id] - idx[b.id]);
+}
+function toYaml(p) {
+  const out = ['version: 1', '', 'steps:'];
+  const block = (s, ind, isVal) => {
+    out.push(ind + s.id + ':');
+    const i2 = ind + '  ';
+    if (!isVal && s.needs.length) out.push(i2 + 'needs: [' + s.needs.join(', ') + ']');
+    out.push(i2 + 'image: ' + s.image);
+    out.push(i2 + 'run:'); s.run.forEach(r => out.push(i2 + '  - ' + r));
+    out.push(i2 + 'timeout: ' + s.timeout);
+    if (s.retries) out.push(i2 + 'retries: ' + s.retries);
+    if (s.allowFail) out.push(i2 + 'allow_failure: true');
+    if (!isVal && s.paths.length) { out.push(i2 + 'when:'); out.push(i2 + '  paths: [' + s.paths.map(x => '"' + x + '"').join(', ') + ']'); }
+    if (s.env.length) { out.push(i2 + 'env:'); s.env.forEach(e => out.push(i2 + '  ' + e.k + ': ' + (e.secret ? '{ secret: ' + e.v + ' }' : e.v))); }
+    if (s.evidence.length) { out.push(i2 + 'evidence:'); s.evidence.forEach(e => out.push(i2 + '  - ' + e)); }
+  };
+  p.steps.forEach(s => block(s, '  ', false));
+  const groups = {}; p.steps.forEach(s => { if (s.group) (groups[s.group] = groups[s.group] || []).push(s.id); });
+  if (Object.keys(groups).length) { out.push('', 'stages:'); Object.entries(groups).forEach(([g, ids]) => out.push('  ' + g + ': [' + ids.join(', ') + ']')); }
+  out.push('', '# validators run after every step, in this order');
+  out.push('validators:');
+  p.validators.forEach(s => block(s, '  ', true));
+  return out;
+}
+function diffSummary(a, b) {
+  const out = [];
+  const all = x => x.steps.map(s => ['s', s]).concat(x.validators.map(s => ['v', s]));
+  const A = Object.fromEntries(all(a).map(([k, s]) => [s.id, [k, s]])), B = Object.fromEntries(all(b).map(([k, s]) => [s.id, [k, s]]));
+  Object.keys(B).forEach(id => { if (!A[id]) out.push('added ' + id + (B[id][1].needs.length ? ' after ' + B[id][1].needs.join(', ') : '')); });
+  Object.keys(A).forEach(id => { if (!B[id]) out.push('removed ' + id); });
+  Object.keys(B).forEach(id => {
+    if (!A[id]) return;
+    const [ka, sa] = A[id], [kb, sb] = B[id];
+    if (ka !== kb) { out.push(kb === 'v' ? id + ' is now a validator' : id + ' is no longer a validator'); return; }
+    const ch = [];
+    if (sa.needs.join() !== sb.needs.join()) ch.push(sb.needs.length ? 'needs ' + sb.needs.join(', ') : 'needs nothing');
+    ['image', 'timeout', 'retries'].forEach(f => { if (String(sa[f]) !== String(sb[f])) ch.push(f + ' ' + sb[f]); });
+    if (sa.run.join('\n') !== sb.run.join('\n')) ch.push('commands');
+    if (sa.allowFail !== sb.allowFail) ch.push(sb.allowFail ? 'allowed to fail' : 'must pass');
+    if (JSON.stringify(sa.env) !== JSON.stringify(sb.env)) ch.push('env');
+    if (sa.evidence.join() !== sb.evidence.join()) ch.push('evidence');
+    if (sa.paths.join() !== sb.paths.join()) ch.push(sb.paths.length ? 'only if ' + sb.paths.join(', ') : 'always runs');
+    if ((sa.group || '') !== (sb.group || '')) ch.push(sb.group ? 'in stage ' + sb.group : 'no stage');
+    if (ch.length) out.push(id + ': ' + ch.join(', '));
+  });
+  return out;
+}
+
+class Component extends DCLogic {
+  state = { repo: 'ledger-api', edits: {}, sel: [], view: 'visual', groupName: 'checks', pathDraft: '', saveOpen: false, pushing: false, saved: null, form: {}, err: '' };
+
+  componentDidMount() {
+    this.kd = e => { const t = (e.target.tagName || '').toLowerCase(); if (e.key === 'Escape' && !['input', 'textarea', 'select'].includes(t) && this.state.sel.length) this.setState({ sel: [] }); };
+    window.addEventListener('keydown', this.kd);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this.kd); }
+  cur() { return this.state.edits[this.state.repo] || PIPES[this.state.repo]; }
+  mutate(fn, extra) {
+    const p = clone(this.cur()); const r = fn(p);
+    this.setState(s => ({ edits: { ...s.edits, [s.repo]: p }, saved: null, err: '', ...(extra || {}), ...(r || {}) }));
+  }
+  find(p, id) { let s = p.steps.find(x => x.id === id); if (s) return [s, 'step']; s = p.validators.find(x => x.id === id); return s ? [s, 'val'] : [null, null]; }
+  dependents(p, id) { const out = new Set([id]); let grew = true; while (grew) { grew = false; p.steps.forEach(s => { if (!out.has(s.id) && s.needs.some(n => out.has(n))) { out.add(s.id); grew = true; } }); } return out; }
+  uniq(p, base) { let n = base, i = 2; while (this.find(p, n)[0]) n = base + '-' + i++; return n; }
+  detach(p, id) {
+    const [s] = this.find(p, id); const inherited = s && s.needs ? s.needs : [];
+    p.steps.forEach(x => { if (x.needs.includes(id)) x.needs = Array.from(new Set(x.needs.filter(n => n !== id).concat(inherited))); });
+  }
+  pick(id, e) {
+    if (e) e.stopPropagation();
+    const multi = e && (e.shiftKey || e.metaKey || e.ctrlKey);
+    this.setState(s => ({ sel: multi ? (s.sel.includes(id) ? s.sel.filter(x => x !== id) : s.sel.concat(id)) : (s.sel.length === 1 && s.sel[0] === id ? [] : [id]), pathDraft: '' }));
+  }
+  addStep(needs, group) { this.mutate(p => { const id = this.uniq(p, 'step'); p.steps.push(V(id, 'golang:1.26', ['echo "replace me"'], '5m', null, { needs, group: group || null })); return { sel: [id] }; }); }
+  remove() {
+    const ids = this.state.sel; if (!ids.length) return;
+    this.mutate(p => { ids.forEach(id => { this.detach(p, id); p.steps = p.steps.filter(x => x.id !== id); p.validators = p.validators.filter(x => x.id !== id); }); return { sel: [] }; });
+  }
+  merge() {
+    const p0 = this.cur(), L = levels(p0.steps);
+    const ids = ordered(p0.steps.filter(s => this.state.sel.includes(s.id)), L).map(s => s.id);
+    if (ids.length < 2) return;
+    this.mutate(p => {
+      const parts = ids.map(id => p.steps.find(s => s.id === id));
+      const id = this.uniq(p, ids.join('-').slice(0, 28));
+      const m = V(id, parts[0].image, [].concat(...parts.map(s => s.run)), parts.map(s => s.timeout).sort().pop(), parts.reduce((a, s) => a + (s.last || 0), 0) || null, {
+        needs: Array.from(new Set([].concat(...parts.map(s => s.needs)))).filter(n => !ids.includes(n)),
+        retries: Math.max(...parts.map(s => s.retries)), allowFail: parts.every(s => s.allowFail),
+        env: parts.reduce((a, s) => a.concat(s.env.filter(e => !a.some(x => x.k === e.k))), []),
+        evidence: Array.from(new Set([].concat(...parts.map(s => s.evidence)))),
+        paths: parts.every(s => s.paths.length) ? Array.from(new Set([].concat(...parts.map(s => s.paths)))) : [],
+        group: parts[0].group
+      });
+      const at = p.steps.findIndex(s => s.id === ids[0]);
+      p.steps = p.steps.filter(s => !ids.includes(s.id));
+      p.steps.splice(at, 0, m);
+      p.steps.forEach(s => { if (s.id !== id && s.needs.some(n => ids.includes(n))) s.needs = Array.from(new Set(s.needs.map(n => ids.includes(n) ? id : n))); });
+      return { sel: [id] };
+    });
+  }
+  group() {
+    const name = (this.state.groupName || 'stage').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-') || 'stage';
+    const ids = this.state.sel.filter(id => this.find(this.cur(), id)[1] === 'step');
+    if (ids.length < 2) return;
+    this.mutate(p => { p.steps.forEach(s => { if (ids.includes(s.id)) s.group = name; }); });
+  }
+  update(id, f, v) {
+    this.mutate(p => {
+      const [s, kind] = this.find(p, id); if (!s) return;
+      if (f === 'id') {
+        const nv = String(v).toLowerCase().replace(/[^a-z0-9-]/g, '');
+        if (!nv || (nv !== id && this.find(p, nv)[0])) return;
+        p.steps.forEach(x => { x.needs = x.needs.map(n => n === id ? nv : n); });
+        s.id = nv; return { sel: [nv] };
+      }
+      if (f === 'validator') {
+        if (kind === 'step') { this.detach(p, id); p.steps = p.steps.filter(x => x.id !== id); s.needs = []; s.paths = []; s.group = null; p.validators.push(s); }
+        else { p.validators = p.validators.filter(x => x.id !== id); p.steps.push(s); }
+        return;
+      }
+      s[f] = typeof v === 'function' ? v(s[f]) : v;
+    });
+  }
+
+  renderVals() {
+    const st = this.state, p = this.cur(), base = PIPES[st.repo];
+    const theme = this.props.theme || 'light';
+    const L = levels(p.steps), ord = ordered(p.steps, L);
+    const maxL = p.steps.length ? Math.max(...Object.values(L)) : -1;
+    const isSel = id => st.sel.includes(id);
+    const dependentsOf = id => p.steps.filter(s => s.needs.includes(id)).map(s => s.id);
+    const flagsOf = s => [s.allowFail ? 'allowed to fail' : null, s.paths.length ? 'if ' + s.paths.join(', ') : null, s.retries ? 'retries ' + s.retries : null].filter(Boolean);
+    const lastOf = s => s.last ? fmt(s.last) : 'new';
+    const pickFn = id => e => this.pick(id, e);
+
+    // graph
+    const rowIn = {}, pos = {};
+    const gOrd = ordered(p.steps, L, true);
+    gOrd.forEach(s => { const l = L[s.id]; rowIn[l] = (rowIn[l] || 0); pos[s.id] = { x: 20 + l * (NW + CG), y: 40 + rowIn[l] * (NH + RG + 8) }; rowIn[l]++; });
+    const vx = 20 + (maxL + 1) * (NW + CG) + 24;
+    p.validators.forEach((s, i) => { pos[s.id] = { x: vx, y: 40 + i * (NH + RG + 8) }; });
+    const rows = Math.max(1, ...Object.values(rowIn), p.validators.length);
+    const gH = 40 + rows * (NH + RG + 8) + 20, gW = vx + NW + 20;
+    const barX = vx - 16;
+    const edges = [];
+    const curve = (x1, y1, x2, y2) => 'M' + x1 + ' ' + y1 + ' C' + (x1 + 28) + ' ' + y1 + ' ' + (x2 - 28) + ' ' + y2 + ' ' + x2 + ' ' + y2;
+    p.steps.forEach(s => s.needs.forEach(n => { if (!pos[n]) return; const a = pos[n], b = pos[s.id]; const hot = isSel(s.id) || isSel(n); edges.push({ d: curve(a.x + NW, a.y + NH / 2, b.x, b.y + NH / 2), c: hot ? 'var(--accent)' : 'var(--border-strong)', w: hot ? 1.75 : 1.25 }); }));
+    const sinks = p.steps.filter(s => !dependentsOf(s.id).length);
+    sinks.forEach(s => { const a = pos[s.id]; edges.push({ d: curve(a.x + NW, a.y + NH / 2, barX, a.y + NH / 2), c: 'var(--border)', w: 1.25 }); });
+    p.validators.forEach(s => { const b = pos[s.id]; edges.push({ d: 'M' + barX + ' ' + (b.y + NH / 2) + ' L' + b.x + ' ' + (b.y + NH / 2), c: 'var(--border-strong)', w: 1.25 }); });
+    const ys = Object.values(pos).map(q => q.y);
+    const groupsMap = {}; p.steps.forEach(s => { if (s.group) (groupsMap[s.group] = groupsMap[s.group] || []).push(s.id); });
+    const gGroups = Object.entries(groupsMap).map(([name, ids]) => { const xs = ids.map(i => pos[i].x), yy = ids.map(i => pos[i].y); const x = Math.min(...xs) - 8, y = Math.min(...yy) - 12; return { name, x: x + 'px', y: y + 'px', w: (Math.max(...xs) + NW + 8 - x) + 'px', h: (Math.max(...yy) + NH + 8 - y) + 'px' }; });
+    const node = (s, kind) => ({ id: s.id, x: pos[s.id].x + 'px', y: pos[s.id].y + 'px', last: lastOf(s), sub: [s.image].concat(flagsOf(s)).join(' · '), sel: isSel(s.id), bc: isSel(s.id) ? 'var(--accent)' : 'var(--border-strong)', ring: isSel(s.id) ? '0 0 0 2px var(--accent-bg)' : 'none', pick: pickFn(s.id) });
+    const g = { w: gW + 'px', h: gH + 'px', edges, groups: gGroups, nodes: gOrd.map(s => node(s)).concat(p.validators.map(s => node(s))), barX, barTop: ys.length ? Math.min(...p.validators.map(s => pos[s.id].y)) : 0, barBot: ys.length ? Math.max(...p.validators.map(s => pos[s.id].y)) + NH : 0, vLabelX: vx + 'px' };
+    g.barTop = Math.min(g.barTop, ...sinks.map(s => pos[s.id].y + NH / 2)); g.barBot = Math.max(g.barBot - NH / 2, ...sinks.map(s => pos[s.id].y + NH / 2));
+
+    // stages
+    const card = (s, inGroup) => ({ card: true, hdr: false, id: s.id, image: s.image, last: lastOf(s), needs: s.needs, flags: flagsOf(s), sel: isSel(s.id), bc: isSel(s.id) ? 'var(--accent)' : 'var(--border-strong)', bl: inGroup ? '3px solid var(--border-strong)' : '1px solid ' + (isSel(s.id) ? 'var(--accent)' : 'var(--border-strong)'), ring: isSel(s.id) ? '0 0 0 2px var(--accent-bg)' : 'none', ml: '0', w: '100%', pick: pickFn(s.id) });
+    const stg = [];
+    for (let l = 0; l <= maxL; l++) {
+      const items = []; let lastG = null;
+      ord.filter(s => L[s.id] === l).forEach(s => { if (s.group && s.group !== lastG) items.push({ hdr: true, card: false, name: s.group }); lastG = s.group; items.push(card(s, !!s.group)); });
+      const n = items.filter(i => i.card).length;
+      stg.push({ isV: false, title: 'Stage ' + (l + 1), sub: n > 1 ? n + ' in parallel' : l === 0 ? 'starts first' : '', items });
+    }
+    stg.push({ isV: true, title: 'Validators', sub: 'always last', items: p.validators.map(s => card(s, false)) });
+
+    // bands (2a)
+    const HUES = [200, 330, 70, 150, 250, 20];
+    const hue = i => { const h = HUES[i % HUES.length]; return { fg: `light-dark(oklch(0.47 0.1 ${h}), oklch(0.8 0.09 ${h}))`, bg: `light-dark(oklch(0.983 0.007 ${h}), oklch(0.19 0.012 ${h}))`, chip: `light-dark(oklch(0.93 0.04 ${h}), oklch(0.3 0.05 ${h}))`, line: `light-dark(oklch(0.7 0.09 ${h}), oklch(0.58 0.09 ${h}))` }; };
+    const CW = 360, CH = 60, BGX = 40, BGY = 10;
+    const bmap = {};
+    ord.forEach(s => { const k = s.group || ('~' + L[s.id]); (bmap[k] = bmap[k] || []).push(s); });
+    const minL = k => Math.min(...bmap[k].map(s => L[s.id]));
+    const bkeys = Object.keys(bmap).sort((a, b) => (minL(a) - minL(b)) || ((a[0] === '~') === (b[0] === '~') ? (a < b ? -1 : 1) : a[0] === '~' ? -1 : 1));
+    const bandOf = {}; bkeys.forEach((k, i) => bmap[k].forEach(s => bandOf[s.id] = i));
+    const layoutBand = (members, hu, chainAll) => {
+      const ids = new Set(members.map(s => s.id)), place = {}, occ = [], edges = [];
+      const lpOf = (s, i) => chainAll ? (i ? [members[i - 1].id] : []) : s.needs.filter(n => ids.has(n));
+      const LP = Object.fromEntries(members.map((s, i) => [s.id, lpOf(s, i)]));
+      const kids = id => members.filter(s => LP[s.id].includes(id));
+      const GRID = 3;
+      const put = (id, col, row) => { while (occ.length <= row) occ.push(new Set()); occ[row].add(col); place[id] = { col, row, lp: LP[id] }; };
+      const walk = id => kids(id).forEach(k => {
+        if (place[k.id] || !LP[k.id].every(n => place[n])) return;
+        const col = 1 + Math.max(...LP[k.id].map(n => place[n].col)), pr = place[LP[k.id][0]].row;
+        put(k.id, col, occ[pr].has(col) ? occ.length : pr); walk(k.id);
+      });
+      const roots = members.filter(s => !LP[s.id].length);
+      roots.filter(s => kids(s.id).length).forEach(s => { put(s.id, 0, occ.length); walk(s.id); });
+      members.filter(s => !place[s.id] && LP[s.id].length).forEach(s => { const col = 1 + Math.max(0, ...LP[s.id].filter(n => place[n]).map(n => place[n].col)); put(s.id, col, occ.length); walk(s.id); });
+      const width = Math.max(GRID, ...Object.values(place).map(q => q.col + 1));
+      roots.filter(s => !place[s.id]).forEach(s => {
+        let r = 0, c = -1;
+        for (; r < occ.length; r++) { for (let k = 0; k < width; k++) if (!occ[r].has(k)) { c = k; break; } if (c >= 0) break; }
+        if (c < 0) { r = occ.length; c = 0; }
+        put(s.id, c, r);
+      });
+      members.forEach(s => {
+        const q = place[s.id], x = q.col * (CW + BGX), y = q.row * (CH + BGY);
+        q.lp.forEach(n => {
+          const a = place[n], ax = a.col * (CW + BGX) + CW, ay = a.row * (CH + BGY) + CH / 2, by = y + CH / 2;
+          const hot = isSel(s.id) || isSel(n);
+          edges.push({ d: ay === by ? `M${ax} ${ay} L${x - 3} ${by}` : `M${ax} ${ay} C${ax + 24} ${ay} ${x - 24} ${by} ${x - 3} ${by}`, c: hot ? 'var(--accent)' : hu.line, w: hot ? 2 : 1.5, ex: x - 3, ey: by });
+        });
+      });
+      const cols = Math.max(...members.map(s => place[s.id].col)) + 1;
+      const est = (() => { const m = {}; const f = id => m[id] != null ? m[id] : (m[id] = (members.find(x => x.id === id).last || 0) + (place[id].lp.length ? Math.max(...place[id].lp.map(f)) : 0)); return Math.max(...members.map(s => f(s.id))); })();
+      return { place, edges, w: (cols * (CW + BGX) - BGX) + 'px', h: (occ.length * (CH + BGY) - BGY) + 'px', est };
+    };
+    const cardOf = (s, q, hu, isVal) => {
+      const cross = isVal ? [] : s.needs.filter(n => bandOf[n] !== bandOf[s.id]);
+      const chips = cross.map(n => { const h2 = hue(bandOf[n]); return { t: 'after ' + n, fg: h2.fg, bc: h2.line, bg: h2.chip }; });
+      const plain = t => ({ t, fg: 'var(--text-2)', bc: 'var(--border)', bg: 'transparent' });
+      chips.push(plain(s.timeout));
+      if (s.retries) chips.push(plain('retries ' + s.retries));
+      if (s.allowFail) chips.push(plain('allowed to fail'));
+      if (s.paths.length) chips.push(plain('if ' + s.paths.join(', ')));
+      if (s.evidence.length) chips.push(plain(s.evidence.length + ' evidence'));
+      const secrets = s.env.filter(e => e.secret).length; if (secrets) chips.push(plain(secrets + ' secret'));
+      const cw = t => t.length * 6.7 + 16, budget = 210;
+      const shown = []; let used = 0;
+      chips.forEach((c, i) => {
+        const rest = chips.length - i - 1, more = rest ? cw('+' + rest) : 0;
+        if (shown.length === i && used + cw(c.t) + more <= budget) { shown.push(c); used += cw(c.t); }
+      });
+      if (shown.length < chips.length) { const hidden = chips.slice(shown.length); shown.push({ ...plain('+' + hidden.length), title: hidden.map(c => c.t).join(' · ') }); }
+      return { id: s.id, chips: shown, x: q.col * (CW + BGX) + 'px', y: q.row * (CH + BGY) + 'px', image: s.image, cmd: s.run[0] + (s.run.length > 1 ? '  +' + (s.run.length - 1) : ''), hasLast: !!s.last, last: s.last ? fmt(s.last) : 'not run yet', sel: isSel(s.id), bc: isSel(s.id) ? 'var(--accent)' : 'var(--border-strong)', ring: isSel(s.id) ? '0 0 0 2px var(--accent-bg)' : 'none', pick: pickFn(s.id) };
+    };
+    const bands = bkeys.map((k, i) => {
+      const members = bmap[k], hu = hue(i), lay = layoutBand(members, hu, false);
+      const after = Array.from(new Set([].concat(...members.map(s => s.needs.filter(n => bandOf[n] !== i).map(n => bandOf[n] + 1))))).sort();
+      const named = k[0] !== '~';
+      return { n: String(i + 1), name: named ? k : members.slice(0, 2).map(s => s.id).join(' + ') + (members.length > 2 ? ' +' + (members.length - 2) : ''),
+        sub: members.length + ' step' + (members.length === 1 ? '' : 's') + (named ? '' : ' · unnamed') + ' · ' + (after.length ? 'starts after stage ' + after.join(', ') : 'starts first'),
+        est: '~' + fmt(lay.est), fg: hu.fg, bg: hu.bg, chip: hu.chip, w: lay.w, h: lay.h, edges: lay.edges, cards: members.map(s => cardOf(s, lay.place[s.id], hu, false)), hasLink: i > 0 };
+    });
+    if (p.validators.length) {
+      const hv = { fg: 'var(--text-2)', bg: 'var(--surface)', chip: 'var(--surface-2)', line: 'var(--border-strong)' };
+      const lay = layoutBand(p.validators, hv, true);
+      bands.push({ n: 'V', name: 'validators', sub: 'always last · run in this order after every stage', est: '~' + fmt(lay.est), fg: hv.fg, bg: hv.bg, chip: hv.chip, w: lay.w, h: lay.h, edges: lay.edges, cards: p.validators.map(s => cardOf(s, lay.place[s.id], hv, true)), hasLink: bands.length > 0 });
+    }
+
+    // list
+    const lst = [{ hdr: true, row: false, title: 'Steps', sub: 'in start order; indented steps wait for the ones above', pad: '8px 20px' }];
+    ord.forEach((s, i) => {
+      lst.push({ row: true, hdr: false, id: s.id, hasGroup: !!s.group, group: s.group || '', needs: s.needs, noNeeds: s.needs.length ? '' : 'starts first', image: s.image, timeout: s.timeout, retries: String(s.retries), cond: flagsOf(s).filter(f => !f.startsWith('retries')).join(' · ') || '—', last: lastOf(s), indent: (L[s.id] * 18) + 'px', branch: L[s.id] ? (s.needs.length > 1 ? '⤚' : '└') : '·', sel: isSel(s.id), bg: isSel(s.id) ? 'var(--accent-bg)' : 'transparent', ring: 'none', pick: pickFn(s.id) });
+    });
+    lst.push({ hdr: true, row: false, title: 'Validators', sub: 'run after every step, in order', pad: '14px 20px 8px' });
+    p.validators.forEach(s => lst.push({ row: true, hdr: false, id: s.id, hasGroup: false, group: '', needs: [], noNeeds: 'all steps', image: s.image, timeout: s.timeout, retries: String(s.retries), cond: s.allowFail ? 'allowed to fail' : '—', last: lastOf(s), indent: '0px', branch: '·', sel: isSel(s.id), bg: isSel(s.id) ? 'var(--accent-bg)' : 'transparent', ring: 'none', pick: pickFn(s.id) }));
+
+    // inspector
+    const one = st.sel.length === 1 ? this.find(p, st.sel[0]) : [null, null];
+    const s = one[0], kind = one[1];
+    const ip = { none: st.sel.length === 0, multi: st.sel.length > 1, one: !!s, n: st.sel.length, multiLabel: st.sel.length + ' steps selected', selIds: st.sel, groupName: st.groupName, onGroupName: e => this.setState({ groupName: e.target.value }) };
+    const selSteps = st.sel.map(id => this.find(p, id)[0]).filter(Boolean);
+    ip.imgWarn = selSteps.length > 1 && new Set(selSteps.map(x => x.image)).size > 1; ip.firstImage = selSteps[0] ? ordered(selSteps, L)[0].image : '';
+    const pathLen = (() => { const memo = {}; const f = id => { if (memo[id] != null) return memo[id]; const x = p.steps.find(q => q.id === id); memo[id] = (x.last || 0) + (x.needs.length ? Math.max(...x.needs.map(f)) : 0); return memo[id]; }; return p.steps.length ? Math.max(...p.steps.map(q => f(q.id))) + p.validators.reduce((a, v) => Math.max(a, v.last || 0), 0) : 0; })();
+    ip.stats = { steps: String(p.steps.length), vals: String(p.validators.length), groups: String(Object.keys(groupsMap).length), path: fmt(pathLen) + ' estimated', last: fmt(base.steps.concat(base.validators).reduce((a, x) => a + (x.last || 0), 0) / 2) };
+    if (s) {
+      const id = s.id;
+      const blocked = this.dependents(p, id);
+      ip.s = s; ip.isStep = kind === 'step'; ip.isVal = kind === 'val';
+      ip.kindLabel = kind === 'val' ? 'Validator' : (s.needs.length > 1 ? 'Step · joins ' + s.needs.length : dependentsOf(id).length > 1 ? 'Step · forks to ' + dependentsOf(id).length : 'Step');
+      ip.lastLabel = s.last ? 'last run ' + fmt(s.last) : 'not run yet';
+      ip.on = { id: e => this.update(id, 'id', e.target.value), image: e => this.update(id, 'image', e.target.value), timeout: e => this.update(id, 'timeout', e.target.value), run: e => this.update(id, 'run', e.target.value.split('\n')) };
+      ip.runText = s.run.join('\n'); ip.runRows = Math.max(2, Math.min(6, s.run.length + 1));
+      ip.needs = s.needs.map(n => ({ id: n, remove: () => this.update(id, 'needs', ns => ns.filter(x => x !== n)) }));
+      ip.noNeeds = !s.needs.length;
+      ip.needOpts = p.steps.filter(x => !blocked.has(x.id) && !s.needs.includes(x.id)).map(x => x.id);
+      ip.canAddNeed = ip.needOpts.length > 0;
+      ip.onAddNeed = e => { const v = e.target.value; if (v) this.update(id, 'needs', ns => ns.concat(v)); };
+      ip.paths = s.paths.map(v => ({ v, remove: () => this.update(id, 'paths', ps => ps.filter(x => x !== v)) }));
+      ip.pathDraft = st.pathDraft; ip.pathPh = s.paths.length ? '+ path' : 'always runs · add glob';
+      ip.onPathDraft = e => this.setState({ pathDraft: e.target.value });
+      ip.onPathKey = e => { if (e.key === 'Enter' && st.pathDraft.trim()) { const v = st.pathDraft.trim(); this.update(id, 'paths', ps => ps.includes(v) ? ps : ps.concat(v)); this.setState({ pathDraft: '' }); } };
+      ip.retDown = () => this.update(id, 'retries', r => Math.max(0, r - 1)); ip.retUp = () => this.update(id, 'retries', r => Math.min(5, r + 1));
+      const sw = (on, label, sub, toggle) => ({ on, label, sub, toggle, track: on ? 'var(--text)' : 'var(--border-strong)', knob: on ? '14px' : '2px' });
+      ip.switches = [
+        sw(s.allowFail, 'Allowed to fail', s.allowFail ? 'A failure is recorded as evidence but does not stop the pipeline.' : 'A failure stops the steps that need this one.', () => this.update(id, 'allowFail', !s.allowFail)),
+        sw(kind === 'val', 'Validator', kind === 'val' ? 'Judges the change from evidence. Runs in the final phase.' : 'Turn on to move this step into the final validator phase.', () => this.update(id, 'validator', null))
+      ];
+      ip.env = s.env.map((e, i) => ({ k: e.k, v: e.v, secret: e.secret, vLabel: e.secret ? 'Secret name' : 'Value', ph: e.secret ? 'secret name' : 'value', vbg: e.secret ? 'var(--surface)' : 'var(--bg)', sbg: e.secret ? 'var(--surface-2)' : 'var(--bg)',
+        onK: ev => this.update(id, 'env', en => en.map((x, j) => j === i ? { ...x, k: ev.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') } : x)),
+        onV: ev => this.update(id, 'env', en => en.map((x, j) => j === i ? { ...x, v: ev.target.value } : x)),
+        toggleSecret: () => this.update(id, 'env', en => en.map((x, j) => j === i ? { ...x, secret: !x.secret } : x)),
+        remove: () => this.update(id, 'env', en => en.filter((x, j) => j !== i)) }));
+      ip.addEnv = () => this.update(id, 'env', en => en.concat({ k: 'NAME', v: '', secret: false }));
+      ip.evidence = s.evidence.map((v, i) => ({ v, on: ev => this.update(id, 'evidence', xs => xs.map((x, j) => j === i ? ev.target.value : x)), remove: () => this.update(id, 'evidence', xs => xs.filter((x, j) => j !== i)) }));
+      ip.addEvidence = () => this.update(id, 'evidence', xs => xs.concat('evidence/' + id + '/'));
+      ip.hasGroup = !!s.group; ip.ungroup = () => this.update(id, 'group', null);
+      const deps = dependentsOf(id);
+      ip.removeNote = deps.length ? ' · ' + deps.join(', ') + ' will wait for ' + (s.needs.length ? s.needs.join(', ') : 'nothing') + ' instead' : '';
+    } else {
+      ip.s = { id: '', image: '', timeout: '', retries: 0, group: '' }; ip.on = {}; ip.needs = []; ip.paths = []; ip.env = []; ip.evidence = []; ip.switches = []; ip.needOpts = [];
+    }
+
+    const tbHint = st.sel.length === 0 ? 'Click a step to edit. Shift-click to select several.' : st.sel.length === 1 ? 'Add after: forks a new step from ' + st.sel[0] + '. In parallel: same needs.' : 'Merge runs them in one container. Group keeps them separate.';
+    const oneStep = st.sel.length === 1 && kind === 'step';
+    const multiSteps = st.sel.length > 1 && st.sel.every(id => this.find(p, id)[1] === 'step');
+    const tb = {
+      add: () => this.addStep([]), after: () => oneStep && this.addStep([st.sel[0]], s.group), parallel: () => oneStep && this.addStep(s.needs.slice(), s.group),
+      merge: () => multiSteps && this.merge(), group: () => multiSteps && this.group(), remove: () => this.remove(),
+      noOne: !oneStep, oneOp: oneStep ? '1' : '0.45', noMulti: !multiSteps, multiOp: multiSteps ? '1' : '0.45', noSel: st.sel.length === 0, selOp: st.sel.length ? '1' : '0.45', hint: tbHint
+    };
+
+    // yaml
+    const y = toYaml(p), yb = toYaml(base); const pool = {}; yb.forEach(l => pool[l] = (pool[l] || 0) + 1);
+    const yaml = y.map((t, i) => { const changed = !(pool[t] > 0); if (!changed) pool[t]--; return { n: i + 1, t, mark: changed ? '+' : '', bg: changed ? 'var(--diff-add)' : 'transparent' }; });
+
+    // edit bar
+    const sum = diffSummary(base, p);
+    const dirty = sum.length > 0;
+    const slug = (sum[0] || 'update').replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 30).replace(/-$/, '');
+    const f = st.form;
+    const def = { branch: 'pipeline/' + slug, title: 'Pipeline: ' + sum.slice(0, 2).join('; '), intent: 'Change the ' + st.repo + ' pipeline: ' + sum.join('; ') + '. No other steps change.' };
+    const bar = {
+      show: dirty || !!st.saved, dirty, saved: !!st.saved && !dirty, savedId: st.saved ? st.saved.id : '', savedBranch: st.saved ? st.saved.branch : '',
+      count: sum.length + ' edit' + (sum.length === 1 ? '' : 's'), summary: sum.join(' · '),
+      hasErr: !!st.err, err: st.err,
+      discard: () => this.setState(s2 => { const e = { ...s2.edits }; delete e[s2.repo]; return { edits: e, sel: [], saveOpen: false, form: {} }; }),
+      saveOpen: st.saveOpen, openSave: () => this.setState(s2 => ({ saveOpen: !s2.saveOpen })),
+      branch: f.branch ?? def.branch, title: f.title ?? def.title, intent: f.intent ?? def.intent,
+      onBranch: e => this.setState({ form: { ...f, branch: e.target.value } }), onTitle: e => this.setState({ form: { ...f, title: e.target.value } }), onIntent: e => this.setState({ form: { ...f, intent: e.target.value } }),
+      pushing: st.pushing, pushLabel: st.pushing ? 'Pushing…' : 'Push branch and open change',
+      push: () => {
+        if (!p.steps.length) return this.setState({ err: 'A pipeline needs at least one step.' });
+        const branch = f.branch ?? def.branch;
+        this.setState({ pushing: true });
+        setTimeout(() => this.setState(s2 => { const e = { ...s2.edits }; delete e[s2.repo]; return { pushing: false, saveOpen: false, edits: e, sel: [], form: {}, saved: { id: 'c_n4b7k2x9d1qe', branch } }; }), 900);
+      },
+      dismiss: () => this.setState({ saved: null })
+    };
+
+    const repoOpts = Object.keys(PIPES).map(r => ({ label: r, dot: st.edits[r] && diffSummary(PIPES[r], st.edits[r]).length ? ' •' : '', on: st.repo === r, bg: st.repo === r ? 'var(--surface-2)' : 'transparent', fg: st.repo === r ? 'var(--text)' : 'var(--text-2)', pick: () => this.setState({ repo: r, sel: [], saveOpen: false, form: {}, saved: null }) }));
+
+    return {
+      theme, frames: [
+        { id: '2a', name: 'Stages, top-down', note: 'Stages stack top to bottom. Inside a stage, a step and the steps that need it share a row, joined by a line. Needs from other stages show as chips in that stage\u2019s colour.', isBands: true, isGraph: false, isStages: false, isList: false, hdr: true, hdrMt: '0px', hdrTitle: 'Turn 2', hdrNote: 'top-down stages, wider steps, a hint of colour' },
+        { id: '1a', name: 'Graph', note: 'Nodes and edges, left to right. Forks and joins are drawn as lines.', isBands: false, isGraph: true, isStages: false, isList: false, hdr: true, hdrMt: '24px', hdrTitle: 'Turn 1', hdrNote: 'three ways to draw it' },
+        { id: '1b', name: 'Stage columns', note: 'One column per start wave. Needs shown as chips on each card.', isBands: false, isGraph: false, isStages: true, isList: false, hdr: false },
+        { id: '1c', name: 'Ordered list', note: 'Closest to the file and the densest. Indentation shows depth.', isBands: false, isGraph: false, isStages: false, isList: true, hdr: false }
+      ].map(fr => {
+        const fl = fr.isBands, open = st.sel.length > 0;
+        return { ...fr,
+          showAside: st.view === 'visual' && (!fl || open), gutter: fl && open ? '360px' : '0px', hdrPr: fl ? '44px' : '16px',
+          cols: fl ? 'minmax(0,1fr)' : (st.view === 'visual' ? 'minmax(0,1fr) 340px' : 'minmax(0,1fr)'),
+          aPos: fl ? 'absolute' : 'static', aInset: fl ? '12px' : 'auto', aW: fl ? '340px' : 'auto',
+          aBorder: fl ? '1px solid color-mix(in oklch, var(--border-strong) 70%, transparent)' : '0', aBorderL: fl ? '1px solid color-mix(in oklch, var(--border-strong) 70%, transparent)' : '1px solid var(--border)',
+          aRadius: fl ? '10px' : '0',
+          aBg: fl ? 'color-mix(in oklch, var(--bg) 58%, transparent)' : 'var(--bg)',
+          aBlur: fl ? 'blur(18px) saturate(1.5)' : 'none',
+          aShadow: fl ? '0 1px 0 0 color-mix(in oklch, white 40%, transparent) inset, 0 16px 40px -16px oklch(0 0 0 / 0.28)' : 'none' };
+      }), bands,
+      repoOpts, file: p.file, ref: p.ref,
+      isVisual: st.view === 'visual', isYaml: st.view === 'yaml', visBg: st.view === 'visual' ? 'var(--surface-2)' : 'transparent', yamlBg: st.view === 'yaml' ? 'var(--surface-2)' : 'transparent',
+      toVisual: () => this.setState({ view: 'visual' }), toYaml: () => this.setState({ view: 'yaml' }),
+      cols: st.view === 'visual' ? 'minmax(0,1fr) 340px' : 'minmax(0,1fr)',
+      clearSel: () => this.setState({ sel: [] }),
+      g, stg, lst, ip, tb, yaml, bar
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plumbix pill tuner</title>
+<link rel="stylesheet" href="../src/tokens.css">
+<link rel="stylesheet" href="../src/ui/pill.css">
+<style>
+@font-face { font-family: 'IBM Plex Mono'; font-weight: 400; src: url('../public/fonts/ibm-plex-mono-400-latin.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-weight: 500; src: url('../public/fonts/ibm-plex-mono-500-latin.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-weight: 600; src: url('../public/fonts/ibm-plex-mono-600-latin.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans'; font-weight: 400; src: url('../public/fonts/ibm-plex-sans-400-latin.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans'; font-weight: 500; src: url('../public/fonts/ibm-plex-sans-500-latin.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans'; font-weight: 600; src: url('../public/fonts/ibm-plex-sans-600-latin.woff2') format('woff2'); }
+
+body { margin: 0; font: 13px/1.45 var(--ui); -webkit-font-smoothing: antialiased; }
+.mono { font-family: var(--mono); }
+.dim { color: var(--text-3); }
+.dim2 { color: var(--text-2); }
+.right { text-align: right; }
+.red { color: var(--s-red); }
+
+.page { display: grid; grid-template-columns: 1fr 1fr; min-height: 100vh; margin-right: 360px; }
+.theme { background: var(--bg); color: var(--text); padding: 0 0 48px; }
+.theme[data-scheme='light'] { color-scheme: light; }
+.theme[data-scheme='dark'] { color-scheme: dark; }
+.theme h1 { margin: 0; padding: 14px 20px; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+.theme h1 span { color: var(--text-3); font-weight: 400; }
+.block { padding: 18px 20px 6px; }
+.block h2 { margin: 0 0 10px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
+.strip { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.strip .pill { cursor: pointer; }
+.strip .pill.sel { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.row-grid { display: grid; grid-template-columns: 116px minmax(120px, 1.3fr) minmax(110px, 1fr) 100px 28px 44px; gap: 12px; align-items: center; padding: 0 20px; }
+.cols { height: 28px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-3); }
+.group-header { display: flex; align-items: baseline; gap: 8px; padding: 18px 20px 6px; border-bottom: 1px solid var(--border); }
+.group.needs { background: var(--surface); }
+.group-header h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.group-header .count { font-size: 12px; color: var(--text-3); }
+.row { width: 100%; height: 36px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); font-size: 13px; text-align: left; font-family: inherit; cursor: pointer; }
+.row:hover { background: var(--hover); }
+.row .title { font-weight: 500; }
+.row .mono { font-size: 12px; }
+
+.steps { display: grid; gap: 6px; }
+.vstep { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; height: 24px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm, 4px); background: var(--bg); color: var(--text); font: inherit; text-align: left; }
+.vstep .dur { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
+.verdict { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 12px 14px; display: grid; gap: 10px; }
+.verdict .head { display: flex; align-items: center; justify-content: space-between; }
+.verdict .head b { font-size: 14px; font-weight: 600; }
+.criteria { display: grid; gap: 6px; font-size: 12px; }
+.criteria div { display: flex; gap: 8px; align-items: center; }
+.pill-head { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; }
+
+/* Overlay */
+.tuner { position: fixed; top: 0; right: 0; bottom: 0; width: 360px; overflow: auto; box-sizing: border-box; padding: 14px 16px 24px; border-left: 1px solid var(--border-strong); background: var(--bg); color: var(--text); color-scheme: light; font-size: 12px; }
+.tuner h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.tuner h3 { margin: 14px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
+.states { display: flex; flex-wrap: wrap; gap: 4px; }
+.states button { font: 500 11px/1 var(--ui); padding: 5px 7px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--bg); color: var(--text); cursor: pointer; }
+.states button[aria-pressed='true'] { background: var(--text); color: var(--bg); border-color: var(--text); }
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 5px; overflow: hidden; }
+.seg button { font: 500 11px/1 var(--ui); padding: 6px 9px; border: 0; background: var(--bg); color: var(--text-2); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border-strong); }
+.seg button[aria-pressed='true'] { background: var(--surface-2); color: var(--text); }
+.field { display: grid; grid-template-columns: 58px 1fr 52px; gap: 8px; align-items: center; margin: 4px 0; }
+.field label { color: var(--text-2); }
+.field input[type='range'] { width: 100%; margin: 0; }
+.field output { font-family: var(--mono); font-size: 11px; color: var(--text-2); text-align: right; }
+.contrast { font-family: var(--mono); font-size: 11px; color: var(--text-3); margin-top: 4px; }
+.contrast b { color: var(--text); font-weight: 500; }
+.contrast .bad { color: var(--s-red); }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.actions button { font: 500 12px/1 var(--ui); padding: 7px 10px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text); cursor: pointer; }
+.actions button.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+textarea { width: 100%; box-sizing: border-box; height: 170px; margin-top: 8px; font: 11px/1.4 var(--mono); border: 1px solid var(--border-strong); border-radius: 5px; padding: 6px 8px; background: var(--surface); color: var(--text); }
+.hint { color: var(--text-3); margin: 6px 0 0; }
+.swatches { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0; }
+.sw { height: 26px; border-radius: 5px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font: 500 11px var(--ui); }
+</style>
+</head>
+<body>
+<div class="page" id="page"></div>
+
+<aside class="tuner" aria-label="Pill tuner">
+  <h2>Pill tuner</h2>
+  <p class="hint" style="margin:0 0 8px">Click any pill on the left, or pick a state. Both themes update live. Settings stay in this browser until you reset.</p>
+  <h3>State</h3>
+  <div class="states" id="states"></div>
+  <h3>Style</h3>
+  <div class="seg" id="style"></div>
+  <div class="field" id="borderField" style="margin-top:8px">
+    <label for="border">Border</label><input id="border" type="range" min="0" max="100" step="5"><output id="border-out"></output>
+  </div>
+  <div style="margin-top:8px; display:flex; gap:14px; align-items:center">
+    <span class="dim2">Label</span>
+    <div class="seg" id="label"></div>
+    <span class="dim2" style="margin-left:6px">Glyph</span>
+    <div class="seg" id="glyph"></div>
+  </div>
+  <div style="margin-top:8px; display:flex; gap:14px; align-items:center">
+    <span class="dim2">Gradient</span>
+    <div class="seg" id="gradient"></div>
+  </div>
+  <div class="field" id="angleField">
+    <label for="angle">Angle</label><input id="angle" type="range" min="0" max="360" step="5"><output id="angle-out"></output>
+  </div>
+  <div class="swatches"><div class="sw" id="sw-light">light</div><div class="sw" id="sw-dark">dark</div></div>
+  <div id="sliders"></div>
+  <div class="actions">
+    <button id="copyLD">Light → dark</button>
+    <button id="copyDL">Dark → light</button>
+    <button id="resetOne">Reset this state</button>
+    <button id="resetAll">Reset all</button>
+  </div>
+  <h3>Export</h3>
+  <div class="actions" style="margin-top:0">
+    <button class="primary" id="copy">Copy CSS</button>
+    <button id="copyJSON">Copy JSON</button>
+  </div>
+  <textarea id="out" readonly spellcheck="false"></textarea>
+  <p class="hint">The CSS keys on <code>data-state</code>; the JSON is the per-state table. Paste either into the chat and I wire it into StatePill and tokens.css.</p>
+</aside>
+
+<script>
+// ---- the app's encoding table and glyphs, copied from web/src/ui/StatePill.tsx ----
+const PATHS = {
+  check: 'M5.4 8.3l1.8 1.8 3.4-3.8', x: 'M6 6l4 4M10 6l-4 4', bang: 'M8 4.9v3.5M8 11v.01', up: 'M8 11V5.4M5.8 7.5 8 5.3l2.2 2.2',
+  ret: 'M10.6 10.8V9.4a2 2 0 0 0-2-2H5.6M7.3 5.6 5.5 7.4l1.8 1.8', slash: 'M5.5 10.5l5-5', clock: 'M8 5v3.2l2 1.3', dash: 'M5.4 8h5.2',
+  q: 'M6.5 6.6a1.5 1.5 0 1 1 2.1 1.4c-.4.2-.6.5-.6 1v.3M8 11v.01', info: 'M8 7.4v3.3M8 5.1v.01',
+}
+const ENCODING = {
+  open: { label: 'Open', tone: 'blue', glyph: 'none' },
+  running: { label: 'Running', tone: 'blue', glyph: 'half' },
+  approved: { label: 'Approved', tone: 'green', glyph: 'check' },
+  fix_requested: { label: 'Fix requested', tone: 'amber', glyph: 'ret' },
+  rejected: { label: 'Rejected', tone: 'red', glyph: 'x' },
+  needs_human: { label: 'Needs human', tone: 'violet', glyph: 'bang' },
+  escalated: { label: 'Escalated', tone: 'violet', glyph: 'up' },
+  merged: { label: 'Merged', tone: 'teal', glyph: 'check', filled: true },
+  closed: { label: 'Closed', tone: 'plum', glyph: 'slash' },
+  finished: { label: 'Finished', tone: 'neutral', glyph: 'check' },
+  errored: { label: 'Errored', tone: 'violet', glyph: 'bang' },
+  cancelled: { label: 'Cancelled', tone: 'neutral', glyph: 'slash' },
+  succeeded: { label: 'Succeeded', tone: 'green', glyph: 'check' },
+  failed: { label: 'Failed', tone: 'red', glyph: 'x' },
+  timed_out: { label: 'Timed out', tone: 'red', glyph: 'clock' },
+  skipped: { label: 'Skipped', tone: 'neutral', glyph: 'dash' },
+  queued: { label: 'Queued', tone: 'neutral', glyph: 'none', dashed: true },
+  met: { label: 'Met', tone: 'green', glyph: 'check' },
+  unmet: { label: 'Unmet', tone: 'red', glyph: 'x' },
+  unknown: { label: 'Unknown', tone: 'neutral', glyph: 'q' },
+  pending: { label: 'Pending', tone: 'neutral', glyph: 'none', dashed: true },
+  blocker: { label: 'Blocker', tone: 'red', glyph: 'bang', filled: true },
+  major: { label: 'Major', tone: 'amber', glyph: 'bang' },
+  minor: { label: 'Minor', tone: 'neutral', glyph: 'info' },
+}
+// Tone colours as in tokens.css: [L, C, H] for fg and bg, light and dark.
+const TONES = {
+  neutral: { light: { fg: [0.46, 0.012, 265], bg: [0.945, 0.004, 265] }, dark: { fg: [0.74, 0.008, 265], bg: [0.245, 0.008, 265] } },
+  blue:    { light: { fg: [0.49, 0.12, 230],  bg: [0.95, 0.03, 230] },   dark: { fg: [0.78, 0.11, 230],  bg: [0.27, 0.045, 230] } },
+  green:   { light: { fg: [0.48, 0.12, 152],  bg: [0.95, 0.035, 152] },  dark: { fg: [0.79, 0.13, 152],  bg: [0.265, 0.045, 152] } },
+  amber:   { light: { fg: [0.5, 0.11, 70],    bg: [0.955, 0.04, 80] },   dark: { fg: [0.81, 0.12, 75],   bg: [0.27, 0.045, 70] } },
+  red:     { light: { fg: [0.5, 0.17, 25],    bg: [0.95, 0.025, 25] },   dark: { fg: [0.75, 0.14, 25],   bg: [0.27, 0.05, 25] } },
+  violet:  { light: { fg: [0.5, 0.17, 320],   bg: [0.95, 0.03, 320] },   dark: { fg: [0.77, 0.13, 320],  bg: [0.27, 0.05, 320] } },
+  teal:    { light: { fg: [0.47, 0.10, 190],  bg: [0.95, 0.03, 190] },   dark: { fg: [0.78, 0.11, 190],  bg: [0.265, 0.045, 190] } },
+  plum:    { light: { fg: [0.49, 0.12, 350],  bg: [0.95, 0.025, 350] },  dark: { fg: [0.77, 0.11, 350],  bg: [0.27, 0.045, 350] } },
+}
+const PAGE_BG = { light: [0.992, 0.002, 265], dark: [0.165, 0.006, 265] }
+const STORE = 'plumbix-pill-tuner-v1'
+const STATES = Object.keys(ENCODING)
+const CHANGE_STATES = ['open', 'running', 'approved', 'fix_requested', 'rejected', 'needs_human', 'escalated', 'merged', 'closed']
+
+function defaults(state) {
+  const e = ENCODING[state], t = TONES[e.tone]
+  return {
+    style: e.filled ? 'filled' : 'tint', label: 'tone', glyph: e.filled ? 'filled' : 'outline', border: 100,
+    gradient: 'off', angle: 135,
+    light: { fg: [...t.light.fg], bg: [...t.light.bg], fg2: [...t.light.fg], bg2: [...t.light.bg] },
+    dark: { fg: [...t.dark.fg], bg: [...t.dark.bg], fg2: [...t.dark.fg], bg2: [...t.dark.bg] },
+  }
+}
+let settings = {}
+try { settings = JSON.parse(localStorage.getItem(STORE) || '{}') } catch { settings = {} }
+for (const s of STATES) {
+  if (!settings[s]) settings[s] = defaults(s)
+  const d = defaults(s)
+  for (const k of ['gradient', 'angle']) if (settings[s][k] === undefined) settings[s][k] = d[k]
+  for (const sc of ['light', 'dark']) for (const k of ['fg2', 'bg2']) if (!settings[s][sc][k]) settings[s][sc][k] = d[sc][k]
+}
+let current = 'open'
+
+function save() { try { localStorage.setItem(STORE, JSON.stringify(settings)) } catch {} }
+const ok = (c) => `oklch(${c[0]} ${c[1]} ${c[2]})`
+
+// ---- markup identical to StatePill ----
+function pill(state, mode = 'pill', label) {
+  const e = ENCODING[state], s = settings[state], text = label ?? e.label
+  const filled = s.glyph === 'filled'
+  let svg = ''
+  if (mode !== 'text') {
+    const circle = `<circle cx="8" cy="8" r="5.75" stroke="currentColor" stroke-width="1.5" fill="${filled ? 'currentColor' : 'none'}"${e.dashed ? ' stroke-dasharray="2.1 2.1"' : ''}/>`
+    let g = ''
+    if (e.glyph === 'half') g = '<path d="M8 2.25a5.75 5.75 0 0 1 0 11.5z" fill="currentColor"/>'
+    else if (e.glyph !== 'none') g = `<path d="${PATHS[e.glyph]}" stroke="${filled ? 'var(--pill-paper)' : 'currentColor'}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`
+    svg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">${circle}${g}</svg>`
+  }
+  return `<span class="pill" data-state="${state}" data-tone="${e.tone}" data-mode="${mode}" title="${text}">${svg}<span>${text}</span></span>`
+}
+
+// ---- live stylesheet ----
+const live = document.createElement('style'); document.head.appendChild(live)
+function render() {
+  let css = ''
+  for (const st of STATES) {
+    const s = settings[st]
+    const fg = `light-dark(${ok(s.light.fg)}, ${ok(s.dark.fg)})`, bg = `light-dark(${ok(s.light.bg)}, ${ok(s.dark.bg)})`
+    const fg2 = `light-dark(${ok(s.light.fg2)}, ${ok(s.dark.fg2)})`, bg2 = `light-dark(${ok(s.light.bg2)}, ${ok(s.dark.bg2)})`
+    const grad = s.gradient === 'on'
+    const tintFill = grad ? `linear-gradient(${s.angle}deg, ${bg}, ${bg2})` : bg
+    const solidFill = grad ? `linear-gradient(${s.angle}deg, ${fg}, ${fg2})` : fg
+    css += `.pill[data-state='${st}'] { color: ${fg}; background: ${bg}; --pill-paper: ${bg}; }\n`
+    const p = `.pill[data-state='${st}'][data-mode='pill']`
+    if (s.style === 'tint') css += `${p} { background: ${tintFill}; }\n`
+    if (s.style === 'outline' && !grad) css += `${p} { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in oklch, currentColor ${s.border}%, transparent); }\n`
+    if (s.style === 'outline' && grad) css += `${p} { box-sizing: border-box; border: 1px solid transparent; background: linear-gradient(var(--bg), var(--bg)) padding-box, linear-gradient(${s.angle}deg, color-mix(in oklch, ${fg} ${s.border}%, var(--bg)), color-mix(in oklch, ${fg2} ${s.border}%, var(--bg))) border-box; }\n`
+    if (s.style === 'plain') css += `${p} { background: transparent; }\n`
+    if (s.style === 'filled') css += `${p} { background: ${solidFill}; color: var(--bg); --pill-paper: ${fg}; }\n`
+    if (s.style === 'tint' && s.border < 100) css += `${p} { box-shadow: inset 0 0 0 1px color-mix(in oklch, currentColor ${100 - s.border}%, transparent); }\n`
+    if (s.label === 'ink' && s.style !== 'filled') css += `${p} > span { color: var(--text); }\n`
+  }
+  live.textContent = css
+  document.querySelectorAll('.strip .pill').forEach((el) => el.classList.toggle('sel', el.dataset.state === current))
+  renderTuner()
+  save()
+}
+
+// ---- preview content ----
+const rows = [
+  ['needs_human', 'Repository tokens: one token per repository, host token as fallback', 'plumbix', 'repo-tokens', '0 unmet · 1 unknown', '2', '4m'],
+  ['fix_requested', 'Retry uploads with backoff', 'ledger-api', 'feat/retry-uploads', '1 unmet', '1', '12m'],
+  ['escalated', 'Replace the session store', 'ledger-api', 'feat/sessions', '2 unmet', '3', '1h'],
+  ['approved', 'Sticky human states: a push never moves needs_human', 'plumbix', 'sticky-human-states', 'all met', '2', '6m'],
+  ['running', 'Pipeline format: stages, retries, path conditions', 'plumbix', 'pipeline-format', 'step 3 of 6', '1', 'now'],
+  ['open', 'Merge refused by the host is push_denied', 'plumbix', 'push-denied', '', '', '1m'],
+  ['merged', 'Open, merged and closed pills carry a colour of their own', 'plumbix', 'pill-colours', 'all met', '1', '3h'],
+  ['merged', 'AI validator: only the change’s criteria can be judged', 'plumbix', 'ai-criterion-ids', 'all met', '2', '5h'],
+  ['closed', 'Docs: self-hosting notes', 'plumbix', 'docs-selfhost', 'closed by you', '2', '1d'],
+  ['rejected', 'Drop the audit log', 'ledger-api', 'chore/no-audit', '3 unmet', '1', '2d'],
+]
+function row(r) {
+  const [state, title, repo, src, verdict, iter, moved] = r
+  return `<button class="row row-grid" role="listitem">
+    <span class="cell">${pill(state)}</span>
+    <span class="cell title">${title}</span>
+    <span class="cell mono dim2">${repo}<span class="dim"> · </span>${src}<span class="dim"> → </span>main</span>
+    <span class="cell mono dim2">${verdict}</span>
+    <span class="cell mono dim right">${iter}</span>
+    <span class="cell mono dim right">${moved}</span>
+  </button>`
+}
+function theme(scheme) {
+  const needs = rows.filter((r) => ['needs_human', 'fix_requested', 'escalated'].includes(r[0]))
+  const rest = rows.filter((r) => !needs.includes(r))
+  return `<section class="theme" data-scheme="${scheme}">
+    <h1>${scheme === 'light' ? 'Light' : 'Dark'} <span>click a pill to tune it</span></h1>
+    <div class="block"><h2>Change states</h2><div class="strip">${CHANGE_STATES.map((s) => pill(s)).join('')}</div></div>
+    <div class="block"><h2>Icon and text modes</h2><div class="strip">${CHANGE_STATES.map((s) => pill(s, 'icon')).join('')}<span class="dim">·</span>${CHANGE_STATES.map((s) => pill(s, 'text')).join('')}</div></div>
+    <div class="block" style="padding-bottom:0"><h2>Changes list</h2></div>
+    <div class="row-grid cols"><span>State</span><span>Title</span><span>Repository · branch</span><span>Verdict</span><span class="right">It.</span><span class="right">Moved</span></div>
+    <div class="group needs"><div class="group-header"><h3>Needs you</h3><span class="count">${needs.length}</span></div>${needs.map(row).join('')}</div>
+    <div class="group"><div class="group-header"><h3>Everything else</h3><span class="count">${rest.length}</span></div>${rest.map(row).join('')}</div>
+    <div class="block"><h2>Change page</h2>
+      <div class="pill-head">${pill('merged')} <span>Open, merged and closed pills carry a colour of their own</span></div>
+      <div class="verdict" style="margin-top:12px">
+        <div class="head"><b>Verdict</b>${pill('approved')}</div>
+        <div class="criteria">
+          <div>${pill('met', 'icon')}<span class="mono dim2">AC-1</span><span>The web tests pass and the web app builds</span></div>
+          <div>${pill('unmet', 'icon')}<span class="mono dim2">AC-2</span><span>Only StatePill, its test and pill.css change</span></div>
+          <div>${pill('unknown', 'icon')}<span class="mono dim2">AC-3</span><span>The Go code builds and its tests pass</span></div>
+        </div>
+        <div class="steps">
+          <button class="vstep">${pill('succeeded', 'icon')}<span class="mono">build</span><span class="dur">52 s</span></button>
+          <button class="vstep">${pill('failed', 'icon')}<span class="mono">test</span><span class="dur">1m 11s</span></button>
+          <button class="vstep">${pill('skipped', 'icon')}<span class="mono">web</span><span class="dur">—</span></button>
+          <button class="vstep">${pill('queued', 'icon')}<span class="mono">ai-review</span><span class="dur">queued</span></button>
+        </div>
+        <div class="strip">${['blocker', 'major', 'minor'].map((s) => pill(s)).join('')}</div>
+      </div>
+    </div>
+    <div class="block"><h2>Step and criterion states</h2><div class="strip">${['succeeded', 'failed', 'timed_out', 'errored', 'skipped', 'cancelled', 'queued', 'finished', 'met', 'unmet', 'unknown', 'pending'].map((s) => pill(s)).join('')}</div></div>
+  </section>`
+}
+function build() {
+  document.getElementById('page').innerHTML = theme('light') + theme('dark')
+  document.querySelectorAll('.strip .pill').forEach((el) => el.addEventListener('click', () => { current = el.dataset.state; render() }))
+  document.querySelectorAll('.row').forEach((el) => el.addEventListener('click', () => { current = el.querySelector('.pill').dataset.state; render() }))
+  render()
+}
+
+// ---- tuner panel ----
+const seg = (id, options, get, set) => {
+  const el = document.getElementById(id)
+  el.innerHTML = options.map(([v, l]) => `<button data-v="${v}" aria-pressed="${get() === v}">${l}</button>`).join('')
+  el.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { set(b.dataset.v); render() }))
+}
+const SL = [['fg', 'Colour'], ['fg2', 'Colour 2'], ['bg', 'Tint'], ['bg2', 'Tint 2']]
+const CH = [['L', 0, 1, 0.005], ['C', 0, 0.3, 0.005], ['H', 0, 360, 1]]
+function renderTuner() {
+  const s = settings[current]
+  const states = document.getElementById('states')
+  states.innerHTML = STATES.map((st) => `<button data-v="${st}" aria-pressed="${st === current}">${ENCODING[st].label}${st === 'alert' ? ' (alert)' : ''}</button>`).join('')
+  states.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { current = b.dataset.v; render() }))
+  seg('style', [['tint', 'Tint'], ['outline', 'Outline'], ['filled', 'Filled'], ['plain', 'Plain']], () => s.style, (v) => { s.style = v })
+  seg('label', [['tone', 'Colour'], ['ink', 'Ink']], () => s.label, (v) => { s.label = v })
+  seg('glyph', [['outline', 'Ring'], ['filled', 'Disc']], () => s.glyph, (v) => { s.glyph = v })
+  seg('gradient', [['off', 'Off'], ['on', 'On']], () => s.gradient, (v) => { s.gradient = v })
+  const af = document.getElementById('angleField'), an = document.getElementById('angle')
+  af.style.display = s.gradient === 'on' && s.style !== 'plain' ? '' : 'none'
+  an.value = s.angle; document.getElementById('angle-out').textContent = s.angle + '°'
+  an.oninput = () => { s.angle = +an.value; render() }
+  const bf = document.getElementById('borderField'), b = document.getElementById('border')
+  bf.style.display = s.style === 'filled' || s.style === 'plain' ? 'none' : ''
+  bf.querySelector('label').textContent = s.style === 'outline' ? 'Border' : 'Edge'
+  b.value = s.border; document.getElementById('border-out').textContent = s.border + '%'
+  b.oninput = () => { s.border = +b.value; render() }
+  const box = document.getElementById('sliders'); box.innerHTML = ''
+  for (const scheme of ['light', 'dark']) {
+    const h = document.createElement('h3'); h.textContent = scheme; box.appendChild(h)
+    for (const [key, name] of SL) {
+      const grad = s.gradient === 'on'
+      if ((key === 'bg' || key === 'bg2') && s.style !== 'tint') continue
+      if (key === 'bg2' && !grad) continue
+      if (key === 'fg2' && (!grad || s.style === 'tint' || s.style === 'plain')) continue
+      CH.forEach(([ch, min, max, step], i) => {
+        const f = document.createElement('div'); f.className = 'field'
+        const val = s[scheme][key][i]
+        f.innerHTML = `<label>${name} ${ch}</label><input type="range" min="${min}" max="${max}" step="${step}" value="${val}"><output>${val}</output>`
+        const inp = f.querySelector('input'), out = f.querySelector('output')
+        inp.oninput = () => { s[scheme][key][i] = +inp.value; out.textContent = inp.value; render() }
+        box.appendChild(f)
+      })
+    }
+    const c = document.createElement('div'); c.className = 'contrast'
+    const onPage = contrast(s[scheme].fg, PAGE_BG[scheme])
+    const onTint = contrast(s[scheme].fg, s[scheme].bg)
+    const fmt = (r) => `<b class="${r < 4.5 ? 'bad' : ''}">${r.toFixed(2)}:1</b>`
+    c.innerHTML = `colour on page ${fmt(onPage)}${s.style === 'tint' ? ` · on tint ${fmt(onTint)}` : ''}${s.style === 'filled' ? ` · page on colour ${fmt(contrast(PAGE_BG[scheme], s[scheme].fg))}` : ''} · AA needs 4.5`
+    box.appendChild(c)
+  }
+  for (const sc of ['light', 'dark']) {
+    const g = s.gradient === 'on'
+    const fill = s.style === 'filled' ? (g ? `linear-gradient(${s.angle}deg, ${ok(s[sc].fg)}, ${ok(s[sc].fg2)})` : ok(s[sc].fg))
+      : s.style === 'tint' ? (g ? `linear-gradient(${s.angle}deg, ${ok(s[sc].bg)}, ${ok(s[sc].bg2)})` : ok(s[sc].bg))
+      : ok(PAGE_BG[sc])
+    const edge = s.style === 'outline' ? `box-shadow: inset 0 0 0 1px ${ok(s[sc].fg)};` : ''
+    document.getElementById('sw-' + sc).style.cssText = `color-scheme:${sc}; color:${s.style === 'filled' ? (sc === 'light' ? 'white' : 'black') : ok(s[sc].fg)}; background:${fill}; ${edge}`
+  }
+  document.getElementById('out').value = exportCSS()
+}
+
+// ---- contrast (oklch → sRGB luminance) ----
+function oklchToRgb([L, C, H]) {
+  const a = C * Math.cos((H * Math.PI) / 180), b = C * Math.sin((H * Math.PI) / 180)
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b, m_ = L - 0.1055613458 * a - 0.0638541728 * b, s_ = L - 0.0894841775 * a - 1.291485548 * b
+  const l = l_ ** 3, m = m_ ** 3, s = s_ ** 3
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ].map((v) => Math.min(1, Math.max(0, v)))
+}
+function luminance(c) { const [r, g, b] = oklchToRgb(c); return 0.2126 * r + 0.7152 * g + 0.0722 * b }
+function contrast(a, b) { const la = luminance(a), lb = luminance(b); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05) }
+
+// ---- export ----
+function exportCSS() {
+  const changed = STATES.filter((st) => JSON.stringify(settings[st]) !== JSON.stringify(defaults(st)))
+  const list = changed.length ? changed : CHANGE_STATES
+  let css = `/* Pill tuner export, ${new Date().toISOString().slice(0, 16)}. States: ${list.join(', ')} */\n`
+  for (const st of list) {
+    const s = settings[st]
+    const g = s.gradient === 'on' ? `, gradient ${s.angle}deg to colour2 light-dark(${ok(s.light.fg2)}, ${ok(s.dark.fg2)}) / tint2 light-dark(${ok(s.light.bg2)}, ${ok(s.dark.bg2)})` : ''
+    css += `.pill[data-state='${st}'] { color: light-dark(${ok(s.light.fg)}, ${ok(s.dark.fg)}); background: light-dark(${ok(s.light.bg)}, ${ok(s.dark.bg)}); } /* style: ${s.style}, label: ${s.label}, glyph: ${s.glyph}, border: ${s.border}%${g} */\n`
+  }
+  return css
+}
+document.getElementById('copy').onclick = () => navigator.clipboard?.writeText(exportCSS())
+document.getElementById('copyJSON').onclick = () => navigator.clipboard?.writeText(JSON.stringify(Object.fromEntries(STATES.filter((st) => JSON.stringify(settings[st]) !== JSON.stringify(defaults(st))).map((st) => [st, settings[st]])), null, 2))
+document.getElementById('copyLD').onclick = () => { settings[current].dark = JSON.parse(JSON.stringify(settings[current].light)); render() }
+document.getElementById('copyDL').onclick = () => { settings[current].light = JSON.parse(JSON.stringify(settings[current].dark)); render() }
+document.getElementById('resetOne').onclick = () => { settings[current] = defaults(current); render() }
+document.getElementById('resetAll').onclick = () => { for (const st of STATES) settings[st] = defaults(st); render() }
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+  const i = CHANGE_STATES.indexOf(current)
+  if (e.key === 'ArrowRight' && i >= 0) { current = CHANGE_STATES[(i + 1) % CHANGE_STATES.length]; render() }
+  if (e.key === 'ArrowLeft' && i >= 0) { current = CHANGE_STATES[(i + CHANGE_STATES.length - 1) % CHANGE_STATES.length]; render() }
+})
+build()
+</script>
+</body>
+</html>
