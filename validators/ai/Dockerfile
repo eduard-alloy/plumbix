@@ -1,4 +1,7 @@
-# Plumbix AI validator. Needs ANTHROPIC_API_KEY as a step secret.
+# Plumbix AI validator. With the default anthropic provider it needs
+# ANTHROPIC_API_KEY as a step secret; with PLUMBIX_AI_PROVIDER=openai it
+# needs PLUMBIX_AI_BASE_URL, PLUMBIX_AI_MODEL and PLUMBIX_AI_API_KEY (or
+# OPENAI_API_KEY) and talks to any OpenAI-compatible endpoint.
 # Build from the repository root:
 #   docker build -f validators/ai/Dockerfile -t plumbix-ai-validator .
 FROM golang:1.27-alpine AS build

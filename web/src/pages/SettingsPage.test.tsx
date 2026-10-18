@@ -102,6 +102,24 @@ describe('Settings page', () => {
     expect(section.textContent).toContain('just now')
   })
 
+  it('lets the operator point the AI validator at an OpenAI-compatible endpoint', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Settings' })
+    const provider = screen.getByLabelText('Provider') as HTMLSelectElement
+    expect(provider.value).toBe('anthropic')
+    expect(screen.queryByLabelText('Base URL')).toBeNull()
+    fireEvent.change(provider, { target: { value: 'openai' } })
+    const base = screen.getByLabelText('Base URL') as HTMLInputElement
+    expect(document.body.textContent).toContain('https://generativelanguage.googleapis.com/v1beta/openai')
+    fireEvent.change(base, { target: { value: 'https://api.openai.com/v1' } })
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'gpt-5.5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save guidance' }))
+    await waitFor(() => expect(db.settings.ai_provider).toBe('openai'))
+    expect(db.settings.ai_base_url).toBe('https://api.openai.com/v1')
+    expect(db.settings.ai_model).toBe('gpt-5.5')
+    expect(row('OPENAI_API_KEY').textContent).toContain('openai provider')
+  })
+
   it('shows a server refusal inline', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'Settings' })

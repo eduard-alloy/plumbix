@@ -79,6 +79,9 @@ type Settings interface {
 	AIModel(ctx context.Context) (string, error)
 	// AITools is the tool policy external reviewers follow: read-only or full.
 	AITools(ctx context.Context) (string, error)
+	// AIProvider and AIBaseURL select what the container AI validator asks.
+	AIProvider(ctx context.Context) (string, error)
+	AIBaseURL(ctx context.Context) (string, error)
 }
 
 // Engine runs validations in the background.
@@ -578,8 +581,26 @@ func (e *Engine) setupValidator(r run.Run, p prepared, work string, st pipeline.
 		if err != nil {
 			return scheduler.StepSetup{}, fmt.Errorf("read model setting: %w", err)
 		}
+		provider, err := e.cfg.Settings.AIProvider(context.Background())
+		if err != nil {
+			return scheduler.StepSetup{}, fmt.Errorf("read provider setting: %w", err)
+		}
+		baseURL, err := e.cfg.Settings.AIBaseURL(context.Background())
+		if err != nil {
+			return scheduler.StepSetup{}, fmt.Errorf("read base URL setting: %w", err)
+		}
+		setup.Env = map[string]string{}
 		if model != "" {
-			setup.Env = map[string]string{"PLUMBIX_AI_MODEL": model}
+			setup.Env["PLUMBIX_AI_MODEL"] = model
+		}
+		if provider != "" && provider != "anthropic" {
+			setup.Env["PLUMBIX_AI_PROVIDER"] = provider
+		}
+		if baseURL != "" {
+			setup.Env["PLUMBIX_AI_BASE_URL"] = baseURL
+		}
+		if len(setup.Env) == 0 {
+			setup.Env = nil
 		}
 	}
 	if err := validation.PrepareInputs(in, input, evidence); err != nil {

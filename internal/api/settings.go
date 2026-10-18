@@ -53,10 +53,12 @@ type secretStatus struct {
 }
 
 type settingsView struct {
-	AIModel  string         `json:"ai_model"`
-	AITools  string         `json:"ai_tools"`
-	Guidance string         `json:"guidance"`
-	Secrets  []secretStatus `json:"secrets"`
+	AIModel    string         `json:"ai_model"`
+	AIProvider string         `json:"ai_provider"`
+	AIBaseURL  string         `json:"ai_base_url"`
+	AITools    string         `json:"ai_tools"`
+	Guidance   string         `json:"guidance"`
+	Secrets    []secretStatus `json:"secrets"`
 }
 
 func (h *settingsHandlers) view(ctx context.Context) (settingsView, error) {
@@ -72,7 +74,15 @@ func (h *settingsHandlers) view(ctx context.Context) (settingsView, error) {
 	if err != nil {
 		return settingsView{}, err
 	}
-	v := settingsView{AIModel: model, AITools: tools, Guidance: g.Global, Secrets: []secretStatus{}}
+	provider, err := h.settings.AIProvider(ctx)
+	if err != nil {
+		return settingsView{}, err
+	}
+	baseURL, err := h.settings.AIBaseURL(ctx)
+	if err != nil {
+		return settingsView{}, err
+	}
+	v := settingsView{AIModel: model, AIProvider: provider, AIBaseURL: baseURL, AITools: tools, Guidance: g.Global, Secrets: []secretStatus{}}
 	listed := map[string]bool{}
 	add := func(key, purpose, hostKind string, known bool) error {
 		_, set := h.secrets.Get(key)
@@ -121,15 +131,29 @@ func (h *settingsHandlers) get(w http.ResponseWriter, r *http.Request) {
 
 func (h *settingsHandlers) update(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		AIModel  *string `json:"ai_model"`
-		AITools  *string `json:"ai_tools"`
-		Guidance *string `json:"guidance"`
+		AIModel    *string `json:"ai_model"`
+		AIProvider *string `json:"ai_provider"`
+		AIBaseURL  *string `json:"ai_base_url"`
+		AITools    *string `json:"ai_tools"`
+		Guidance   *string `json:"guidance"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
 	if body.AIModel != nil {
 		if err := h.settings.SetAIModel(r.Context(), *body.AIModel); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
+	}
+	if body.AIProvider != nil {
+		if err := h.settings.SetAIProvider(r.Context(), *body.AIProvider); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
+	}
+	if body.AIBaseURL != nil {
+		if err := h.settings.SetAIBaseURL(r.Context(), *body.AIBaseURL); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}

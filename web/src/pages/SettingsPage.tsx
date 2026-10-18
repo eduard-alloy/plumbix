@@ -115,6 +115,8 @@ export function SettingsPage() {
   const now = useNow()
   const [view, setView] = useState<SettingsView | null>(null)
   const [model, setModel] = useState('')
+  const [provider, setProvider] = useState<'anthropic' | 'openai'>('anthropic')
+  const [baseURL, setBaseURL] = useState('')
   const [tools, setTools] = useState<'read-only' | 'full'>('read-only')
   const [guidance, setGuidance] = useState('')
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null)
@@ -126,6 +128,8 @@ export function SettingsPage() {
     const v = await api.settings()
     setView(v)
     setModel(v.ai_model)
+    setProvider(v.ai_provider)
+    setBaseURL(v.ai_base_url)
     setTools(v.ai_tools)
     setGuidance(v.guidance)
   }, [])
@@ -138,9 +142,11 @@ export function SettingsPage() {
     e.preventDefault()
     setStatus(null)
     try {
-      const v = await api.updateSettings({ ai_model: model, ai_tools: tools, guidance })
+      const v = await api.updateSettings({ ai_model: model, ai_provider: provider, ai_base_url: provider === 'openai' ? baseURL : '', ai_tools: tools, guidance })
       setView(v)
       setModel(v.ai_model)
+      setProvider(v.ai_provider)
+      setBaseURL(v.ai_base_url)
       setTools(v.ai_tools)
       setGuidance(v.guidance)
       setStatus({ text: 'Saved', error: false })
@@ -186,6 +192,23 @@ export function SettingsPage() {
         <p className="lead">Guidance is handed to every validator as instructions from you, kept apart from repository content. The model applies to both kinds of AI review: the container validator reads it as PLUMBIX_AI_MODEL, and external reviewers (plumbix review --watch) pass it to Claude Code as --model. Leave it empty for each one's default: claude-opus-5-5 in the container, and whatever Claude Code defaults to on the reviewer's machine, which may be a larger model than this task needs.</p>
         {aiKey && <SecretRow secret={aiKey} onChanged={reload} />}
         <form onSubmit={(e) => void saveGuidance(e)}>
+          <div className="field">
+            <label htmlFor="ai-provider">Provider</label>
+            <select id="ai-provider" value={provider} onChange={(e) => setProvider(e.target.value as 'anthropic' | 'openai')} disabled={!view}>
+              <option value="anthropic">Anthropic (Claude, ANTHROPIC_API_KEY)</option>
+              <option value="openai">OpenAI-compatible endpoint (OPENAI_API_KEY)</option>
+            </select>
+            <p className="hint">What the container AI validator asks. External reviewers use Claude Code either way.</p>
+          </div>
+          {provider === 'openai' && (
+            <div className="field">
+              <label htmlFor="ai-base-url">Base URL</label>
+              <input id="ai-base-url" value={baseURL} onChange={(e) => setBaseURL(e.target.value)} placeholder="https://api.openai.com/v1" disabled={!view} />
+              <p className="hint">
+                The chat-completions base of the vendor whose key is in OPENAI_API_KEY. OpenAI https://api.openai.com/v1 · Gemini https://generativelanguage.googleapis.com/v1beta/openai · xAI https://api.x.ai/v1 · Moonshot https://api.moonshot.ai/v1 · DeepSeek https://api.deepseek.com · Groq https://api.groq.com/openai/v1 · Ollama http://localhost:11434/v1. The model below must be one that endpoint serves.
+              </p>
+            </div>
+          )}
           <div className="field">
             <label htmlFor="ai-model">Model</label>
             <input id="ai-model" value={model} onChange={(e) => setModel(e.target.value)} placeholder="claude-sonnet-5-5" disabled={!view} />

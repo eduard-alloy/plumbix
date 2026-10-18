@@ -6,6 +6,7 @@ package settings
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -21,6 +22,8 @@ const MaxGuidanceChars = 4000
 const (
 	keyModel      = "ai.model"
 	keyTools      = "ai.tools"
+	keyProvider   = "ai.provider"
+	keyBaseURL    = "ai.base_url"
 	keyGuidance   = "guidance.global"
 	prefixRepo    = "guidance.repo."
 	prefixSecret  = "secret."
@@ -48,7 +51,8 @@ func KnownSecrets() []Secret {
 		{Key: "PLUMBIX_GITHUB_TOKEN", Purpose: "Default token for every GitHub repository: contents read and write; fetches, pushes merges, checks expiry. A fine-grained token covers only the repositories chosen for it; a repository can carry its own token on the Repositories page", Host: "github"},
 		{Key: "PLUMBIX_AZURE_DEVOPS_TOKEN", Purpose: "Default personal access token for every Azure DevOps repository, code read and write; a repository can carry its own token on the Repositories page", Host: "azuredevops"},
 		{Key: "PLUMBIX_AZURE_DEVOPS_TOKEN_EXPIRES", Purpose: "Expiry date of the Azure DevOps token, YYYY-MM-DD, for the warning a week before"},
-		{Key: "ANTHROPIC_API_KEY", Purpose: "Used by the AI validator step through the pipeline's secrets list"},
+		{Key: "ANTHROPIC_API_KEY", Purpose: "Used by the AI validator step through the pipeline's secrets list, with the anthropic provider"},
+		{Key: "OPENAI_API_KEY", Purpose: "Used by the AI validator step with the openai provider: the key of whichever OpenAI-compatible vendor the base URL points at (OpenAI, Gemini, xAI, Moonshot, DeepSeek, Groq, a local server)"},
 	}
 }
 
@@ -97,6 +101,56 @@ func (s *Service) setText(ctx context.Context, key, text string) error {
 		return s.db.DeleteSetting(ctx, key)
 	}
 	return s.db.SetSetting(ctx, key, text, s.now().UTC())
+}
+
+// Providers the AI validator can ask (WU-025).
+const (
+	ProviderAnthropic = "anthropic"
+	ProviderOpenAI    = "openai"
+)
+
+// AIProvider returns the provider the AI validator asks: anthropic unless
+// the operator chose openai.
+func (s *Service) AIProvider(ctx context.Context) (string, error) {
+	v, _, _, err := s.db.GetSetting(ctx, keyProvider)
+	if err != nil || v == "" {
+		return ProviderAnthropic, err
+	}
+	return v, nil
+}
+
+// SetAIProvider stores the provider: anthropic or openai.
+func (s *Service) SetAIProvider(ctx context.Context, provider string) error {
+	switch strings.TrimSpace(provider) {
+	case ProviderAnthropic, "":
+		return s.db.DeleteSetting(ctx, keyProvider)
+	case ProviderOpenAI:
+		return s.db.SetSetting(ctx, keyProvider, ProviderOpenAI, s.now().UTC())
+	}
+	return fmt.Errorf("provider %q: must be %s or %s", provider, ProviderAnthropic, ProviderOpenAI)
+}
+
+// AIBaseURL returns the openai provider's base URL, or "".
+func (s *Service) AIBaseURL(ctx context.Context) (string, error) {
+	v, _, _, err := s.db.GetSetting(ctx, keyBaseURL)
+	return v, err
+}
+
+// SetAIBaseURL stores the base URL of an OpenAI-compatible endpoint; empty
+// clears it. http is allowed, for local servers; the URL must have a host.
+func (s *Service) SetAIBaseURL(ctx context.Context, raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return s.db.DeleteSetting(ctx, keyBaseURL)
+	}
+	if len(raw) > 200 {
+		return fmt.Errorf("base URL is %d characters; the limit is 200", len(raw))
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || strings.ContainsAny(raw, " \t\"'") {
+		return fmt.Errorf("base URL %q: must be an http(s) URL such as https://api.openai.com/v1", raw)
+	}
+	return s.db.SetSetting(ctx, keyBaseURL, raw, s.now().UTC())
 }
 
 // AITools returns the tool policy for external reviewers and the Claude Code

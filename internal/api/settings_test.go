@@ -89,6 +89,20 @@ func TestSettingsEndpoints(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("bad model: %d", rec.Code)
 	}
+	rec = a.do(http.MethodPut, "/api/v1/settings", `{"ai_provider": "openai", "ai_base_url": "https://api.x.ai/v1"}`)
+	o.check("Settings", rec)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ai_provider":"openai"`) || !strings.Contains(rec.Body.String(), `"ai_base_url":"https://api.x.ai/v1"`) {
+		t.Errorf("provider settings: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := a.do(http.MethodPut, "/api/v1/settings", `{"ai_provider": "bedrock"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad provider: %d", rec.Code)
+	}
+	if rec := a.do(http.MethodPut, "/api/v1/settings", `{"ai_base_url": "api.x.ai/v1"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad base URL: %d", rec.Code)
+	}
+	if rec := a.do(http.MethodPut, "/api/v1/settings", `{"ai_provider": "anthropic", "ai_base_url": ""}`); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ai_provider":"anthropic"`) || !strings.Contains(rec.Body.String(), `"ai_base_url":""`) {
+		t.Errorf("reset provider: %d %s", rec.Code, rec.Body.String())
+	}
 	if rec := a.do(http.MethodPut, "/api/v1/settings", `{"unknown": 1}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("unknown field: %d", rec.Code)
 	}

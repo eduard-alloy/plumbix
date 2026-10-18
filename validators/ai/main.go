@@ -2,10 +2,14 @@
 // /plumbix/in and the workspace, asks Claude to judge the change against its
 // intent and acceptance criteria, and writes /plumbix/out/verdict.json.
 //
-// Environment: ANTHROPIC_API_KEY (required, pass it as a step secret),
-// PLUMBIX_AI_MODEL (default claude-opus-5-5), PLUMBIX_AI_EFFORT (low, medium,
-// high, xhigh or max; default high). PLUMBIX_IN, PLUMBIX_OUT and
-// PLUMBIX_WORKSPACE override the container paths.
+// Environment: PLUMBIX_AI_PROVIDER (anthropic, the default, or openai for
+// any endpoint speaking the OpenAI chat format). For anthropic:
+// ANTHROPIC_API_KEY (a step secret), PLUMBIX_AI_MODEL (default
+// claude-opus-5-5), PLUMBIX_AI_EFFORT (low, medium, high, xhigh or max;
+// default high). For openai: PLUMBIX_AI_BASE_URL (such as
+// https://api.openai.com/v1), PLUMBIX_AI_MODEL (required), and the key in
+// PLUMBIX_AI_API_KEY or OPENAI_API_KEY (a step secret). PLUMBIX_IN,
+// PLUMBIX_OUT and PLUMBIX_WORKSPACE override the container paths.
 package main
 
 import (
@@ -38,9 +42,18 @@ func run(getenv func(string) string, stderr io.Writer, opts ...option.RequestOpt
 		return def
 	}
 	cfg := aivalidator.Config{
-		APIKey: getenv("ANTHROPIC_API_KEY"),
-		Model:  or("PLUMBIX_AI_MODEL", aivalidator.DefaultModel),
-		Effort: or("PLUMBIX_AI_EFFORT", aivalidator.DefaultEffort),
+		Provider: or("PLUMBIX_AI_PROVIDER", aivalidator.ProviderAnthropic),
+		BaseURL:  getenv("PLUMBIX_AI_BASE_URL"),
+		APIKey:   getenv("ANTHROPIC_API_KEY"),
+		Model:    or("PLUMBIX_AI_MODEL", aivalidator.DefaultModel),
+		Effort:   or("PLUMBIX_AI_EFFORT", aivalidator.DefaultEffort),
+	}
+	if cfg.Provider == aivalidator.ProviderOpenAI {
+		cfg.APIKey = or("PLUMBIX_AI_API_KEY", getenv("OPENAI_API_KEY"))
+		if getenv("PLUMBIX_AI_MODEL") == "" {
+			fmt.Fprintln(stderr, "ai validator: PLUMBIX_AI_MODEL is required for the openai provider: the model name the endpoint serves")
+			return 1
+		}
 	}
 	if !efforts[cfg.Effort] {
 		fmt.Fprintf(stderr, "ai validator: PLUMBIX_AI_EFFORT %q must be low, medium, high, xhigh or max\n", cfg.Effort)

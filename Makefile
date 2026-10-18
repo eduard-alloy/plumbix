@@ -36,7 +36,9 @@ images:
 	docker build -f validators/reference/Dockerfile -t plumbix-reference-validator:dev .
 	docker build -f validators/ai/Dockerfile -t plumbix-ai-validator:dev .
 
-# Tests that call the real Claude API. They cost a few cents and need
-# ANTHROPIC_API_KEY in the environment or in .env.
+# Tests that call real model APIs. They cost a few cents and need
+# ANTHROPIC_API_KEY (Claude) and, for the openai provider, OPENAI_API_KEY
+# plus optionally PLUMBIX_AI_BASE_URL and PLUMBIX_AI_MODEL, in the
+# environment or in .env; each part skips without its key.
 live:
 	go test -tags live -count=1 -timeout 20m -v ./validators/ai/ -run Live

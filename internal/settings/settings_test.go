@@ -123,3 +123,45 @@ func TestAIToolsDefaultsToReadOnlyAndAcceptsFull(t *testing.T) {
 		t.Errorf("tools = %q, want read-only", v)
 	}
 }
+
+func TestAIProviderAndBaseURL(t *testing.T) {
+	s := newService(t)
+	if p, err := s.AIProvider(ctx); err != nil || p != "anthropic" {
+		t.Fatalf("default provider = %q %v", p, err)
+	}
+	if err := s.SetAIProvider(ctx, "openai"); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := s.AIProvider(ctx); p != "openai" {
+		t.Errorf("provider = %q", p)
+	}
+	if err := s.SetAIProvider(ctx, "bedrock"); err == nil {
+		t.Error("an unknown provider was accepted")
+	}
+	if u, _ := s.AIBaseURL(ctx); u != "" {
+		t.Errorf("default base URL = %q", u)
+	}
+	if err := s.SetAIBaseURL(ctx, "https://api.openai.com/v1"); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := s.AIBaseURL(ctx); u != "https://api.openai.com/v1" {
+		t.Errorf("base URL = %q", u)
+	}
+	for _, bad := range []string{"api.openai.com/v1", "ftp://x", "https://", "https://a b"} {
+		if err := s.SetAIBaseURL(ctx, bad); err == nil {
+			t.Errorf("base URL %q was accepted", bad)
+		}
+	}
+	if err := s.SetAIBaseURL(ctx, "http://localhost:11434/v1"); err != nil {
+		t.Errorf("a local http endpoint was refused: %v", err)
+	}
+	if err := s.SetAIBaseURL(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := s.AIBaseURL(ctx); u != "" {
+		t.Errorf("cleared base URL = %q", u)
+	}
+	if err := s.SetAIProvider(ctx, "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+}

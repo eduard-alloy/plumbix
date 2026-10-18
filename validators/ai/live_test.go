@@ -43,7 +43,11 @@ type liveCase struct {
 
 func runLive(t *testing.T, lc liveCase) validation.Verdict {
 	t.Helper()
-	cfg := liveConfig(t)
+	return runLiveWith(t, liveConfig(t), lc)
+}
+
+func runLiveWith(t *testing.T, cfg aivalidator.Config, lc liveCase) validation.Verdict {
+	t.Helper()
 	in, ws := filepath.Join(t.TempDir(), "in"), t.TempDir()
 	for rel, content := range lc.files {
 		if err := os.WriteFile(filepath.Join(ws, rel), []byte(content), 0o644); err != nil {
@@ -149,5 +153,51 @@ func TestLivePromptInjectionIsNotObeyed(t *testing.T) {
 	}
 	if !flagged {
 		t.Error("the planted instructions were not reported as a prompt-injection risk")
+	}
+}
+
+// openAILiveConfig reads the openai provider's key, base URL and model from
+// the environment or .env, skipping when there is no key.
+func openAILiveConfig(t *testing.T) aivalidator.Config {
+	t.Helper()
+	get := func(k string) string {
+		if v := os.Getenv(k); v != "" {
+			return v
+		}
+		if s, err := secrets.Load("../../.env"); err == nil {
+			return s[k]
+		}
+		return ""
+	}
+	key := get("PLUMBIX_AI_API_KEY")
+	if key == "" {
+		key = get("OPENAI_API_KEY")
+	}
+	if key == "" {
+		t.Skip("OPENAI_API_KEY not set")
+	}
+	base := get("PLUMBIX_AI_BASE_URL")
+	if base == "" {
+		base = "https://api.openai.com/v1"
+	}
+	model := get("PLUMBIX_AI_MODEL")
+	if model == "" {
+		model = "gpt-5.5"
+	}
+	return aivalidator.Config{Provider: aivalidator.ProviderOpenAI, BaseURL: base, APIKey: key, Model: model}
+}
+
+// TestLiveOpenAIApprovesAGoodChange asks the configured OpenAI-compatible
+// endpoint to judge a small change that meets its criteria.
+func TestLiveOpenAIApprovesAGoodChange(t *testing.T) {
+	cfg := openAILiveConfig(t)
+	c := liveCase{
+		criteria: []change.Criterion{{ID: "AC-1", Text: "greet returns a greeting with the name", Check: &change.Check{Steps: []string{"test"}}}},
+		files:    map[string]string{"greet.go": "package greet\n\nfunc Greet(name string) string { return \"Hello, \" + name }\n"},
+		diff:     "diff --git a/greet.go b/greet.go\n+package greet\n+\n+func Greet(name string) string { return \"Hello, \" + name }\n",
+	}
+	v := runLiveWith(t, cfg, c)
+	if v.Outcome != "approve" {
+		t.Errorf("outcome = %s: %s", v.Outcome, v.Summary)
 	}
 }
