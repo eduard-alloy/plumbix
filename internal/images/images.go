@@ -85,6 +85,9 @@ type Service struct {
 	version string // the running server's version, compared with the label
 	dir     string // <data_dir>/images: builds/ for logs, own/ for own images
 	builds  *builds
+	// beforePack, when set by a test, runs just before an own image's
+	// context is packed, to interleave a save with a build.
+	beforePack func()
 }
 
 // New returns a Service over docker, keeping build logs and own images under dir.

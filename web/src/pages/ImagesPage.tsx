@@ -55,12 +55,17 @@ FROM alpine:3.20
 RUN apk add --no-cache git
 `
 
+/** withFinalNewline is how the server stores a Dockerfile, so edits compare like for like. */
+const withFinalNewline = (s: string) => (s.endsWith('\n') ? s : s + '\n')
+
 function OwnEditor({ im, onChanged }: { im: ImageInfo; onChanged: () => Promise<void> }) {
   const [text, setText] = useState(im.dockerfile ?? '')
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null)
   const [confirm, setConfirm] = useState(false)
   const name = im.ref.replace(/:latest$/, '')
-  const dirty = text !== (im.dockerfile ?? '')
+  // The stored file is what the editor shows after a save or a reload.
+  useEffect(() => setText(im.dockerfile ?? ''), [im.dockerfile])
+  const dirty = withFinalNewline(text) !== (im.dockerfile ?? '')
   async function save() {
     setStatus(null)
     try {

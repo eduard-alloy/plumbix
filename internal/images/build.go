@@ -76,9 +76,24 @@ func (s *Service) resolve(name string) (buildable, error) {
 		}
 		return buildable{}, err
 	}
-	return buildable{ref: OwnRef(own.Name), dockerfile: "Dockerfile", source: "the Dockerfile written on the Images page",
-		labels:  map[string]string{LabelVersion: s.version, LabelOwn: own.Name, LabelDockerfile: dockerfileHash(own.Dockerfile)},
-		context: func() (*bytes.Reader, error) { return s.ownContextTar(own.Name) }}, nil
+	// The Dockerfile is read again when the context is packed, inside the
+	// build, and the label is taken from that read: a save between the
+	// request and the build cannot leave an image labelled with a hash of
+	// a file it was not built from.
+	b := buildable{ref: OwnRef(own.Name), dockerfile: "Dockerfile", source: "the Dockerfile written on the Images page",
+		labels: map[string]string{LabelVersion: s.version, LabelOwn: own.Name}}
+	b.context = func() (*bytes.Reader, error) {
+		if s.beforePack != nil {
+			s.beforePack()
+		}
+		cur, err := s.GetOwn(own.Name)
+		if err != nil {
+			return nil, fmt.Errorf("the Dockerfile of %s is gone: %w", own.Name, err)
+		}
+		b.labels[LabelDockerfile] = dockerfileHash(cur.Dockerfile)
+		return s.ownContextTar(own.Name)
+	}
+	return b, nil
 }
 
 // Build starts building a shipped or own image and returns at once; the

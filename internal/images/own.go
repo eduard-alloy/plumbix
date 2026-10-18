@@ -1,7 +1,6 @@
 package images
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -135,10 +134,12 @@ func (s *Service) DeleteOwn(name string) error {
 	return os.RemoveAll(s.ownDir(name))
 }
 
-// hasFrom reports whether a Dockerfile has a FROM instruction outside comments.
+// hasFrom reports whether a Dockerfile has a FROM instruction outside
+// comments; the instruction and its image may be separated by any blank.
 func hasFrom(text string) bool {
 	for _, line := range strings.Split(text, "\n") {
-		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(line)), "FROM ") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && strings.EqualFold(fields[0], "FROM") {
 			return true
 		}
 	}
@@ -168,5 +169,3 @@ func canonical(ref string) string {
 	}
 	return ref + ":" + OwnTag
 }
-
-var _ = context.Background

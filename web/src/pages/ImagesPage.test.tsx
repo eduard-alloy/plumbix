@@ -86,6 +86,11 @@ describe('Images page', () => {
       fireEvent.click(within(card).getByRole('button', { name: 'Save Dockerfile' }))
       await waitFor(() => expect(db.images.find((i) => i.ref === 'lint-tools:latest')?.dockerfile).toContain('shfmt'))
       await screen.findByText('Saved. Build to apply it.')
+      // Saved without a final newline, the editor shows the stored file and is not dirty again.
+      fireEvent.change(within(screen.getByLabelText('Image lint-tools:latest')).getByLabelText('Dockerfile for lint-tools'), { target: { value: 'FROM alpine:3.20\nRUN apk add --no-cache shellcheck shfmt git' } })
+      fireEvent.click(within(screen.getByLabelText('Image lint-tools:latest')).getByRole('button', { name: 'Save Dockerfile' }))
+      await waitFor(() => expect((within(screen.getByLabelText('Image lint-tools:latest')).getByLabelText('Dockerfile for lint-tools') as HTMLTextAreaElement).value).toBe('FROM alpine:3.20\nRUN apk add --no-cache shellcheck shfmt git\n'))
+      expect(within(screen.getByLabelText('Image lint-tools:latest')).getByRole('button', { name: 'Save Dockerfile' }).hasAttribute('disabled')).toBe(true)
       fireEvent.click(within(screen.getByLabelText('Image lint-tools:latest')).getByRole('button', { name: 'Build' }))
       await waitFor(() => expect(db.imageBuilds.find((b) => b.image === 'lint-tools:latest')).toBeTruthy())
       const b = db.imageBuilds.find((x) => x.image === 'lint-tools:latest')!
