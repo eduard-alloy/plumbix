@@ -12,6 +12,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/engine"
 	"github.com/eduard-alloy/plumbix/internal/host"
+	"github.com/eduard-alloy/plumbix/internal/images"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/secrets"
 	"github.com/eduard-alloy/plumbix/internal/settings"
@@ -38,6 +39,8 @@ type Deps struct {
 	Settings *settings.Service
 	Secrets  *secrets.Manager
 	Hosts    host.Source
+	// Images enables the Images page's routes (WU-032); needs Engine and Changes.
+	Images *images.Service
 }
 
 // NewHandler returns the HTTP handler for the public API.
@@ -57,6 +60,9 @@ func NewHandler(d Deps) http.Handler {
 			registerRunRoutes(protected, &runHandlers{changeHandlers: ch, engine: d.Engine, runs: d.Runs})
 			registerPipelineRoutes(protected, &pipelineHandlers{svc: d.Changes, engine: d.Engine, runs: d.Runs, log: logger})
 			registerReviewRoutes(protected, &reviewHandlers{changeHandlers: ch})
+			if d.Images != nil {
+				registerImageRoutes(protected, &imageHandlers{images: d.Images, svc: d.Changes, engine: d.Engine, log: logger})
+			}
 		}
 	}
 	if d.Alerts != nil {

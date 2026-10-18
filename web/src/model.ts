@@ -356,3 +356,36 @@ export interface PipelineFile {
   problems: PipelineProblem[]
   last_run?: { run_id: string; head: string; steps: Record<string, { status: string; duration_ms: number }> }
 }
+
+/** ImageInfo is one container image a pipeline runs, as the server knows it (WU-032). */
+export interface ImageInfo {
+  /** The image as pipelines name it, such as golang:1.27 or plumbix-ai-validator:dev. */
+  ref: string
+  present: boolean
+  created?: string
+  size_bytes?: number
+  digest?: string
+  /** One of the images Plumbix ships and can rebuild. */
+  shipped: boolean
+  purpose?: string
+  /** For a shipped image, the server version that built it. */
+  version?: string
+  status: 'missing' | 'present' | 'current' | 'stale' | 'unlabelled'
+  used_by: { repo_id: string; repo: string; step: string; validator: boolean }[]
+}
+
+export interface ImagesView {
+  images: ImageInfo[]
+  /** The running server's version, which shipped images are compared with. */
+  version: string
+}
+
+export interface ImageBuild {
+  id: string
+  image: string
+  status: 'running' | 'succeeded' | 'failed'
+  started_at: string
+  finished_at?: string
+  error?: string
+  log: string
+}

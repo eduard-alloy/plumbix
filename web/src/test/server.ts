@@ -1,7 +1,7 @@
 // A fake server for page tests: fetch answers from fixtures, EventSource is
 // a hand-driven stub. Tests mutate `db` and call `emit` to simulate change.
 import { vi } from 'vitest'
-import type { Alert, Change, Diff, PipelineFile, PlumbixEvent, Repo, Run, Reviewer, ReviewerProfile, ReviewerInput, SettingsView, SecretStatus } from '../model'
+import type { Alert, Change, Diff, PipelineFile, PlumbixEvent, Repo, Run, Reviewer, ReviewerProfile, ReviewerInput, SettingsView, SecretStatus, ImageInfo, ImageBuild } from '../model'
 import * as fx from './fixtures'
 
 export interface FakeDB {
@@ -22,6 +22,9 @@ export interface FakeDB {
   secretUpdated: Record<string, string>
   secretChecks: Record<string, { ok: boolean; expires_at?: string; message: string }>
   settings: { guidance: string; defaults: { api: string; external: string } }
+  /** images is what GET /images answers; imageBuilds records builds started. */
+  images: ImageInfo[]
+  imageBuilds: ImageBuild[]
   /** profiles are the reviewer profiles, as the server stores them (no key). */
   profiles: Omit<ReviewerProfile, 'key_set' | 'default' | 'family'>[]
   repoGuidance: Record<string, string>
@@ -81,6 +84,13 @@ export function freshDB(): FakeDB {
     liveLog: ['$ go test ./... -count=1'],
     secretUpdated: {},
     secretChecks: {},
+    images: [
+      { ref: 'plumbix-ai-validator:dev', present: true, created: '2026-10-16T21:20:49Z', size_bytes: 20_600_000, digest: 'sha256:1111111111111111', shipped: true, purpose: 'The AI validator run inside the pipeline.', status: 'unlabelled', used_by: [{ repo_id: 'r_ledgerapi001', repo: 'ledger-api', step: 'ai-grok', validator: true }] },
+      { ref: 'plumbix-reference-validator:dev', present: true, created: '2026-10-18T10:00:00Z', size_bytes: 12_100_000, digest: 'sha256:2222222222222222', shipped: true, purpose: 'The deterministic validator.', version: '9ffe6c6', status: 'current', used_by: [{ repo_id: 'r_plumbix00001', repo: 'plumbix', step: 'validate', validator: true }] },
+      { ref: 'golang:1.27', present: true, created: '2026-10-01T10:00:00Z', size_bytes: 820_000_000, digest: 'sha256:3333333333333333', shipped: false, status: 'present', used_by: [{ repo_id: 'r_plumbix00001', repo: 'plumbix', step: 'build', validator: false }, { repo_id: 'r_plumbix00001', repo: 'plumbix', step: 'test', validator: false }] },
+      { ref: 'node:24-alpine', present: false, shipped: false, status: 'missing', used_by: [{ repo_id: 'r_ledgerapi001', repo: 'ledger-api', step: 'test', validator: false }] },
+    ],
+    imageBuilds: [],
     settings: { guidance: '', defaults: { api: 'claude-api', external: 'claude-code' } },
     profiles: [
       { name: 'claude-api', kind: 'anthropic', base_url: '', model: '', tools: 'read-only', key_secret: 'ANTHROPIC_API_KEY', updated_at: '2026-10-18T08:00:00Z' },
@@ -171,6 +181,23 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       return new Response(null, { status: 204 })
     }
     if (path === '/api/v1/repos') return json(200, { repos: db.repos })
+    if (path === '/api/v1/images' && method === 'GET') return json(200, { images: db.images, version: '9ffe6c6' })
+    const imageBuild = path.match(/^\/api\/v1\/images\/([^/]+)\/build$/)
+    if (imageBuild && method === 'POST') {
+      const name = decodeURIComponent(imageBuild[1])
+      const im = db.images.find((i) => i.ref === `${name}:dev` || i.ref === name)
+      if (!im?.shipped) return error(400, 'invalid_request', `not an image Plumbix ships: ${name}: only the images Plumbix ships can be built here`)
+      if (db.imageBuilds.some((b) => b.status === 'running')) return error(409, 'busy', 'a build is already running')
+      const b: ImageBuild = { id: `ib_${db.imageBuilds.length + 1}`, image: im.ref, status: 'running', started_at: new Date().toISOString(), log: `plumbix: building ${im.ref}\n` }
+      db.imageBuilds.push(b)
+      return json(202, b)
+    }
+    const oneBuild = path.match(/^\/api\/v1\/images\/builds\/([^/]+)$/)
+    if (oneBuild && method === 'GET') {
+      const b = db.imageBuilds.find((x) => x.id === oneBuild[1])
+      if (!b) return error(404, 'not_found', 'no such build')
+      return json(200, b)
+    }
     if (path === '/api/v1/settings' && method === 'GET') return json(200, settingsView(db))
     if (path === '/api/v1/settings' && method === 'PUT') {
       const body = JSON.parse(String(init?.body)) as { guidance?: string; default_reviewer?: string }

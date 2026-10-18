@@ -1,7 +1,7 @@
 // A small pathname router: the app has five screens and no nested routes.
 import { useCallback, useSyncExternalStore } from 'react'
 
-export type Route = { screen: 'changes' } | { screen: 'change'; id: string } | { screen: 'login' } | { screen: 'alerts' } | { screen: 'repos' } | { screen: 'pipelines'; repoId?: string } | { screen: 'design' } | { screen: 'settings' }
+export type Route = { screen: 'changes' } | { screen: 'change'; id: string } | { screen: 'login' } | { screen: 'alerts' } | { screen: 'repos' } | { screen: 'pipelines'; repoId?: string } | { screen: 'design' } | { screen: 'settings' } | { screen: 'images' }
 
 export function parseRoute(pathname: string): Route {
   const parts = pathname.split('/').filter(Boolean)
@@ -13,6 +13,7 @@ export function parseRoute(pathname: string): Route {
   if (parts[0] === 'pipelines') return parts[1] ? { screen: 'pipelines', repoId: decodeURIComponent(parts[1]) } : { screen: 'pipelines' }
   if (parts[0] === 'design') return { screen: 'design' }
   if (parts[0] === 'settings') return { screen: 'settings' }
+  if (parts[0] === 'images') return { screen: 'images' }
   return { screen: 'changes' }
 }
 
@@ -34,6 +35,8 @@ export function pathFor(r: Route): string {
       return '/design'
     case 'settings':
       return '/settings'
+    case 'images':
+      return '/images'
   }
 }
 

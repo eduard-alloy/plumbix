@@ -41,6 +41,10 @@ func NewDocker() (*Docker, error) {
 // Close releases the client's connections.
 func (d *Docker) Close() error { return d.cli.Close() }
 
+// Client exposes the Docker client for callers that inspect or build
+// images (internal/images), so one connection serves the whole server.
+func (d *Docker) Client() *client.Client { return d.cli }
+
 // Run executes job in a fresh container and removes the container afterwards.
 func (d *Docker) Run(ctx context.Context, job Job) (Result, error) {
 	start := time.Now()

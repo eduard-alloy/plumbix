@@ -133,6 +133,80 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /images:
+    get:
+      operationId: listImages
+      summary: The container images the registered pipelines run, with what the server knows about each.
+      description: >
+        Every image named by a registered repository's pipeline at its default branch, plus the two
+        images Plumbix ships (WU-032, A32): whether it exists locally, when it was created, its size and
+        digest, which repositories and steps use it, and for shipped images the version label of the
+        local build against the running server.
+      responses:
+        "200":
+          description: The images.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Images"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /images/{name}/build:
+    post:
+      operationId: buildImage
+      summary: Build one of the images Plumbix ships, from the sources embedded in the server.
+      description: >
+        Starts the build and answers at once; follow it with GET /images/builds/{id}. One build runs at
+        a time. The build runs on the server's Docker daemon outside the step sandbox, so it is a
+        person's act: this route is not offered by the MCP server.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: The build was started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageBuild"
+        "400":
+          description: Not an image Plumbix ships.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: A build is already running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /images/builds/{id}:
+    get:
+      operationId: getImageBuild
+      summary: One image build with its log so far.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The build.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageBuild"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /reviews/next:
     get:
       operationId: claimReview
@@ -1680,6 +1754,84 @@ components:
           type: string
           enum: [accepted]
         review_id:
+          type: string
+    Images:
+      type: object
+      additionalProperties: false
+      required: [images, version]
+      properties:
+        version:
+          description: The running server's version, which shipped images are compared with.
+          type: string
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/Image"
+    Image:
+      type: object
+      additionalProperties: false
+      required: [ref, present, shipped, status, used_by]
+      properties:
+        ref:
+          description: The image as pipelines name it, such as golang:1.27 or plumbix-ai-validator:dev.
+          type: string
+        present:
+          type: boolean
+        created:
+          type: string
+          format: date-time
+        size_bytes:
+          type: integer
+        digest:
+          type: string
+        shipped:
+          description: One of the images Plumbix ships and can rebuild.
+          type: boolean
+        purpose:
+          type: string
+        version:
+          description: For a shipped image, the server version that built it (the org.plumbix.version label).
+          type: string
+        status:
+          description: missing, present (third-party), current, stale or unlabelled (a shipped image built outside Plumbix).
+          type: string
+          enum: [missing, present, current, stale, unlabelled]
+        used_by:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [repo_id, repo, step, validator]
+            properties:
+              repo_id:
+                type: string
+              repo:
+                type: string
+              step:
+                type: string
+              validator:
+                type: boolean
+    ImageBuild:
+      type: object
+      additionalProperties: false
+      required: [id, image, status, started_at, log]
+      properties:
+        id:
+          type: string
+        image:
+          type: string
+        status:
+          type: string
+          enum: [running, succeeded, failed]
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+        log:
           type: string
     Settings:
       type: object

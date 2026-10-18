@@ -9,6 +9,7 @@ import { ReposPage } from './pages/ReposPage'
 import { PipelinesPage } from './pages/PipelinesPage'
 import { DesignPage } from './pages/DesignPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { ImagesPage } from './pages/ImagesPage'
 
 export function App() {
   return (
@@ -31,6 +32,7 @@ function Routed() {
       {route.screen === 'pipelines' && <PipelinesPage repoId={route.repoId} />}
       {route.screen === 'design' && <DesignPage />}
       {route.screen === 'settings' && <SettingsPage />}
+      {route.screen === 'images' && <ImagesPage />}
     </Shell>
   )
 }

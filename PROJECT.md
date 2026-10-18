@@ -110,6 +110,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-029 | Step caches: `cache:` paths on plain steps become per-repository directories mounted between runs | F-002 | ✅ |
 | WU-030 | Advisory validators: `advisory: true` records a verdict without counting it, for a second model beside the first | F-003, F-004 | ✅ |
 | WU-031 | Validator steps say what they run: a progress line when the AI validator's request goes out; schema, docs and editor explain that the image is the validator | F-003, F-004 | ✅ |
+| WU-032 | Images page, inspect layer: every referenced image with status and users; the shipped two with a version check and a build from embedded sources | F-002, F-004 | ✅ |
 
 ## Milestone 2 candidates
 
