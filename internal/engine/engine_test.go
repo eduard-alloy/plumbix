@@ -1277,6 +1277,19 @@ func TestAReviewerAppendsBoundedProgressLines(t *testing.T) {
 	if err := h.eng.AppendReviewLog(ctx, b.ID, b.Token, "one too many"); !errors.Is(err, ErrTooManyLines) {
 		t.Errorf("over the cap: %v", err)
 	}
+	// The step stopped waiting between the claim check and the counters:
+	// no counter means no line, never a new entry.
+	h.eng.forgetReviewLog(b.ID)
+	if err := h.eng.AppendReviewLog(ctx, b.ID, b.Token, "after the step ended"); !errors.Is(err, change.ErrConflict) || !strings.Contains(err.Error(), "no longer awaited") {
+		t.Errorf("append with no counter: %v", err)
+	}
+	h.eng.reviewLogMu.Lock()
+	_, recreated := h.eng.reviewLogs[b.ID]
+	h.eng.reviewLogMu.Unlock()
+	if recreated {
+		t.Error("a late append recreated the counter entry")
+	}
+	h.eng.openReviewLog(b.ID)
 	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"Fine.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}]}`)
 	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); err != nil {
 		t.Fatal(err)

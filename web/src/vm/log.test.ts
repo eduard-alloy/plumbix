@@ -16,6 +16,8 @@ describe('splitLines', () => {
     expect(splitLines('\x1b]0;window title\x07plain\n\x1b]8;;https://x\x1b\\link\x1b]8;;\x1b\\\n')).toEqual(['plain', 'link'])
     expect(splitLines('a\x1bMb\x1b(Bc')).toEqual(['abc'])
     expect(splitLines('\x1b7save\x1b8restore\x1b=keypad\x1b>off')).toEqual(['saverestorekeypadoff'])
+    expect(splitLines('end\x1b')).toEqual(['end']) // cut off mid-sequence
+    expect(splitLines('mid\x1b[3')).toEqual(['mid'])
     expect(splitLines('\x1b[38;5;208m256-colour\x1b[0m \x1b[38;2;255;128;0mtruecolor\x1b[0m and \x1b[?25lhidden cursor\x1b[?25h')).toEqual(['256-colour truecolor and hidden cursor'])
   })
 })
