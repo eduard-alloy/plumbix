@@ -3,6 +3,7 @@
 // the server receives, and the summary the edit bar shows. Pure functions;
 // every operation returns a new model and never mutates its input.
 import type { PipelineFile, PipelineStep } from '../model'
+import { applyModel } from './yamlEdit'
 
 /** EnvRow is one environment line; a secret row is exposed under its own name from Settings. */
 export interface EnvRow {
@@ -35,6 +36,8 @@ export interface PStep {
   reviewer: string
   /** effort overrides the profile's reasoning effort; '' keeps it (WU-034). */
   effort: '' | 'low' | 'medium' | 'high'
+  /** src is the step's name in the served file, kept through a rename so a save edits that step's text in place (WU-036); absent on a step the editor created. */
+  src?: string
   /** Last run duration in seconds and its status, from the newest finished run on the branch. */
   last: number | null
   lastStatus: string
@@ -75,6 +78,7 @@ export function fromApi(f: PipelineFile): PModel | null {
     external: !!s.external,
     reviewer: s.reviewer ?? '',
     effort: s.effort ?? '',
+    src: s.name,
     last: last[s.name] ? last[s.name].duration_ms / 1000 : null,
     lastStatus: last[s.name]?.status ?? '',
   }))
@@ -287,54 +291,85 @@ export function yamlStr(s: string): string {
 
 const list = (xs: string[]) => `[${xs.map(yamlStr).join(', ')}]`
 
-/** toYaml writes the model as a format v1 file. Validators go last and need every plain step. */
+/** StepKeys are the keys the editor owns on a step, in the order it writes new ones; anything else in a file is left alone (WU-036). */
+export const STEP_KEYS = ['image', 'validator', 'external', 'run', 'needs', 'env', 'secrets', 'artifacts', 'cache', 'timeout', 'retries', 'allow_failure', 'reviewer', 'advisory', 'effort', 'when'] as const
+export type StepKey = (typeof STEP_KEYS)[number]
+export type StepValue = string | number | boolean | string[] | Record<string, string> | { paths: string[] }
+
+/** desired lists the keys a step writes, as plain values, in STEP_KEYS order; toYaml and the text writer both use it. */
+export function desired(s: PStep, plainIds: string[]): Partial<Record<StepKey, StepValue>> {
+  const d: Partial<Record<StepKey, StepValue>> = {}
+  // An external validator runs no container: no image, no commands, no
+  // env, secrets, cache or retries; a reviewer outside answers it.
+  if (!s.external) d.image = s.image
+  if (s.validator) d.validator = true
+  if (s.external) d.external = true
+  if (!s.external && s.run.length === 1) d.run = s.run[0]
+  else if (!s.external && s.run.length > 1) d.run = [...s.run]
+  const needs = s.validator ? plainIds : s.needs
+  if (needs.length) d.needs = [...needs]
+  const env = s.external ? [] : s.env.filter((e) => !e.secret && e.k)
+  if (env.length) d.env = Object.fromEntries(env.map((e) => [e.k, e.v]))
+  const secrets = s.external ? [] : s.env.filter((e) => e.secret && e.k).map((e) => e.k)
+  if (secrets.length) d.secrets = secrets
+  if (s.evidence.length) d.artifacts = [...s.evidence]
+  if (s.cache.length && !s.validator) d.cache = [...s.cache]
+  if (s.timeout) d.timeout = s.timeout
+  if (s.retries && !s.external) d.retries = s.retries
+  if (s.allowFail && !s.validator) d.allow_failure = true
+  if (s.reviewer && s.validator) d.reviewer = s.reviewer
+  if (s.advisory && s.validator) d.advisory = true
+  if (s.effort && s.validator && !s.external) d.effort = s.effort
+  if (s.paths.length && !s.validator) d.when = { paths: [...s.paths] }
+  return d
+}
+
+/** stageLists gives the stages to write: name and member ids in file order, empty stages dropped. */
+export function stageLists(p: PModel): [string, string[]][] {
+  return p.stageOrder.map((g) => [g, plain(p).filter((s) => s.group === g).map((s) => s.id)] as [string, string[]]).filter(([, ids]) => ids.length)
+}
+
+/** toYaml writes the model as a format v1 file from scratch. Validators go last and need every plain step. The text writer (yamlEdit) is preferred when the served file is at hand. */
 export function toYaml(p: PModel): string[] {
   const out = ['version: 1', 'steps:']
   const plainIds = plain(p).map((s) => s.id)
   const block = (s: PStep) => {
     out.push(`  - name: ${s.id}`)
-    // An external validator runs no container: no image, no commands, no
-    // env, secrets, cache or retries; a reviewer outside answers it.
-    if (!s.external) out.push(`    image: ${yamlStr(s.image)}`)
-    if (s.validator) {
-      out.push('    validator: true')
-    }
-    if (s.external) out.push('    external: true')
-    if (!s.external && s.run.length === 1) out.push(`    run: ${yamlStr(s.run[0])}`)
-    else if (!s.external && s.run.length > 1) {
-      out.push('    run:')
-      for (const r of s.run) out.push(`      - ${yamlStr(r)}`)
-    }
-    const needs = s.validator ? plainIds : s.needs
-    if (needs.length) out.push(`    needs: ${list(needs)}`)
-    const env = s.external ? [] : s.env.filter((e) => !e.secret && e.k)
-    if (env.length) {
-      out.push('    env:')
-      for (const e of env) out.push(`      ${e.k}: ${yamlStr(e.v)}`)
-    }
-    const secrets = s.external ? [] : s.env.filter((e) => e.secret && e.k).map((e) => e.k)
-    if (secrets.length) out.push(`    secrets: ${list(secrets)}`)
-    if (s.evidence.length) out.push(`    artifacts: ${list(s.evidence)}`)
-    if (s.cache.length && !s.validator) out.push(`    cache: ${list(s.cache)}`)
-    if (s.timeout) out.push(`    timeout: ${s.timeout}`)
-    if (s.retries && !s.external) out.push(`    retries: ${s.retries}`)
-    if (s.allowFail && !s.validator) out.push('    allow_failure: true')
-    if (s.reviewer && s.validator) out.push(`    reviewer: ${s.reviewer}`)
-    if (s.advisory && s.validator) out.push('    advisory: true')
-    if (s.effort && s.validator && !s.external) out.push(`    effort: ${s.effort}`)
-    if (s.paths.length && !s.validator) {
-      out.push('    when:')
-      out.push(`      paths: ${list(s.paths)}`)
+    const d = desired(s, plainIds)
+    for (const key of STEP_KEYS) {
+      const v = d[key]
+      if (v === undefined) continue
+      if (key === 'run' && Array.isArray(v)) {
+        out.push('    run:')
+        for (const r of v) out.push(`      - ${yamlStr(r)}`)
+      } else if (key === 'env') {
+        out.push('    env:')
+        for (const [k, val] of Object.entries(v as Record<string, string>)) out.push(`      ${k}: ${yamlStr(val)}`)
+      } else if (key === 'when') {
+        out.push('    when:')
+        out.push(`      paths: ${list((v as { paths: string[] }).paths)}`)
+      } else if (Array.isArray(v)) out.push(`    ${key}: ${list(v)}`)
+      else if (typeof v === 'string') out.push(`    ${key}: ${yamlStr(v)}`)
+      else out.push(`    ${key}: ${String(v)}`)
     }
   }
   for (const s of plain(p)) block(s)
   for (const s of validators(p)) block(s)
-  const stages = p.stageOrder.map((g) => [g, plain(p).filter((s) => s.group === g).map((s) => s.id)] as const).filter(([, ids]) => ids.length)
+  const stages = stageLists(p)
   if (stages.length) {
     out.push('stages:')
     for (const [g, ids] of stages) out.push(`  ${g}: ${list(ids)}`)
   }
   return out
+}
+
+/** renderYaml is the text the server receives: the served file edited in place when there is one (WU-036), else the file written from scratch. */
+export function renderYaml(p: PModel, original: string | null): string {
+  return original ? applyModel(original, p) : toYaml(p).join('\n') + '\n'
+}
+
+function renderLines(p: PModel, original: string | null): string[] {
+  return renderYaml(p, original).replace(/\n$/, '').split('\n')
 }
 
 /** YamlLine is one line of the YAML view, marked when it is not in the original. */
@@ -344,10 +379,10 @@ export interface YamlLine {
   added: boolean
 }
 
-export function yamlDiff(p: PModel, base: PModel | null): YamlLine[] {
+export function yamlDiff(p: PModel, base: PModel | null, original: string | null = null): YamlLine[] {
   const pool: Record<string, number> = {}
-  if (base) for (const l of toYaml(base)) pool[l] = (pool[l] || 0) + 1
-  return toYaml(p).map((t, i) => {
+  if (base) for (const l of renderLines(base, original)) pool[l] = (pool[l] || 0) + 1
+  return renderLines(p, original).map((t, i) => {
     const added = !(pool[t] > 0)
     if (!added) pool[t]--
     return { n: i + 1, t, added }

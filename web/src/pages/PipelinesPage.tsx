@@ -8,7 +8,7 @@ import { useRoute } from '../router'
 import { useStore } from '../store'
 import {
   addStep, bands, CH, CW, dependents, diffSummary, find, fromApi, groupSteps, mergeSteps, needOptions, plain, removeSteps, renameStep,
-  saveDefaults, setField, toYaml, toggleValidator, yamlDiff, fmtSeconds, type Band, type PModel, type PStep,
+  renderYaml, saveDefaults, setField, toggleValidator, yamlDiff, fmtSeconds, type Band, type PModel, type PStep,
 } from '../vm/pipeline'
 import './pipeline.css'
 
@@ -128,7 +128,7 @@ export function PipelinesPage({ repoId }: { repoId?: string }) {
         branch: form.branch ?? defaults.branch,
         title: form.title ?? defaults.title,
         intent: form.intent ?? defaults.intent,
-        content: toYaml(cur).join('\n') + '\n',
+        content: renderYaml(cur, file?.content ?? null),
         target_branch: file?.branch,
       })
       setSaved({ change })
@@ -269,7 +269,7 @@ export function PipelinesPage({ repoId }: { repoId?: string }) {
               )}
             </div>
           ) : (
-            <YamlView cur={cur} base={base} />
+            <YamlView cur={cur} base={base} original={file?.content ?? null} />
           )}
           {(dirty || saved) && (
             <div className="edit-bar">
@@ -372,8 +372,8 @@ function Header({ repos, repo, edits, file, view, setView, go }: { repos: Repo[]
   )
 }
 
-function YamlView({ cur, base }: { cur: PModel; base: PModel | null }) {
-  const lines = yamlDiff(cur, base)
+function YamlView({ cur, base, original }: { cur: PModel; base: PModel | null; original: string | null }) {
+  const lines = yamlDiff(cur, base, original)
   return (
     <div className="yaml-view" role="region" aria-label="Pipeline YAML">
       <pre>
@@ -385,7 +385,7 @@ function YamlView({ cur, base }: { cur: PModel; base: PModel | null }) {
           </div>
         ))}
       </pre>
-      <p className="foot">Read-only here. Edit visually, or change the file in the repository and submit it as a change.</p>
+      <p className="foot">Read-only here, and exactly what a save commits: your edits applied to the file, its comments and formatting kept. Edit visually, or change the file in the repository and submit it as a change.</p>
     </div>
   )
 }

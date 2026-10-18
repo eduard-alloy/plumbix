@@ -76,7 +76,7 @@ describe('Pipelines page', () => {
     expect(added.some((t) => t!.includes('retries: 2'))).toBe(true)
     expect(added.some((t) => t!.includes('allow_failure: true'))).toBe(true)
     expect(added.some((t) => t!.includes('cache: [/root/.cache/go-build]'))).toBe(true)
-    expect(yaml.textContent).toContain('Read-only here.')
+    expect(yaml.textContent).toContain('Read-only here, and exactly what a save commits')
   })
 
   it('says what a validator step runs: the image is the validator, no commands', async () => {
