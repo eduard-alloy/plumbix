@@ -102,6 +102,10 @@ paths:
                   description: Whether a reviewer with tools (Claude Code) may run commands; read-only by default.
                   type: string
                   enum: [read-only, full]
+                effort:
+                  description: For API kinds, the model's reasoning effort; empty leaves the vendor's default (WU-034).
+                  type: string
+                  enum: ["", low, medium, high]
                 key_secret:
                   description: The secret holding the key; defaults to PLUMBIX_REVIEWER_<NAME>_KEY.
                   type: string
@@ -1922,7 +1926,7 @@ components:
     ReviewerProfile:
       type: object
       additionalProperties: false
-      required: [name, kind, family, base_url, model, tools, key_secret, updated_at, key_set, default]
+      required: [name, kind, family, base_url, model, tools, effort, key_secret, updated_at, key_set, default]
       properties:
         name:
           type: string
@@ -1940,6 +1944,10 @@ components:
         tools:
           type: string
           enum: [read-only, full]
+        effort:
+          description: The reasoning effort of an API kind, or empty for the vendor's default.
+          type: string
+          enum: ["", low, medium, high]
         key_secret:
           description: The secret holding the key; set through the secrets endpoint.
           type: string
@@ -2357,6 +2365,9 @@ components:
           type: boolean
         reviewer:
           description: The reviewer profile the validator step names; absent for the default.
+          type: string
+        effort:
+          description: The step's reasoning effort override; absent for the profile's (WU-034).
           type: string
         retries:
           type: integer

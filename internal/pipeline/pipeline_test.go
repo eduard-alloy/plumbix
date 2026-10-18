@@ -265,6 +265,8 @@ func TestExtendedFieldErrors(t *testing.T) {
 		{"external with retries", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, retries: 1}\n"), "steps[1].retries", 4, "external"},
 		{"reviewer on plain step", wrap("  - {name: a, image: x, run: x, reviewer: grok}\n"), "steps[0].reviewer", 3, "validator"},
 		{"advisory on plain step", wrap("  - {name: a, image: x, run: x, advisory: true}\n"), "steps[0].advisory", 3, "validator"},
+		{"effort on plain step", wrap("  - {name: a, image: x, run: x, effort: low}\n"), "steps[0].effort", 3, "validator"},
+		{"effort value", wrap("  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true, effort: max}\n"), "steps[1].effort", 4, "low, medium or high"},
 		{"advisory text", wrap("  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true, advisory: yes}\n"), "steps[1].advisory", 4, "boolean"},
 		{"cache relative", wrap("  - {name: a, image: x, run: x, cache: [go/pkg/mod]}\n"), "steps[0].cache[0]", 3, "absolute"},
 		{"cache dotdot", wrap("  - {name: a, image: x, run: x, cache: [/root/../etc]}\n"), "steps[0].cache[0]", 3, ".."},
@@ -338,7 +340,7 @@ func TestExternalValidatorNeedsNoImage(t *testing.T) {
 // TestReviewerBindsAValidatorStepToAProfile (WU-028): reviewer names the
 // profile that judges, on container and external validators alike.
 func TestReviewerBindsAValidatorStepToAProfile(t *testing.T) {
-	p, err := Parse([]byte(wrap("  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true, reviewer: grok-4, advisory: true}\n  - {name: e, validator: true, external: true, reviewer: claude}\n")))
+	p, err := Parse([]byte(wrap("  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true, reviewer: grok-4, advisory: true, effort: low}\n  - {name: e, validator: true, external: true, reviewer: claude}\n")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,6 +349,9 @@ func TestReviewerBindsAValidatorStepToAProfile(t *testing.T) {
 	}
 	if !p.Steps[1].Advisory || p.Steps[2].Advisory {
 		t.Errorf("advisory = %v %v, want only the grok step", p.Steps[1].Advisory, p.Steps[2].Advisory)
+	}
+	if p.Steps[1].Effort != "low" || p.Steps[2].Effort != "" {
+		t.Errorf("effort = %q %q", p.Steps[1].Effort, p.Steps[2].Effort)
 	}
 }
 

@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../api'
 import { agoLong, minutesBetween } from '../format'
-import type { PipelineStep, Repo, Reviewer, ReviewerKind, ReviewerProfile, ReviewerTools, SecretStatus, SettingsView } from '../model'
+import type { PipelineStep, Repo, Reviewer, ReviewerEffort, ReviewerKind, ReviewerProfile, ReviewerTools, SecretStatus, SettingsView } from '../model'
 import { useNow } from '../store'
 
 /** errorText renders a refusal: the problems the server named, else its message. */
@@ -59,11 +59,12 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
   const [baseURL, setBaseURL] = useState(profile.base_url)
   const [model, setModel] = useState(profile.model)
   const [tools, setTools] = useState<ReviewerTools>(profile.tools)
+  const [effort, setEffort] = useState<ReviewerEffort>(profile.effort ?? '')
   const [keySecret, setKeySecret] = useState(profile.key_secret)
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
   const external = kind === 'claude-code'
-  const dirty = kind !== profile.kind || baseURL !== profile.base_url || model !== profile.model || tools !== profile.tools || keySecret !== profile.key_secret
+  const dirty = kind !== profile.kind || baseURL !== profile.base_url || model !== profile.model || tools !== profile.tools || keySecret !== profile.key_secret || effort !== (profile.effort ?? '')
 
   async function run(label: string, fn: () => Promise<unknown>) {
     setBusy(true)
@@ -99,7 +100,7 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
       <form
         onSubmit={(e) => {
           e.preventDefault()
-          void run('Saved', () => api.putReviewer(profile.name, { kind, base_url: kind === 'openai' ? baseURL : '', model, tools, key_secret: external ? '' : keySecret }))
+          void run('Saved', () => api.putReviewer(profile.name, { kind, base_url: kind === 'openai' ? baseURL : '', model, tools, effort: external ? '' : effort, key_secret: external ? '' : keySecret }))
         }}
       >
         <div className="grid">
@@ -120,6 +121,18 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
               <label htmlFor={id('base')}>Base URL</label>
               <input id={id('base')} value={baseURL} onChange={(e) => setBaseURL(e.target.value)} placeholder="https://api.openai.com/v1" />
               <p className="hint">{vendorHints}</p>
+            </div>
+          )}
+          {!external && (
+            <div className="field">
+              <label htmlFor={id('effort')}>Reasoning effort</label>
+              <select id={id('effort')} value={effort} onChange={(e) => setEffort(e.target.value as ReviewerEffort)}>
+                <option value="">Vendor default</option>
+                <option value="low">Low: fastest and cheapest</option>
+                <option value="medium">Medium</option>
+                <option value="high">High: slow and thorough</option>
+              </select>
+              <p className="hint">How long a reasoning model thinks before answering. Grok 4.7 spent 30,000 hidden tokens and 6 minutes on one review at its default and 7,000 tokens and 2 minutes on low. A validator step can override it with effort: in the pipeline.</p>
             </div>
           )}
           {!external && (

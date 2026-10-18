@@ -98,6 +98,12 @@ describe('Settings page', () => {
     expect(within(codeCard).queryByLabelText('Key secret')).toBeNull()
     await waitFor(() => expect(screen.getByLabelText('Reviewer claude-code').textContent).toContain('Judges ledger-api: ai-review'))
     expect(screen.getByLabelText('Reviewer claude-code').textContent).not.toContain('ai-grok')
+    // The API card has a reasoning effort; the Claude Code card does not (WU-034).
+    expect(within(codeCard).queryByLabelText('Reasoning effort')).toBeNull()
+    fireEvent.change(within(apiCard).getByLabelText('Reasoning effort'), { target: { value: 'low' } })
+    fireEvent.click(within(apiCard).getByRole('button', { name: 'Save reviewer' }))
+    await waitFor(() => expect(db.profiles.find((p) => p.name === 'claude-api')?.effort).toBe('low'))
+
     const full = within(codeCard).getByLabelText('Full, including commands') as HTMLInputElement
     expect((within(codeCard).getByLabelText('Read only') as HTMLInputElement).checked).toBe(true)
     fireEvent.click(full)

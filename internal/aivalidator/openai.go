@@ -57,7 +57,9 @@ func validateOpenAI(ctx context.Context, cfg Config, inDir, workspace string) (v
 	}
 	var lastErr error
 	host := endpointHost(cfg.BaseURL)
+	effort := openAIEffort(cfg)
 	for i, rf := range formats {
+	again:
 		body := map[string]any{
 			"model":    cfg.Model,
 			"messages": []map[string]string{{"role": "system", "content": prompt.System}, {"role": "user", "content": user}},
@@ -65,9 +67,19 @@ func validateOpenAI(ctx context.Context, cfg Config, inDir, workspace string) (v
 		if rf != nil {
 			body["response_format"] = rf
 		}
-		cfg.note("asking %s at %s (OpenAI-compatible): %d characters of prompt, response_format %s", cfg.Model, host, len(prompt.System)+len(user), formatName(rf))
+		if effort != "" {
+			body["reasoning_effort"] = effort
+		}
+		cfg.note("asking %s at %s (OpenAI-compatible): %d characters of prompt, response_format %s%s", cfg.Model, host, len(prompt.System)+len(user), formatName(rf), effortNote(effort))
 		text, usage, status, err := chatCompletion(ctx, cfg, body)
 		if err != nil {
+			// A vendor that does not know reasoning_effort says so with a 400:
+			// the same request goes again without it, once.
+			if status == http.StatusBadRequest && effort != "" && mentionsEffort(err.Error()) {
+				cfg.note("%s refused reasoning_effort %s; retrying without it", host, effort)
+				effort = ""
+				goto again
+			}
 			// A vendor that does not know this response_format says so with a
 			// 400; the next, looser format is tried.
 			if status == http.StatusBadRequest && rf != nil && mentionsFormat(err.Error()) && i+1 < len(formats) {
@@ -132,6 +144,9 @@ func chatCompletion(ctx context.Context, cfg Config, body map[string]any) (strin
 		Usage struct {
 			PromptTokens     int `json:"prompt_tokens"`
 			CompletionTokens int `json:"completion_tokens"`
+			Details          struct {
+				ReasoningTokens int `json:"reasoning_tokens"`
+			} `json:"completion_tokens_details"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
@@ -144,7 +159,7 @@ func chatCompletion(ctx context.Context, cfg Config, body map[string]any) (strin
 	if model == "" {
 		model = cfg.Model
 	}
-	usage := validation.Usage{Model: model, InputTokens: out.Usage.PromptTokens, OutputTokens: out.Usage.CompletionTokens}
+	usage := validation.Usage{Model: model, InputTokens: out.Usage.PromptTokens, OutputTokens: out.Usage.CompletionTokens, ReasoningTokens: out.Usage.Details.ReasoningTokens}
 	return contentText(out.Choices[0].Message.Content), usage, resp.StatusCode, nil
 }
 
@@ -199,4 +214,31 @@ func formatName(rf map[string]any) string {
 		return t
 	}
 	return "custom"
+}
+
+// openAIEffort maps the operator's effort to what OpenAI-compatible vendors
+// accept: low, medium or high; nothing when the operator set none.
+func openAIEffort(cfg Config) string {
+	if !cfg.EffortSet {
+		return ""
+	}
+	switch cfg.Effort {
+	case "low", "medium", "high":
+		return cfg.Effort
+	case "xhigh", "max":
+		return "high"
+	}
+	return ""
+}
+
+func effortNote(effort string) string {
+	if effort == "" {
+		return ""
+	}
+	return ", reasoning_effort " + effort
+}
+
+// mentionsEffort recognises a vendor's refusal of the reasoning_effort field.
+func mentionsEffort(msg string) bool {
+	return strings.Contains(strings.ToLower(msg), "reasoning_effort")
 }

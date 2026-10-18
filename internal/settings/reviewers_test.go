@@ -27,12 +27,15 @@ func TestReviewerProfilesAreStoredValidatedAndDefaulted(t *testing.T) {
 	}
 
 	// An openai profile with a base URL; the key secret defaults from the name.
-	grok, err := s.PutReviewer(ctx, Reviewer{Name: "grok-4", Kind: KindOpenAI, BaseURL: "https://api.x.ai/v1", Model: "grok-4"})
+	grok, err := s.PutReviewer(ctx, Reviewer{Name: "grok-4", Kind: KindOpenAI, BaseURL: "https://api.x.ai/v1", Model: "grok-4", Effort: "low"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if grok.KeySecret != "PLUMBIX_REVIEWER_GROK_4_KEY" || grok.Tools != review.ToolsReadOnly || grok.UpdatedAt.IsZero() {
+	if grok.KeySecret != "PLUMBIX_REVIEWER_GROK_4_KEY" || grok.Tools != review.ToolsReadOnly || grok.Effort != "low" || grok.UpdatedAt.IsZero() {
 		t.Errorf("stored profile = %+v", grok)
+	}
+	if got, _, _ := s.Reviewer(ctx, "grok-4", FamilyAPI); got.Effort != "low" {
+		t.Errorf("effort not stored: %+v", got)
 	}
 	// An anthropic profile sharing the known key; a put replaces.
 	if _, err := s.PutReviewer(ctx, Reviewer{Name: "claude", Kind: KindAnthropic, Model: "claude-sonnet-5-5", Tools: review.ToolsFull, KeySecret: "ANTHROPIC_API_KEY"}); err != nil {
@@ -123,6 +126,8 @@ func TestReviewerProfilesAreStoredValidatedAndDefaulted(t *testing.T) {
 		{Reviewer{Name: "x", Kind: KindAnthropic, Tools: "some"}, "tools"},
 		{Reviewer{Name: "x", Kind: KindAnthropic, KeySecret: "lower case"}, "key_secret"},
 		{Reviewer{Name: "x", Kind: KindClaudeCode, KeySecret: "SOME_KEY"}, "key_secret"},
+		{Reviewer{Name: "x", Kind: KindOpenAI, BaseURL: "https://x", Effort: "max"}, "effort"},
+		{Reviewer{Name: "x", Kind: KindClaudeCode, Effort: "low"}, "effort"},
 		{Reviewer{Name: "x", Kind: KindClaudeCode, BaseURL: "https://x"}, "base_url"},
 	} {
 		_, err := s.PutReviewer(ctx, bad.r)

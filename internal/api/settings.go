@@ -184,6 +184,7 @@ type reviewerInput struct {
 	BaseURL   string `json:"base_url"`
 	Model     string `json:"model"`
 	Tools     string `json:"tools"`
+	Effort    string `json:"effort"`
 	KeySecret string `json:"key_secret"`
 }
 
@@ -193,7 +194,7 @@ func (h *settingsHandlers) putReviewer(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	prof := settings.Reviewer{Name: r.PathValue("name"), Kind: body.Kind, BaseURL: body.BaseURL, Model: body.Model, Tools: body.Tools, KeySecret: body.KeySecret}
+	prof := settings.Reviewer{Name: r.PathValue("name"), Kind: body.Kind, BaseURL: body.BaseURL, Model: body.Model, Tools: body.Tools, Effort: body.Effort, KeySecret: body.KeySecret}
 	if _, err := h.settings.PutReviewer(r.Context(), prof); err != nil {
 		h.fail(w, err)
 		return

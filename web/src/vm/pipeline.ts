@@ -29,6 +29,10 @@ export interface PStep {
   validator: boolean
   /** advisory: a validator whose verdict is recorded but never counted (WU-030). */
   advisory: boolean
+  /** reviewer names the reviewer profile; '' for the default (WU-028). */
+  reviewer: string
+  /** effort overrides the profile's reasoning effort; '' keeps it (WU-034). */
+  effort: '' | 'low' | 'medium' | 'high'
   /** Last run duration in seconds and its status, from the newest finished run on the branch. */
   last: number | null
   lastStatus: string
@@ -66,6 +70,8 @@ export function fromApi(f: PipelineFile): PModel | null {
     group: s.stage || null,
     validator: s.validator,
     advisory: !!s.advisory,
+    reviewer: s.reviewer ?? '',
+    effort: s.effort ?? '',
     last: last[s.name] ? last[s.name].duration_ms / 1000 : null,
     lastStatus: last[s.name]?.status ?? '',
   }))
@@ -130,7 +136,7 @@ export function uniqueId(p: PModel, base: string): string {
 }
 
 export function newStep(id: string, extra: Partial<PStep> = {}): PStep {
-  return { id, image: 'alpine:3', run: ['echo "replace me"'], needs: [], timeout: '', retries: 0, allowFail: false, env: [], evidence: [], cache: [], paths: [], group: null, validator: false, advisory: false, last: null, lastStatus: '', ...extra }
+  return { id, image: 'alpine:3', run: ['echo "replace me"'], needs: [], timeout: '', retries: 0, allowFail: false, env: [], evidence: [], cache: [], paths: [], group: null, validator: false, advisory: false, reviewer: '', effort: '', last: null, lastStatus: '', ...extra }
 }
 
 /** detach rewires every step that needs id to id's own needs, so chains survive a removal. */
@@ -207,6 +213,8 @@ export function toggleValidator(p: PModel, id: string): PModel {
   } else {
     s.validator = false
     s.advisory = false
+    s.reviewer = ''
+    s.effort = ''
   }
   return m
 }
@@ -304,7 +312,9 @@ export function toYaml(p: PModel): string[] {
     if (s.timeout) out.push(`    timeout: ${s.timeout}`)
     if (s.retries) out.push(`    retries: ${s.retries}`)
     if (s.allowFail && !s.validator) out.push('    allow_failure: true')
+    if (s.reviewer && s.validator) out.push(`    reviewer: ${s.reviewer}`)
     if (s.advisory && s.validator) out.push('    advisory: true')
+    if (s.effort && s.validator) out.push(`    effort: ${s.effort}`)
     if (s.paths.length && !s.validator) {
       out.push('    when:')
       out.push(`      paths: ${list(s.paths)}`)
@@ -361,6 +371,8 @@ export function diffSummary(a: PModel, b: PModel): string[] {
     if (sa.run.join('\n') !== sb.run.join('\n')) ch.push('commands')
     if (sa.allowFail !== sb.allowFail) ch.push(sb.allowFail ? 'allowed to fail' : 'must pass')
     if (sa.advisory !== sb.advisory) ch.push(sb.advisory ? 'advisory' : 'counts')
+    if (sa.reviewer !== sb.reviewer) ch.push(sb.reviewer ? `reviewer ${sb.reviewer}` : 'default reviewer')
+    if (sa.effort !== sb.effort) ch.push(sb.effort ? `effort ${sb.effort}` : "profile's effort")
     if (JSON.stringify(sa.env) !== JSON.stringify(sb.env)) ch.push('env')
     if (sa.evidence.join() !== sb.evidence.join()) ch.push('evidence')
     if (sa.cache.join() !== sb.cache.join()) ch.push(sb.cache.length ? `caches ${sb.cache.join(', ')}` : 'no caches')
@@ -552,6 +564,8 @@ function cardOf(s: PStep, q: Placed, bandOf: Record<string, number>, sel: Set<st
   if (s.retries) chips.push(plainChip(`retries ${s.retries}`))
   if (s.allowFail) chips.push(plainChip('allowed to fail'))
   if (s.advisory) chips.push(plainChip('advisory'))
+  if (s.reviewer) chips.push(plainChip(s.reviewer))
+  if (s.effort) chips.push(plainChip(`effort ${s.effort}`))
   if (s.paths.length) chips.push(plainChip(`if ${s.paths.join(', ')}`))
   if (s.evidence.length) chips.push(plainChip(`${s.evidence.length} evidence`))
   if (s.cache.length) chips.push(plainChip(`${s.cache.length} cache${s.cache.length > 1 ? 's' : ''}`))

@@ -59,6 +59,7 @@ type Reviewer struct {
 	BaseURL   string    `json:"base_url"`   // openai only
 	Model     string    `json:"model"`      // empty means the kind's default
 	Tools     string    `json:"tools"`      // read-only or full, where a reviewer has tools
+	Effort    string    `json:"effort"`     // low, medium or high for API kinds; empty leaves the vendor's default (WU-034)
 	KeySecret string    `json:"key_secret"` // the secret holding the API key
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -172,6 +173,15 @@ func (s *Service) PutReviewer(ctx context.Context, r Reviewer) (Reviewer, error)
 	case review.ToolsReadOnly, review.ToolsFull:
 	default:
 		add("tools", fmt.Sprintf("must be %s or %s", review.ToolsReadOnly, review.ToolsFull))
+	}
+	switch r.Effort {
+	case "":
+	case "low", "medium", "high":
+		if r.Kind == KindClaudeCode {
+			add("effort", "is not for Claude Code: the loop runs with the machine's own settings")
+		}
+	default:
+		add("effort", "must be low, medium or high, or empty for the vendor's default")
 	}
 	if r.KeySecret == "" {
 		if reviewerNameRe.MatchString(r.Name) && r.Kind != KindClaudeCode {
@@ -407,9 +417,9 @@ func checkBaseURL(raw string) error {
 }
 
 func toRow(r Reviewer) store.ReviewerProfile {
-	return store.ReviewerProfile{Name: r.Name, Kind: r.Kind, BaseURL: r.BaseURL, Model: r.Model, Tools: r.Tools, KeySecret: r.KeySecret, UpdatedAt: r.UpdatedAt}
+	return store.ReviewerProfile{Name: r.Name, Kind: r.Kind, BaseURL: r.BaseURL, Model: r.Model, Tools: r.Tools, Effort: r.Effort, KeySecret: r.KeySecret, UpdatedAt: r.UpdatedAt}
 }
 
 func fromRow(p store.ReviewerProfile) Reviewer {
-	return Reviewer{Name: p.Name, Kind: p.Kind, BaseURL: p.BaseURL, Model: p.Model, Tools: p.Tools, KeySecret: p.KeySecret, UpdatedAt: p.UpdatedAt}
+	return Reviewer{Name: p.Name, Kind: p.Kind, BaseURL: p.BaseURL, Model: p.Model, Tools: p.Tools, Effort: p.Effort, KeySecret: p.KeySecret, UpdatedAt: p.UpdatedAt}
 }

@@ -210,6 +210,9 @@ func usageNote(u *validation.Usage) string {
 		return ""
 	}
 	parts := []string{fmt.Sprintf("%s, %d input and %d output tokens", u.Model, u.InputTokens, u.OutputTokens)}
+	if u.ReasoningTokens > 0 {
+		parts = append(parts, fmt.Sprintf("%d reasoning tokens", u.ReasoningTokens))
+	}
 	if u.Turns > 0 {
 		parts = append(parts, fmt.Sprintf("%d turns", u.Turns))
 	}

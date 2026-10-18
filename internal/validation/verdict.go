@@ -83,6 +83,9 @@ type Usage struct {
 	// reviewer's tool estimated it (WU-023).
 	Turns   int     `json:"turns,omitempty"`
 	CostUSD float64 `json:"cost_usd,omitempty"`
+	// ReasoningTokens are the hidden thinking tokens a reasoning model spent
+	// before its answer (WU-034): where a slow review's time went.
+	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
 }
 
 var severities = map[string]bool{"blocker": true, "major": true, "minor": true}
