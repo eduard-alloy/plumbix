@@ -463,6 +463,9 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName, p
         Name
         <input className="mono" aria-label="Name" value={nameDraft ?? id} onChange={(e) => setNameDraft(e.target.value)} onBlur={commitName} onKeyDown={(e) => e.key === 'Enter' && commitName()} />
       </label>
+      {s.external && <p className="fixed">External validator: no image and no commands. A reviewer outside the pipeline, plumbix review --watch with Claude Code, answers it with the profile below.</p>}
+      {!s.external && (
+      <>
       <label>
         Image
         <input className="mono" aria-label="Image" value={s.image} onChange={(e) => set('image', e.target.value)} />
@@ -472,6 +475,8 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName, p
         <textarea className="mono" aria-label="Commands" rows={Math.max(2, Math.min(6, s.run.length + 1))} value={s.run.join('\n')} onChange={(e) => set('run', e.target.value.split('\n'))} />
         <span className="dim">One per line, run in order; the step stops at the first failure.</span>
       </label>
+      </>
+      )}
       {s.validator ? (
         <p className="fixed">
           A validator has no commands: its image's entrypoint is the validator. It starts with the change's inputs mounted read-only at /plumbix/in and the workspace at /workspace, and must write /plumbix/out/verdict.json. Plumbix ships plumbix-reference-validator (deterministic checks) and plumbix-ai-validator (asks the reviewer profile's model); any image honouring the validator contract works. Validators run after every step, in file order, and cannot be conditional or allowed to fail.
@@ -574,6 +579,7 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName, p
             </select>
             <span className="dim">Which model judges, from Settings. External steps take Claude Code profiles, pipeline steps API profiles.</span>
           </label>
+          {!s.external && (
           <label>
             Reasoning effort
             <select aria-label="Reasoning effort" value={s.effort} onChange={(e) => set('effort', e.target.value as PStep['effort'])}>
@@ -584,8 +590,10 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName, p
             </select>
             <span className="dim">For API reviewers; overrides the profile for this step.</span>
           </label>
+          )}
         </div>
       )}
+      {!s.external && (
       <div className="group">
         <span className="label">Environment and secrets</span>
         {s.env.map((e, i) => (
@@ -608,6 +616,7 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName, p
           + variable
         </button>
       </div>
+      )}
       <div className="group">
         <span className="label">Evidence outputs</span>
         {s.evidence.map((v, i) => (

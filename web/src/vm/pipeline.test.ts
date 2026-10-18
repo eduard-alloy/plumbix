@@ -244,3 +244,23 @@ describe('advisory validators in the editor (WU-030)', () => {
     expect(diffSummary(counted, m)).toContain('ai-grok: advisory')
   })
 })
+
+describe('external validators in the editor (WU-023 round trip)', () => {
+  it('reads external and writes external: true with no image or commands', () => {
+    const m = fromApi(fx.pipelineFiles[fx.repos[1].id])!
+    const ext = find(m, 'ai-review')!
+    expect(ext.external).toBe(true)
+    expect(ext.validator).toBe(true)
+    const lines = toYaml(m)
+    const at = lines.indexOf('  - name: ai-review')
+    expect(at).toBeGreaterThan(0)
+    const next = lines.findIndex((l, i) => i > at && l.startsWith('  - name:'))
+    const block = lines.slice(at + 1, next === -1 ? undefined : next)
+    expect(block).toContain('    validator: true')
+    expect(block).toContain('    external: true')
+    expect(block.some((l) => l.startsWith('    image:'))).toBe(false)
+    expect(block.some((l) => l.startsWith('    run:'))).toBe(false)
+    expect(find(m, 'test')!.external).toBe(false)
+    expect(lines).toContain('    image: node:24')
+  })
+})

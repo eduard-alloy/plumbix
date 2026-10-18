@@ -88,6 +88,23 @@ describe('Pipelines page', () => {
     expect(panel.textContent).toContain('plumbix-ai-validator')
   })
 
+  it('edits an external validator without an image or commands and keeps external: true when saving', async () => {
+    window.history.replaceState(null, '', '/pipelines/r_ledgerapi001')
+    render(<App />)
+    await screen.findByRole('tab', { name: 'ledger-api' })
+    fireEvent.click(await screen.findByRole('button', { name: /^ai-review/ }))
+    const panel = await screen.findByRole('complementary')
+    expect(panel.textContent).toContain('External validator: no image and no commands')
+    expect(within(panel).queryByLabelText('Image')).toBeNull()
+    expect(within(panel).queryByLabelText('Commands')).toBeNull()
+    expect(within(panel).queryByLabelText('Reasoning effort')).toBeNull()
+    fireEvent.click(within(panel).getByRole('switch', { name: 'Advisory' }))
+    fireEvent.click(screen.getByRole('button', { name: 'YAML' }))
+    const yaml = screen.getByRole('region', { name: 'Pipeline YAML' }).textContent ?? ''
+    expect(yaml).toContain('external: true')
+    expect(yaml).not.toMatch(/image: ['"]{2}/)
+  })
+
   it('lets a validator step pick its reviewer profile and reasoning effort, written to the file (WU-034)', async () => {
     await open()
     fireEvent.click(card('validate'))

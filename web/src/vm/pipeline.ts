@@ -29,6 +29,8 @@ export interface PStep {
   validator: boolean
   /** advisory: a validator whose verdict is recorded but never counted (WU-030). */
   advisory: boolean
+  /** external: a validator answered outside the pipeline by plumbix review --watch; it has no image or commands (WU-023). */
+  external: boolean
   /** reviewer names the reviewer profile; '' for the default (WU-028). */
   reviewer: string
   /** effort overrides the profile's reasoning effort; '' keeps it (WU-034). */
@@ -70,6 +72,7 @@ export function fromApi(f: PipelineFile): PModel | null {
     group: s.stage || null,
     validator: s.validator,
     advisory: !!s.advisory,
+    external: !!s.external,
     reviewer: s.reviewer ?? '',
     effort: s.effort ?? '',
     last: last[s.name] ? last[s.name].duration_ms / 1000 : null,
@@ -136,7 +139,7 @@ export function uniqueId(p: PModel, base: string): string {
 }
 
 export function newStep(id: string, extra: Partial<PStep> = {}): PStep {
-  return { id, image: 'alpine:3', run: ['echo "replace me"'], needs: [], timeout: '', retries: 0, allowFail: false, env: [], evidence: [], cache: [], paths: [], group: null, validator: false, advisory: false, reviewer: '', effort: '', last: null, lastStatus: '', ...extra }
+  return { id, image: 'alpine:3', run: ['echo "replace me"'], needs: [], timeout: '', retries: 0, allowFail: false, env: [], evidence: [], cache: [], paths: [], group: null, validator: false, advisory: false, external: false, reviewer: '', effort: '', last: null, lastStatus: '', ...extra }
 }
 
 /** detach rewires every step that needs id to id's own needs, so chains survive a removal. */
@@ -213,6 +216,7 @@ export function toggleValidator(p: PModel, id: string): PModel {
   } else {
     s.validator = false
     s.advisory = false
+    s.external = false
     s.reviewer = ''
     s.effort = ''
   }
@@ -289,32 +293,35 @@ export function toYaml(p: PModel): string[] {
   const plainIds = plain(p).map((s) => s.id)
   const block = (s: PStep) => {
     out.push(`  - name: ${s.id}`)
-    out.push(`    image: ${yamlStr(s.image)}`)
+    // An external validator runs no container: no image, no commands, no
+    // env, secrets, cache or retries; a reviewer outside answers it.
+    if (!s.external) out.push(`    image: ${yamlStr(s.image)}`)
     if (s.validator) {
       out.push('    validator: true')
     }
-    if (s.run.length === 1) out.push(`    run: ${yamlStr(s.run[0])}`)
-    else if (s.run.length > 1) {
+    if (s.external) out.push('    external: true')
+    if (!s.external && s.run.length === 1) out.push(`    run: ${yamlStr(s.run[0])}`)
+    else if (!s.external && s.run.length > 1) {
       out.push('    run:')
       for (const r of s.run) out.push(`      - ${yamlStr(r)}`)
     }
     const needs = s.validator ? plainIds : s.needs
     if (needs.length) out.push(`    needs: ${list(needs)}`)
-    const env = s.env.filter((e) => !e.secret && e.k)
+    const env = s.external ? [] : s.env.filter((e) => !e.secret && e.k)
     if (env.length) {
       out.push('    env:')
       for (const e of env) out.push(`      ${e.k}: ${yamlStr(e.v)}`)
     }
-    const secrets = s.env.filter((e) => e.secret && e.k).map((e) => e.k)
+    const secrets = s.external ? [] : s.env.filter((e) => e.secret && e.k).map((e) => e.k)
     if (secrets.length) out.push(`    secrets: ${list(secrets)}`)
     if (s.evidence.length) out.push(`    artifacts: ${list(s.evidence)}`)
     if (s.cache.length && !s.validator) out.push(`    cache: ${list(s.cache)}`)
     if (s.timeout) out.push(`    timeout: ${s.timeout}`)
-    if (s.retries) out.push(`    retries: ${s.retries}`)
+    if (s.retries && !s.external) out.push(`    retries: ${s.retries}`)
     if (s.allowFail && !s.validator) out.push('    allow_failure: true')
     if (s.reviewer && s.validator) out.push(`    reviewer: ${s.reviewer}`)
     if (s.advisory && s.validator) out.push('    advisory: true')
-    if (s.effort && s.validator) out.push(`    effort: ${s.effort}`)
+    if (s.effort && s.validator && !s.external) out.push(`    effort: ${s.effort}`)
     if (s.paths.length && !s.validator) {
       out.push('    when:')
       out.push(`      paths: ${list(s.paths)}`)
@@ -365,7 +372,7 @@ export function diffSummary(a: PModel, b: PModel): string[] {
     }
     const ch: string[] = []
     if (!sb.validator && sa.needs.join() !== sb.needs.join()) ch.push(sb.needs.length ? `needs ${sb.needs.join(', ')}` : 'needs nothing')
-    if (sa.image !== sb.image) ch.push(`image ${sb.image}`)
+    if (sa.image !== sb.image && !sb.external) ch.push(`image ${sb.image}`)
     if (sa.timeout !== sb.timeout) ch.push(sb.timeout ? `timeout ${sb.timeout}` : 'default timeout')
     if (sa.retries !== sb.retries) ch.push(`retries ${sb.retries}`)
     if (sa.run.join('\n') !== sb.run.join('\n')) ch.push('commands')
@@ -563,6 +570,7 @@ function cardOf(s: PStep, q: Placed, bandOf: Record<string, number>, sel: Set<st
   if (s.timeout) chips.push(plainChip(s.timeout))
   if (s.retries) chips.push(plainChip(`retries ${s.retries}`))
   if (s.allowFail) chips.push(plainChip('allowed to fail'))
+  if (s.external) chips.push(plainChip('external'))
   if (s.advisory) chips.push(plainChip('advisory'))
   if (s.reviewer) chips.push(plainChip(s.reviewer))
   if (s.effort) chips.push(plainChip(`effort ${s.effort}`))
