@@ -607,7 +607,7 @@ func (e *Engine) setupValidator(r run.Run, p prepared, work string, st pipeline.
 				return scheduler.StepSetup{}, err
 			}
 			if ok {
-				setup.Env = profileEnv(prof, e.secrets())
+				setup.Env = profileEnv(prof, e.secrets(), st.Effort)
 			}
 		}
 	}
@@ -787,12 +787,18 @@ func (e *Engine) reviewerProfile(ctx context.Context, st pipeline.Step, family s
 }
 
 // profileEnv is what a container validator learns from its profile:
-// PLUMBIX_AI_MODEL, for openai the provider and base URL, and the key under
-// the variable the kind reads, when the named secret has a value.
-func profileEnv(r settings.Reviewer, secrets map[string]string) map[string]string {
+// PLUMBIX_AI_MODEL, for openai the provider and base URL, the key under
+// the variable the kind reads, when the named secret has a value, and
+// PLUMBIX_AI_EFFORT from the step's effort over the profile's (WU-034).
+func profileEnv(r settings.Reviewer, secrets map[string]string, stepEffort string) map[string]string {
 	env := map[string]string{}
 	if r.Model != "" {
 		env["PLUMBIX_AI_MODEL"] = r.Model
+	}
+	if effort := stepEffort; effort != "" {
+		env["PLUMBIX_AI_EFFORT"] = effort
+	} else if r.Effort != "" {
+		env["PLUMBIX_AI_EFFORT"] = r.Effort
 	}
 	keyVar := "ANTHROPIC_API_KEY"
 	if r.Kind == settings.KindOpenAI {

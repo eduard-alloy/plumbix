@@ -17,19 +17,20 @@ type ReviewerProfile struct {
 	BaseURL   string
 	Model     string
 	Tools     string
+	Effort    string
 	KeySecret string
 	UpdatedAt time.Time
 }
 
-const reviewerProfileColumns = `name, kind, base_url, model, tools, key_secret, updated_at`
+const reviewerProfileColumns = `name, kind, base_url, model, tools, effort, key_secret, updated_at`
 
 // PutReviewerProfile stores or replaces a profile by name.
 func (db *DB) PutReviewerProfile(ctx context.Context, p ReviewerProfile) error {
 	_, err := db.sql.ExecContext(ctx,
-		`INSERT INTO reviewer_profiles (`+reviewerProfileColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO reviewer_profiles (`+reviewerProfileColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (name) DO UPDATE SET kind = excluded.kind, base_url = excluded.base_url, model = excluded.model,
-		   tools = excluded.tools, key_secret = excluded.key_secret, updated_at = excluded.updated_at`,
-		p.Name, p.Kind, p.BaseURL, p.Model, p.Tools, p.KeySecret, formatTime(p.UpdatedAt))
+		   tools = excluded.tools, effort = excluded.effort, key_secret = excluded.key_secret, updated_at = excluded.updated_at`,
+		p.Name, p.Kind, p.BaseURL, p.Model, p.Tools, p.Effort, p.KeySecret, formatTime(p.UpdatedAt))
 	return mapErr(err)
 }
 
@@ -72,7 +73,7 @@ func (db *DB) DeleteReviewerProfile(ctx context.Context, name string) error {
 func scanReviewerProfile(row interface{ Scan(...any) error }) (ReviewerProfile, error) {
 	var p ReviewerProfile
 	var at string
-	if err := row.Scan(&p.Name, &p.Kind, &p.BaseURL, &p.Model, &p.Tools, &p.KeySecret, &at); err != nil {
+	if err := row.Scan(&p.Name, &p.Kind, &p.BaseURL, &p.Model, &p.Tools, &p.Effort, &p.KeySecret, &at); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ReviewerProfile{}, change.ErrNotFound
 		}

@@ -39,7 +39,11 @@ type Config struct {
 	BaseURL  string // the openai provider's base, such as https://api.openai.com/v1
 	APIKey   string
 	Model    string
-	Effort   string // anthropic only
+	Effort   string // the reasoning effort: always sent to Anthropic; sent to an OpenAI-compatible endpoint only when EffortSet
+	// EffortSet says the operator chose Effort (WU-034). Without it the
+	// OpenAI-compatible path leaves reasoning_effort to the vendor's default,
+	// since vendors differ on what they accept.
+	EffortSet bool
 	// Progress, when set, receives one line when a request goes out and
 	// when a format is refused, so a slow model never looks hung (WU-031).
 	// Model, host, sizes and effort only; never a key.

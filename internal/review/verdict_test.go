@@ -152,3 +152,19 @@ func TestEmptyTextIsNormalizedConservatively(t *testing.T) {
 		t.Errorf("summary = %q", v.Summary)
 	}
 }
+
+// TestFindingCriterionIsOneOfTheChangesOrNone (WU-034): a model given a free
+// string wrote "intent" into a finding's criterion and broke the contract.
+func TestFindingCriterionIsOneOfTheChangesOrNone(t *testing.T) {
+	schema := OutputSchema([]string{"AC-1", "AC-2"})
+	findings := schema["properties"].(map[string]any)["findings"].(map[string]any)["items"].(map[string]any)
+	criterion := findings["properties"].(map[string]any)["criterion"].(map[string]any)
+	got, _ := criterion["enum"].([]string)
+	if strings.Join(got, ",") != "AC-1,AC-2," {
+		t.Errorf("finding criterion enum = %v, want the ids and the empty string", criterion)
+	}
+	free := OutputSchema(nil)["properties"].(map[string]any)["findings"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)["criterion"].(map[string]any)
+	if _, has := free["enum"]; has {
+		t.Error("with no criteria the finding criterion must stay a free string")
+	}
+}

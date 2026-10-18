@@ -3,7 +3,7 @@
 // never touching the protected branch.
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../api'
-import type { Change, PipelineFile, Repo } from '../model'
+import type { Change, PipelineFile, Repo, ReviewerProfile } from '../model'
 import { useRoute } from '../router'
 import { useStore } from '../store'
 import {
@@ -29,6 +29,14 @@ export function PipelinesPage({ repoId }: { repoId?: string }) {
   const [loaded, setLoaded] = useState<Record<string, Loaded | { error: string }>>({})
   const [edits, setEdits] = useState<Record<string, PModel>>({})
   const [sel, setSel] = useState<string[]>([])
+  // The reviewer profiles from Settings, for the validator panel's selects (WU-034).
+  const [profiles, setProfiles] = useState<ReviewerProfile[]>([])
+  useEffect(() => {
+    api
+      .settings()
+      .then((v) => setProfiles(v.reviewers))
+      .catch(() => setProfiles([]))
+  }, [])
   const [view, setView] = useState<'visual' | 'yaml'>('visual')
   const [saveOpen, setSaveOpen] = useState(false)
   const [form, setForm] = useState<{ branch?: string; title?: string; intent?: string }>({})
@@ -257,7 +265,7 @@ export function PipelinesPage({ repoId }: { repoId?: string }) {
                 ))}
               </div>
               {sel.length > 0 && (
-                <Inspector cur={cur} sel={sel} mutate={mutate} close={() => setSel([])} setSel={setSel} groupName={groupName} setGroupName={setGroupName} />
+                <Inspector cur={cur} sel={sel} mutate={mutate} close={() => setSel([])} setSel={setSel} groupName={groupName} setGroupName={setGroupName} profiles={profiles} />
               )}
             </div>
           ) : (
@@ -384,7 +392,7 @@ function YamlView({ cur, base }: { cur: PModel; base: PModel | null }) {
 
 type Mutate = (fn: (p: PModel) => PModel | { model: PModel; id?: string }) => void
 
-function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName }: { cur: PModel; sel: string[]; mutate: Mutate; close: () => void; setSel: (s: string[]) => void; groupName: string; setGroupName: (s: string) => void }) {
+function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName, profiles }: { cur: PModel; sel: string[]; mutate: Mutate; close: () => void; setSel: (s: string[]) => void; groupName: string; setGroupName: (s: string) => void; profiles: ReviewerProfile[] }) {
   const [pathDraft, setPathDraft] = useState('')
   const [nameDraft, setNameDraft] = useState<string | null>(null)
   const s = sel.length === 1 ? find(cur, sel[0]) : undefined
@@ -549,6 +557,35 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName }:
       )}
       <Switch on={s.validator} label="Validator" sub={s.validator ? 'Judges the change from evidence: the image is the validator, no commands. Runs in the final phase.' : 'Turn on to make this step a validator: its image\'s entrypoint judges the change in the final phase, no commands.'} toggle={() => mutate((p) => toggleValidator(p, id))} />
       {s.validator && <Switch on={s.advisory} label="Advisory" sub={s.advisory ? 'Its verdict is recorded and shown, but never counted: it cannot approve, reject or call for a person. For comparing a second model.' : 'Its verdict counts like any validator. Turn on to record it without counting it.'} toggle={() => set('advisory', !s.advisory)} />}
+      {s.validator && (
+        <div className="group">
+          <span className="label">Reviewer</span>
+          <label>
+            Profile
+            <select aria-label="Reviewer profile" value={s.reviewer} onChange={(e) => set('reviewer', e.target.value)}>
+              <option value="">Default for this kind of step</option>
+              {profiles.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name} · {p.kind === 'claude-code' ? 'Claude Code' : p.kind === 'anthropic' ? 'Anthropic API' : 'OpenAI-compatible'}
+                  {p.model ? ` · ${p.model}` : ''}
+                  {p.effort ? ` · effort ${p.effort}` : ''}
+                </option>
+              ))}
+            </select>
+            <span className="dim">Which model judges, from Settings. External steps take Claude Code profiles, pipeline steps API profiles.</span>
+          </label>
+          <label>
+            Reasoning effort
+            <select aria-label="Reasoning effort" value={s.effort} onChange={(e) => set('effort', e.target.value as PStep['effort'])}>
+              <option value="">Profile's setting</option>
+              <option value="low">Low: fastest and cheapest</option>
+              <option value="medium">Medium</option>
+              <option value="high">High: slow and thorough</option>
+            </select>
+            <span className="dim">For API reviewers; overrides the profile for this step.</span>
+          </label>
+        </div>
+      )}
       <div className="group">
         <span className="label">Environment and secrets</span>
         {s.env.map((e, i) => (

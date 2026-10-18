@@ -229,6 +229,8 @@ export interface SecretStatus {
 /** anthropic and openai are API kinds (the container validator, billed per token); claude-code is the external loop on a person's machine, on its subscription. */
 export type ReviewerKind = 'anthropic' | 'openai' | 'claude-code'
 export type ReviewerTools = 'read-only' | 'full'
+/** The reasoning effort of an API reviewer's model; '' leaves the vendor's default (WU-034). */
+export type ReviewerEffort = '' | 'low' | 'medium' | 'high'
 /** Where a profile runs: api profiles judge from the container validator, the external one answers external steps. */
 export type ReviewerFamily = 'api' | 'external'
 
@@ -243,6 +245,8 @@ export interface ReviewerProfile {
   model: string
   /** Whether a reviewer with tools (Claude Code) may run commands. */
   tools: ReviewerTools
+  /** For API kinds, the model's reasoning effort; '' for the vendor's default. */
+  effort: ReviewerEffort
   /** The secret holding the key; set through the secrets endpoint, never shown. */
   key_secret: string
   updated_at: string
@@ -256,6 +260,7 @@ export interface ReviewerInput {
   base_url?: string
   model?: string
   tools?: ReviewerTools
+  effort?: ReviewerEffort
   key_secret?: string
 }
 
@@ -328,6 +333,8 @@ export interface PipelineStep {
   external: boolean
   /** The reviewer profile the validator step names; absent for the default. */
   reviewer?: string
+  /** The step's reasoning effort override; absent for the profile's (WU-034). */
+  effort?: 'low' | 'medium' | 'high'
   retries: number
   allow_failure: boolean
   paths: string[]

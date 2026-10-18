@@ -42,12 +42,13 @@ func run(getenv func(string) string, stderr io.Writer, opts ...option.RequestOpt
 		return def
 	}
 	cfg := aivalidator.Config{
-		Provider: or("PLUMBIX_AI_PROVIDER", aivalidator.ProviderAnthropic),
-		BaseURL:  getenv("PLUMBIX_AI_BASE_URL"),
-		APIKey:   getenv("ANTHROPIC_API_KEY"),
-		Model:    or("PLUMBIX_AI_MODEL", aivalidator.DefaultModel),
-		Effort:   or("PLUMBIX_AI_EFFORT", aivalidator.DefaultEffort),
-		Progress: stderr,
+		Provider:  or("PLUMBIX_AI_PROVIDER", aivalidator.ProviderAnthropic),
+		BaseURL:   getenv("PLUMBIX_AI_BASE_URL"),
+		APIKey:    getenv("ANTHROPIC_API_KEY"),
+		Model:     or("PLUMBIX_AI_MODEL", aivalidator.DefaultModel),
+		Effort:    or("PLUMBIX_AI_EFFORT", aivalidator.DefaultEffort),
+		EffortSet: getenv("PLUMBIX_AI_EFFORT") != "",
+		Progress:  stderr,
 	}
 	if cfg.Provider == aivalidator.ProviderOpenAI {
 		cfg.APIKey = or("PLUMBIX_AI_API_KEY", getenv("OPENAI_API_KEY"))
@@ -75,6 +76,10 @@ func run(getenv func(string) string, stderr io.Writer, opts ...option.RequestOpt
 		fmt.Fprintf(stderr, "ai validator: write verdict: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stderr, "ai validator: %s: %s (%s, %d input and %d output tokens)\n", v.Outcome, v.Summary, v.Usage.Model, v.Usage.InputTokens, v.Usage.OutputTokens)
+	reasoning := ""
+	if v.Usage.ReasoningTokens > 0 {
+		reasoning = fmt.Sprintf(", %d reasoning tokens", v.Usage.ReasoningTokens)
+	}
+	fmt.Fprintf(stderr, "ai validator: %s: %s (%s, %d input and %d output tokens%s)\n", v.Outcome, v.Summary, v.Usage.Model, v.Usage.InputTokens, v.Usage.OutputTokens, reasoning)
 	return 0
 }

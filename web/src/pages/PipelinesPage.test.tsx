@@ -88,6 +88,23 @@ describe('Pipelines page', () => {
     expect(panel.textContent).toContain('plumbix-ai-validator')
   })
 
+  it('lets a validator step pick its reviewer profile and reasoning effort, written to the file (WU-034)', async () => {
+    await open()
+    fireEvent.click(card('validate'))
+    const panel = await screen.findByRole('complementary')
+    const profile = within(panel).getByLabelText('Reviewer profile') as HTMLSelectElement
+    await waitFor(() => expect(Array.from(profile.options).map((o) => o.value)).toEqual(['', 'claude-api', 'claude-code']))
+    expect(profile.options[1].textContent).toContain('Anthropic API')
+    fireEvent.change(profile, { target: { value: 'claude-api' } })
+    fireEvent.change(within(panel).getByLabelText('Reasoning effort'), { target: { value: 'low' } })
+    expect(screen.getByText('validate: reviewer claude-api, effort low')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'YAML' }))
+    const yaml = screen.getByRole('region', { name: 'Pipeline YAML' })
+    const added = Array.from(yaml.querySelectorAll('.yl.add')).map((l) => l.textContent)
+    expect(added.some((t) => t!.includes('reviewer: claude-api'))).toBe(true)
+    expect(added.some((t) => t!.includes('effort: low'))).toBe(true)
+  })
+
   it('renames a step and rewires its dependents; Escape clears the selection', async () => {
     await open()
     fireEvent.click(card('build'))

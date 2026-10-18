@@ -112,6 +112,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-031 | Validator steps say what they run: a progress line when the AI validator's request goes out; schema, docs and editor explain that the image is the validator | F-003, F-004 | ✅ |
 | WU-032 | Images page, inspect layer: every referenced image with status and users; the shipped two with a version check and a build from embedded sources | F-002, F-004 | ✅ |
 | WU-033 | Images page, own images: a Dockerfile written on the page, built on the server, named in pipelines; edited, rebuilt when stale, deleted | F-002, F-004 | ✅ |
+| WU-034 | Reasoning effort for API reviewers: per profile and per validator step, sent as reasoning_effort, reasoning tokens in the usage | F-003, F-004 | ✅ |
 
 ## Milestone 2 candidates
 

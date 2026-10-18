@@ -18,13 +18,14 @@ import (
 // fakeOpenAI is a chat-completions endpoint that records requests and can
 // refuse response_format kinds, as some vendors do.
 type fakeOpenAI struct {
-	progress    bytes.Buffer // what the validator reported while it worked
-	mu          sync.Mutex
-	requests    []map[string]any
-	auth        []string
-	rejectKinds map[string]bool // response_format types answered with 400
-	status      int
-	content     string
+	progress     bytes.Buffer // what the validator reported while it worked
+	mu           sync.Mutex
+	requests     []map[string]any
+	auth         []string
+	rejectKinds  map[string]bool // response_format types answered with 400
+	rejectEffort bool            // a vendor that does not know reasoning_effort
+	status       int
+	content      string
 }
 
 func (f *fakeOpenAI) server(t *testing.T) *httptest.Server {
@@ -46,6 +47,11 @@ func (f *fakeOpenAI) server(t *testing.T) *httptest.Server {
 			_, _ = w.Write([]byte(`{"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}`))
 			return
 		}
+		if _, ok := req["reasoning_effort"]; ok && f.rejectEffort {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": "Argument not supported on this model: reasoning_effort"}})
+			return
+		}
 		if rf, ok := req["response_format"].(map[string]any); ok && f.rejectKinds[rf["type"].(string)] {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"error":{"message":"Invalid parameter: 'response_format' of type '` + rf["type"].(string) + `' is not supported with this model.","type":"invalid_request_error","param":"response_format"}}`))
@@ -54,7 +60,7 @@ func (f *fakeOpenAI) server(t *testing.T) *httptest.Server {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": "chatcmpl-1", "object": "chat.completion", "model": "gpt-5.5",
 			"choices": []map[string]any{{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": f.content}}},
-			"usage":   map[string]any{"prompt_tokens": 800, "completion_tokens": 150},
+			"usage":   map[string]any{"prompt_tokens": 800, "completion_tokens": 150, "completion_tokens_details": map[string]any{"reasoning_tokens": 6927}},
 		})
 	}))
 	t.Cleanup(srv.Close)
@@ -164,5 +170,57 @@ func TestOpenAICompatibleFailuresAreClear(t *testing.T) {
 	_, err = Validate(context.Background(), Config{Provider: "bedrock", APIKey: "k", Model: "m", Effort: DefaultEffort}, fx.in, fx.ws)
 	if err == nil || !strings.Contains(err.Error(), "anthropic or openai") {
 		t.Errorf("unknown provider: %v", err)
+	}
+}
+
+// TestOpenAICompatibleReasoningEffort (WU-034): the effort is sent only when
+// the operator chose one, xhigh and max become high, a vendor that refuses
+// the field gets the request again without it, and the hidden reasoning
+// tokens are recorded.
+func TestOpenAICompatibleReasoningEffort(t *testing.T) {
+	// Not set: nothing sent, reasoning tokens still read.
+	f := &fakeOpenAI{content: goodOutput, rejectKinds: map[string]bool{}}
+	v, err := runOpenAI(t, f, "k")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, has := f.requests[0]["reasoning_effort"]; has {
+		t.Error("reasoning_effort sent although the operator set no effort")
+	}
+	if v.Usage == nil || v.Usage.ReasoningTokens != 6927 {
+		t.Errorf("usage = %+v, want 6927 reasoning tokens", v.Usage)
+	}
+	// Set: sent as the vendor's value.
+	for in, want := range map[string]string{"low": "low", "medium": "medium", "high": "high", "xhigh": "high", "max": "high"} {
+		f := &fakeOpenAI{content: goodOutput, rejectKinds: map[string]bool{}}
+		fx := newFixture(t, nil, []validation.StepEvidence{{Step: "test", Status: "succeeded"}})
+		srv := f.server(t)
+		cfg := Config{Provider: ProviderOpenAI, BaseURL: srv.URL + "/v1", APIKey: "k", Model: "gpt-5.5", Effort: in, EffortSet: true, Progress: &f.progress}
+		if _, err := Validate(context.Background(), cfg, fx.in, fx.ws); err != nil {
+			t.Fatal(err)
+		}
+		if f.requests[0]["reasoning_effort"] != want {
+			t.Errorf("effort %s sent as %v, want %s", in, f.requests[0]["reasoning_effort"], want)
+		}
+		if !strings.Contains(f.progress.String(), "reasoning_effort "+want) {
+			t.Errorf("progress for %s = %q", in, f.progress.String())
+		}
+	}
+	// Refused: once more without it, said in the log.
+	f = &fakeOpenAI{content: goodOutput, rejectKinds: map[string]bool{}, rejectEffort: true}
+	fx := newFixture(t, nil, []validation.StepEvidence{{Step: "test", Status: "succeeded"}})
+	srv := f.server(t)
+	cfg := Config{Provider: ProviderOpenAI, BaseURL: srv.URL + "/v1", APIKey: "k", Model: "gpt-5.5", Effort: "low", EffortSet: true, Progress: &f.progress}
+	if _, err := Validate(context.Background(), cfg, fx.in, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.requests) != 2 {
+		t.Fatalf("requests = %d, want the refused one and the retry", len(f.requests))
+	}
+	if _, has := f.requests[1]["reasoning_effort"]; has {
+		t.Error("the retry still carried reasoning_effort")
+	}
+	if !strings.Contains(f.progress.String(), "refused reasoning_effort low; retrying without it") {
+		t.Errorf("progress = %q", f.progress.String())
 	}
 }

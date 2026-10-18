@@ -222,7 +222,7 @@ func (f fakeSettings) Reviewer(_ context.Context, name string, family settings.F
 // although meaningless, to show it never reaches an anthropic step.
 var claudeProfile = settings.Reviewer{Name: "claude", Kind: settings.KindAnthropic, Model: "claude-sonnet-5-5", BaseURL: "https://api.openai.com/v1", Tools: review.ToolsFull, KeySecret: "ANTHROPIC_API_KEY"}
 
-var grokProfile = settings.Reviewer{Name: "grok", Kind: settings.KindOpenAI, BaseURL: "https://api.x.ai/v1", Model: "grok-4", Tools: review.ToolsReadOnly, KeySecret: "PLUMBIX_REVIEWER_GROK_KEY"}
+var grokProfile = settings.Reviewer{Name: "grok", Kind: settings.KindOpenAI, BaseURL: "https://api.x.ai/v1", Model: "grok-4", Tools: review.ToolsReadOnly, Effort: "low", KeySecret: "PLUMBIX_REVIEWER_GROK_KEY"}
 
 // macProfile is a claude-code profile: the loop on a person's machine.
 var macProfile = settings.Reviewer{Name: "mac", Kind: settings.KindClaudeCode, Model: "claude-sonnet-5-5", Tools: review.ToolsFull}
@@ -290,6 +290,7 @@ steps:
   - {name: test, image: "golang:1.27", run: "go test ./..."}
   - {name: validate, image: "plumbix-reference-validator:dev", validator: true, needs: [test]}
   - {name: ai-grok, image: "plumbix-ai-validator:dev", validator: true, reviewer: grok, needs: [test]}
+  - {name: ai-grok-hard, image: "plumbix-ai-validator:dev", validator: true, reviewer: grok, effort: high, needs: [test]}
   - {name: ai-own, image: "plumbix-ai-validator:dev", validator: true, reviewer: claude2, needs: [test], secrets: [ANTHROPIC_API_KEY]}
 `
 	claude2 := claudeProfile
@@ -303,12 +304,20 @@ steps:
 	for _, j := range h.fake.jobs {
 		switch j.Name {
 		case "ai-grok":
-			if j.Env["PLUMBIX_AI_PROVIDER"] != "openai" || j.Env["PLUMBIX_AI_MODEL"] != "grok-4" || j.Env["PLUMBIX_AI_API_KEY"] != "xai-test" || j.Env["ANTHROPIC_API_KEY"] != "" {
+			if j.Env["PLUMBIX_AI_PROVIDER"] != "openai" || j.Env["PLUMBIX_AI_MODEL"] != "grok-4" || j.Env["PLUMBIX_AI_API_KEY"] != "xai-test" || j.Env["ANTHROPIC_API_KEY"] != "" || j.Env["PLUMBIX_AI_EFFORT"] != "low" {
 				t.Errorf("ai-grok env = %v", j.Env)
+			}
+		case "ai-grok-hard":
+			// The step's effort wins over the profile's (WU-034).
+			if j.Env["PLUMBIX_AI_EFFORT"] != "high" {
+				t.Errorf("ai-grok-hard env = %v", j.Env)
 			}
 		case "validate":
 			if j.Env["PLUMBIX_AI_MODEL"] != "claude-sonnet-5-5" || j.Env["ANTHROPIC_API_KEY"] != "sk-ant-test" || j.Env["PLUMBIX_AI_API_KEY"] != "" {
 				t.Errorf("validate env = %v", j.Env)
+			}
+			if _, set := j.Env["PLUMBIX_AI_EFFORT"]; set {
+				t.Errorf("validate got an effort although the claude profile has none: %v", j.Env)
 			}
 		case "ai-own":
 			// A secret the step lists itself wins over the profile's key;

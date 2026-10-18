@@ -46,9 +46,12 @@ func list(item any) map[string]any         { return map[string]any{"type": "arra
 // criterionIDs, when given, is the only set of ids the model may use, so it
 // cannot invent a criterion for a constraint or a risk.
 func OutputSchema(criterionIDs []string) map[string]any {
-	id := str()
+	id, findingCriterion := str(), str()
 	if len(criterionIDs) > 0 {
 		id = enum(criterionIDs...)
+		// A finding may name one of the change's criteria or none; a model
+		// given a free string wrote "intent" and broke the contract.
+		findingCriterion = enum(append(append([]string{}, criterionIDs...), "")...)
 	}
 	return object(map[string]any{
 		"outcome": enum("approve", "fix", "reject"),
@@ -57,7 +60,7 @@ func OutputSchema(criterionIDs []string) map[string]any {
 			"id": id, "status": enum("met", "unmet", "unknown"), "reason": str(), "evidence": list(str()),
 		})),
 		"findings": list(object(map[string]any{
-			"severity": enum("blocker", "major", "minor"), "message": str(), "criterion": str(),
+			"severity": enum("blocker", "major", "minor"), "message": str(), "criterion": findingCriterion,
 			"file": str(), "line": map[string]any{"type": "integer", "description": "1-based line, or 0 when not tied to a line"},
 		})),
 		"risks": list(object(map[string]any{

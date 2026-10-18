@@ -44,6 +44,7 @@ type reviewerBody struct {
 	BaseURL   string `json:"base_url"`
 	Model     string `json:"model"`
 	Tools     string `json:"tools"`
+	Effort    string `json:"effort"`
 	KeySecret string `json:"key_secret"`
 	KeySet    bool   `json:"key_set"`
 	Default   bool   `json:"default"`
@@ -116,14 +117,14 @@ func TestReviewerProfileEndpoints(t *testing.T) {
 	o := loadOpenAPI(t)
 	a := newSettingsAPI(t)
 
-	rec := a.do(http.MethodPut, "/api/v1/settings/reviewers/grok-4", `{"kind": "openai", "base_url": "https://api.x.ai/v1", "model": "grok-4"}`)
+	rec := a.do(http.MethodPut, "/api/v1/settings/reviewers/grok-4", `{"kind": "openai", "base_url": "https://api.x.ai/v1", "model": "grok-4", "effort": "low"}`)
 	o.check("Settings", rec)
 	s := decode[settingsBody](t, rec)
 	if rec.Code != http.StatusOK || len(s.Reviewers) != 1 {
 		t.Fatalf("after creating a profile: %d %+v", rec.Code, s)
 	}
 	got := s.Reviewers[0]
-	want := reviewerBody{Name: "grok-4", Kind: "openai", Family: "api", BaseURL: "https://api.x.ai/v1", Model: "grok-4", Tools: "read-only", KeySecret: "PLUMBIX_REVIEWER_GROK_4_KEY", UpdatedAt: got.UpdatedAt}
+	want := reviewerBody{Name: "grok-4", Kind: "openai", Family: "api", BaseURL: "https://api.x.ai/v1", Model: "grok-4", Tools: "read-only", Effort: "low", KeySecret: "PLUMBIX_REVIEWER_GROK_4_KEY", UpdatedAt: got.UpdatedAt}
 	if got != want || got.UpdatedAt == "" {
 		t.Errorf("profile = %+v\nwant %+v", got, want)
 	}
@@ -187,6 +188,7 @@ func TestReviewerProfileEndpoints(t *testing.T) {
 		{"/api/v1/settings/reviewers/grok-4", `{"kind": "bedrock"}`, "kind"},
 		{"/api/v1/settings/reviewers/grok-4", `{"kind": "openai"}`, "base_url"},
 		{"/api/v1/settings/reviewers/grok-4", `{"kind": "anthropic", "model": "Not A Model"}`, "model"},
+		{"/api/v1/settings/reviewers/grok-4", `{"kind": "anthropic", "effort": "max"}`, "effort"},
 		{"/api/v1/settings/reviewers/Grok", `{"kind": "anthropic"}`, "name"},
 		{"/api/v1/settings/reviewers/grok-4", `{"kind": "anthropic", "nope": 1}`, ""},
 	} {

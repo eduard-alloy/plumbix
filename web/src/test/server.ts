@@ -93,8 +93,8 @@ export function freshDB(): FakeDB {
     imageBuilds: [],
     settings: { guidance: '', defaults: { api: 'claude-api', external: 'claude-code' } },
     profiles: [
-      { name: 'claude-api', kind: 'anthropic', base_url: '', model: '', tools: 'read-only', key_secret: 'ANTHROPIC_API_KEY', updated_at: '2026-10-18T08:00:00Z' },
-      { name: 'claude-code', kind: 'claude-code', base_url: '', model: '', tools: 'read-only', key_secret: '', updated_at: '2026-10-18T08:00:00Z' },
+      { name: 'claude-api', kind: 'anthropic', base_url: '', model: '', tools: 'read-only', effort: '', key_secret: 'ANTHROPIC_API_KEY', updated_at: '2026-10-18T08:00:00Z' },
+      { name: 'claude-code', kind: 'claude-code', base_url: '', model: '', tools: 'read-only', effort: '', key_secret: '', updated_at: '2026-10-18T08:00:00Z' },
     ],
     repoGuidance: {},
     repoTokens: {},
@@ -250,10 +250,13 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       if (model && !modelRe.test(model)) bad.push({ field: 'model', message: 'lowercase letters, digits, dots and dashes only' })
       const tools = body.tools ?? 'read-only'
       if (tools !== 'read-only' && tools !== 'full') bad.push({ field: 'tools', message: 'must be read-only or full' })
+      const effort = body.effort ?? ''
+      if (!['', 'low', 'medium', 'high'].includes(effort)) bad.push({ field: 'effort', message: "must be low, medium or high, or empty for the vendor's default" })
+      if (effort && body.kind === 'claude-code') bad.push({ field: 'effort', message: "is not for Claude Code: the loop runs with the machine's own settings" })
       const keySecret = body.kind === 'claude-code' ? '' : (body.key_secret ?? '').trim() || `PLUMBIX_REVIEWER_${name.toUpperCase().replace(/-/g, '_')}_KEY`
       if (keySecret && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(keySecret)) bad.push({ field: 'key_secret', message: 'must be a secret name: letters, digits and underscores, not starting with a digit' })
       if (bad.length) return problems(bad)
-      const stored = { name, kind: body.kind, base_url: baseURL, model, tools, key_secret: keySecret, updated_at: new Date().toISOString() }
+      const stored = { name, kind: body.kind, base_url: baseURL, model, tools, effort, key_secret: keySecret, updated_at: new Date().toISOString() }
       const i = db.profiles.findIndex((p) => p.name === name)
       if (i >= 0) db.profiles[i] = stored
       else db.profiles.push(stored)
