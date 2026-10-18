@@ -92,8 +92,10 @@ func Combine(criteria []change.Criterion, results []ValidatorResult, required, c
 	counted := 0
 	reported := map[string]bool{}
 	for _, res := range results {
-		reported[res.Name] = true
 		if !res.Advisory {
+			// Only a counting verdict satisfies the target's required list:
+			// a branch cannot defuse a required validator by marking it advisory.
+			reported[res.Name] = true
 			counted++
 		}
 		if res.Err != nil || res.Verdict == nil {

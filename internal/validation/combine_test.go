@@ -204,4 +204,13 @@ func TestAdvisoryVerdictsAreRecordedButNeverCounted(t *testing.T) {
 			t.Errorf("%s judged by an advisory validator alone: %s", c.ID, c.Status)
 		}
 	}
+	// A branch that marks the target's required validator advisory has not
+	// satisfied it.
+	r = combine([]ValidatorResult{
+		{Name: "validate", Advisory: true, Verdict: verdict(Approve, allMet)},
+		{Name: "other", Verdict: verdict(Approve, allMet)},
+	}, []string{"validate"})
+	if r.State != change.NeedsHuman || !strings.Contains(strings.Join(r.Reasons, " "), "required validator validate did not report") {
+		t.Errorf("a required validator marked advisory counted as reported: %+v", r)
+	}
 }

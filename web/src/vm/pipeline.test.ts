@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as fx from '../test/fixtures'
+import type { PipelineFile } from '../model'
 import { addStep, bands, diffSummary, find, fromApi, groupSteps, levels, mergeSteps, needOptions, removeSteps, renameStep, saveDefaults, setField, toYaml, toggleValidator, yamlDiff, yamlStr, type PModel } from './pipeline'
 
 const sampleFile = fx.pipelineFile
@@ -209,5 +210,35 @@ describe('pipeline model', () => {
     expect([at('deploy-check').x, at('deploy-check').y]).toEqual([800, 0])
     expect(cb.edges).toHaveLength(4)
     expect(cb.w).toBe(1160)
+  })
+})
+
+describe('advisory validators in the editor (WU-030)', () => {
+  const served = (): PipelineFile => ({
+    file: '.plumbix/pipeline.yaml',
+    branch: 'main',
+    sha: 'abc',
+    content: '',
+    pipeline: {
+      version: 1,
+      steps: [
+        { name: 'test', image: 'golang:1.27', commands: ['go test ./...'], needs: [], env: {}, secrets: [], artifacts: [], cache: [], validator: false, advisory: false, external: false, retries: 0, allow_failure: false, paths: [] },
+        { name: 'ai-grok', image: 'plumbix-ai-validator:dev', commands: [], needs: ['test'], env: {}, secrets: [], artifacts: [], cache: [], validator: true, advisory: true, external: false, reviewer: 'grok-4', retries: 0, allow_failure: false, paths: [] },
+      ],
+      stages: [],
+    },
+    problems: [],
+  })
+
+  it('reads advisory, writes it back after the validator line, and lists it as a change', () => {
+    const m = fromApi(served())!
+    expect(find(m, 'ai-grok')!.advisory).toBe(true)
+    expect(toYaml(m)).toContain('    validator: true\n    advisory: true\n')
+    const plainAgain = toggleValidator(m, 'ai-grok')
+    expect(find(plainAgain, 'ai-grok')).toMatchObject({ validator: false, advisory: false })
+    expect(toYaml(plainAgain)).not.toContain('advisory')
+    const counted = setField(m, 'ai-grok', 'advisory', false)
+    expect(diffSummary(m, counted)).toContain('ai-grok: counts')
+    expect(diffSummary(counted, m)).toContain('ai-grok: advisory')
   })
 })
