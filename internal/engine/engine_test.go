@@ -1361,12 +1361,14 @@ func TestAnExternalStepTakesToolsAndModelFromItsProfile(t *testing.T) {
 
 // TestPlainStepsGetPerRepositoryCacheMounts (WU-029, A30): a plain step's
 // cache paths become read-write mounts of directories under the data
-// directory, one per repository and path, created on first use; a validator
-// and a step without cache get none.
+// directory, one per repository, step and path, created on first use; a
+// validator and a step without cache get none, and two steps naming the
+// same path get different directories, since they may run in parallel.
 func TestPlainStepsGetPerRepositoryCacheMounts(t *testing.T) {
 	const yaml = `version: 1
 steps:
   - {name: build, image: "golang:1.27", run: "go build ./...", cache: [/go/pkg/mod, /root/.cache/go-build]}
+  - {name: lint, image: "golang:1.27", run: "go vet ./...", cache: [/go/pkg/mod]}
   - {name: test, image: "golang:1.27", run: "go test ./...", needs: [build]}
   - {name: validate, image: "plumbix-reference-validator:dev", validator: true, needs: [test]}
 `
@@ -1376,8 +1378,8 @@ steps:
 	c := h.submit("feat")
 	h.validate(c.ID)
 	h.fake.mu.Lock()
-	defer h.fake.mu.Unlock()
 	cacheRoot := filepath.Join(h.data, "cache", h.repoID)
+	var buildMod, lintMod string
 	for _, j := range h.fake.jobs {
 		var caches []runner.Mount
 		for _, m := range j.Mounts {
@@ -1386,6 +1388,12 @@ steps:
 			}
 		}
 		switch j.Name {
+		case "lint":
+			if len(caches) != 1 || caches[0].Target != "/go/pkg/mod" || caches[0].ReadOnly {
+				t.Errorf("lint cache mounts = %+v", caches)
+			} else {
+				lintMod = caches[0].Source
+			}
 		case "build":
 			if len(caches) != 2 || caches[0].Target != "/go/pkg/mod" || caches[1].Target != "/root/.cache/go-build" || caches[0].ReadOnly || caches[1].ReadOnly {
 				t.Errorf("build cache mounts = %+v", caches)
@@ -1398,10 +1406,50 @@ steps:
 			if len(caches) == 2 && caches[0].Source == caches[1].Source {
 				t.Error("two paths share one directory")
 			}
+			if len(caches) == 2 {
+				buildMod = caches[0].Source
+			}
 		default:
 			if len(caches) != 0 {
 				t.Errorf("%s got cache mounts: %+v", j.Name, caches)
 			}
 		}
+	}
+	if buildMod == "" || buildMod == lintMod || !strings.HasPrefix(buildMod, filepath.Join(cacheRoot, "build")) || !strings.HasPrefix(lintMod, filepath.Join(cacheRoot, "lint")) {
+		t.Errorf("build and lint caches for /go/pkg/mod = %q and %q, want one per step", buildMod, lintMod)
+	}
+	h.fake.mu.Unlock()
+
+	// A second repository with the same pipeline gets its own directories.
+	other := gittest.New(t)
+	other.Commit("main", map[string]string{".plumbix/pipeline.yaml": yaml}, "caches")
+	other.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
+	repo2, err := h.svc.RegisterRepo(ctx, change.RepoInput{Host: "git", URL: other.Remote, ProtectedBranches: []string{"main"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c2, err := h.svc.Submit(ctx, change.ChangeInput{RepoID: repo2.ID, SourceBranch: "feat", TargetBranch: "main", Title: "t", Intent: "i", AcceptanceCriteria: []change.Criterion{{ID: "AC-1", Text: "tests pass", Check: &change.Check{Steps: []string{"test"}}}}, SubmittedBy: "kai"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.validate(c2.ID)
+	h.fake.mu.Lock()
+	var first, second string
+	for _, j := range h.fake.jobs {
+		if j.Name != "build" {
+			continue
+		}
+		for _, m := range j.Mounts {
+			switch {
+			case m.Target != "/go/pkg/mod":
+			case strings.HasPrefix(m.Source, filepath.Join(h.data, "cache", h.repoID)):
+				first = m.Source
+			case strings.HasPrefix(m.Source, filepath.Join(h.data, "cache", repo2.ID)):
+				second = m.Source
+			}
+		}
+	}
+	if first == "" || second == "" || first == second {
+		t.Errorf("cache directories per repository: %q and %q, want one under each repository", first, second)
 	}
 }
