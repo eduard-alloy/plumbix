@@ -24,15 +24,28 @@ interface Usage {
 }
 
 /** usageOf lists the validator steps naming the profile and, for the
- * default, the external steps naming none (those certainly use it; a
- * container validator's image does not say whether it is an AI one). */
+ * external default, the external steps naming none (those certainly use
+ * it; a container validator's image does not say whether it is an AI one). */
 function usageOf(profile: ReviewerProfile, pipelines: { repo: Repo; steps: PipelineStep[] }[]): Usage[] {
   const out: Usage[] = []
   for (const p of pipelines) {
-    const steps = p.steps.filter((s) => s.validator && (s.reviewer === profile.name || (profile.default && !s.reviewer && s.external))).map((s) => s.name)
+    const steps = p.steps.filter((s) => s.validator && (s.reviewer === profile.name || (profile.default && profile.family === 'external' && !s.reviewer && s.external))).map((s) => s.name)
     if (steps.length) out.push({ repo: repoName(p.repo), steps })
   }
   return out
+}
+
+/** kindLabel and kindNote say what a kind is and how it is paid for. */
+function kindLabel(kind: ReviewerKind): string {
+  return kind === 'anthropic' ? 'Anthropic API' : kind === 'openai' ? 'OpenAI-compatible API' : 'Claude Code'
+}
+function kindNote(kind: ReviewerKind): string {
+  if (kind === 'claude-code') return 'Runs outside the pipeline: plumbix review --watch on a machine of yours answers external steps with that machine\'s Claude Code, on its subscription quota. No key.'
+  if (kind === 'anthropic') return 'Runs inside the pipeline: the plumbix-ai-validator step asks the Anthropic API with this key, billed per token to that key.'
+  return 'Runs inside the pipeline: the plumbix-ai-validator step asks this endpoint with this key, billed by its vendor.'
+}
+function defaultLabel(family: ReviewerProfile['family']): string {
+  return family === 'external' ? 'default for external reviews' : 'default for pipeline validators'
 }
 
 function repoName(r: Repo): string {
@@ -49,6 +62,7 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
   const [keySecret, setKeySecret] = useState(profile.key_secret)
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
+  const external = kind === 'claude-code'
   const dirty = kind !== profile.kind || baseURL !== profile.base_url || model !== profile.model || tools !== profile.tools || keySecret !== profile.key_secret
 
   async function run(label: string, fn: () => Promise<unknown>) {
@@ -69,29 +83,37 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
     <div className="profile" aria-label={`Reviewer ${profile.name}`}>
       <div className="head">
         <span className="name">{profile.name}</span>
-        <span className="kind">{kind === 'anthropic' ? 'Anthropic' : 'OpenAI-compatible'}</span>
-        {profile.default && <span className="default-tag">default</span>}
+        <span className="kind">{kindLabel(kind)}</span>
+        {profile.default && <span className="default-tag">{defaultLabel(profile.family)}</span>}
       </div>
+      <p className="usage">{kindNote(kind)}</p>
       <p className="usage">
-        {usage.length ? `Judges ${usage.map((u) => `${u.repo}: ${u.steps.join(', ')}`).join(' · ')}${profile.default ? ', and every AI validator step that names no reviewer.' : '.'}` : profile.default ? 'Judges every AI validator step that names no reviewer.' : `No pipeline step names it. Add reviewer: ${profile.name} to a validator step.`}
+        {usage.length
+          ? `Judges ${usage.map((u) => `${u.repo}: ${u.steps.join(', ')}`).join(' · ')}${profile.default && profile.family === 'api' ? ', and every pipeline AI validator step that names no reviewer.' : '.'}`
+          : profile.default
+            ? profile.family === 'external'
+              ? 'Judges every external step that names no reviewer; no registered pipeline has one yet.'
+              : 'Judges every pipeline AI validator step that names no reviewer.'
+            : `No pipeline step names it. Add reviewer: ${profile.name} to a${external ? 'n external' : ' pipeline AI'} validator step.`}
       </p>
       <form
         onSubmit={(e) => {
           e.preventDefault()
-          void run('Saved', () => api.putReviewer(profile.name, { kind, base_url: kind === 'openai' ? baseURL : '', model, tools, key_secret: keySecret }))
+          void run('Saved', () => api.putReviewer(profile.name, { kind, base_url: kind === 'openai' ? baseURL : '', model, tools, key_secret: external ? '' : keySecret }))
         }}
       >
         <div className="grid">
           <div className="field">
             <label htmlFor={id('kind')}>Kind</label>
             <select id={id('kind')} value={kind} onChange={(e) => setKind(e.target.value as ReviewerKind)}>
-              <option value="anthropic">Anthropic (Claude)</option>
-              <option value="openai">OpenAI-compatible endpoint</option>
+              <option value="anthropic">Anthropic API (per token)</option>
+              <option value="openai">OpenAI-compatible API (per token)</option>
+              <option value="claude-code">Claude Code (subscription, external)</option>
             </select>
           </div>
           <div className="field">
             <label htmlFor={id('model')}>Model</label>
-            <input id={id('model')} value={model} onChange={(e) => setModel(e.target.value)} placeholder={kind === 'anthropic' ? 'claude-opus-5-5 in the container; Claude Code\'s own default outside' : 'the model the endpoint serves'} />
+            <input id={id('model')} value={model} onChange={(e) => setModel(e.target.value)} placeholder={kind === 'anthropic' ? 'claude-opus-5-5' : kind === 'claude-code' ? 'the machine\'s Claude Code default' : 'the model the endpoint serves'} />
           </div>
           {kind === 'openai' && (
             <div className="field" style={{ gridColumn: '1 / -1' }}>
@@ -100,21 +122,26 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
               <p className="hint">{vendorHints}</p>
             </div>
           )}
-          <div className="field">
-            <label htmlFor={id('key')}>Key secret</label>
-            <input id={id('key')} value={keySecret} onChange={(e) => setKeySecret(e.target.value)} pattern="[A-Za-z_][A-Za-z0-9_]*" />
-            <p className="hint">The secret that holds this reviewer's API key. Set its value below; it is never shown again.</p>
-          </div>
+          {!external && (
+            <div className="field">
+              <label htmlFor={id('key')}>Key secret</label>
+              <input id={id('key')} value={keySecret} onChange={(e) => setKeySecret(e.target.value)} pattern="[A-Za-z_][A-Za-z0-9_]*" />
+              <p className="hint">The secret that holds this reviewer's API key. Set its value below; it is never shown again.</p>
+            </div>
+          )}
         </div>
-        <fieldset className="tools">
-          <legend>Tools, where the reviewer has them (Claude Code)</legend>
-          <label>
-            <input type="radio" name={id('tools')} value="read-only" checked={tools === 'read-only'} onChange={() => setTools('read-only')} /> Read only
-          </label>
-          <label>
-            <input type="radio" name={id('tools')} value="full" checked={tools === 'full'} onChange={() => setTools('full')} /> Full, including commands
-          </label>
-        </fieldset>
+        {external && (
+          <fieldset className="tools">
+            <legend>Tools</legend>
+            <label>
+              <input type="radio" name={id('tools')} value="read-only" checked={tools === 'read-only'} onChange={() => setTools('read-only')} /> Read only
+            </label>
+            <label>
+              <input type="radio" name={id('tools')} value="full" checked={tools === 'full'} onChange={() => setTools('full')} /> Full, including commands
+            </label>
+            <p className="hint">Read only lets Claude Code open files beyond the diff; full also lets it run commands in the checked-out code, which text in the repository could try to steer.</p>
+          </fieldset>
+        )}
         <div className="actions">
           <button className="secondary small" type="submit" disabled={busy || !dirty}>
             Save reviewer
@@ -131,7 +158,7 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
           {status && <span className={status.error ? 'status-text error' : 'status-text'}>{status.text}</span>}
         </div>
       </form>
-      <SecretRow secret={secret} onChanged={onChanged} />
+      {!external && <SecretRow secret={secret} onChanged={onChanged} />}
     </div>
   )
 }
@@ -166,8 +193,9 @@ function AddProfile({ onAdded }: { onAdded: () => Promise<void> }) {
         <div className="field">
           <label htmlFor="new-rp-kind">Kind</label>
           <select id="new-rp-kind" value={kind} onChange={(e) => setKind(e.target.value as ReviewerKind)}>
-            <option value="anthropic">Anthropic (Claude)</option>
-            <option value="openai">OpenAI-compatible endpoint</option>
+            <option value="anthropic">Anthropic API (per token)</option>
+            <option value="openai">OpenAI-compatible API (per token)</option>
+            <option value="claude-code">Claude Code (subscription, external)</option>
           </select>
         </div>
         {kind === 'openai' && (
@@ -178,7 +206,7 @@ function AddProfile({ onAdded }: { onAdded: () => Promise<void> }) {
         )}
         <div className="field">
           <label htmlFor="new-rp-model">Model</label>
-          <input id="new-rp-model" value={model} onChange={(e) => setModel(e.target.value)} placeholder={kind === 'openai' ? 'grok-4' : 'claude-sonnet-5-5'} />
+          <input id="new-rp-model" value={model} onChange={(e) => setModel(e.target.value)} placeholder={kind === 'openai' ? 'grok-4' : kind === 'claude-code' ? 'leave empty for the machine\'s default' : 'claude-sonnet-5-5'} />
         </div>
       </div>
       {kind === 'openai' && <p className="hint">{vendorHints}</p>}
@@ -347,7 +375,7 @@ export function SettingsPage() {
 
   const secrets = view?.secrets ?? []
   const profiles = view?.reviewers ?? []
-  const claimed = new Set(profiles.map((p) => p.key_secret))
+  const claimed = new Set(profiles.map((p) => p.key_secret).filter(Boolean))
   const hostKeys = secrets.filter((s) => s.host)
   const custom = secrets.filter((s) => !s.host && !claimed.has(s.key))
   const secretFor = (key: string): SecretStatus => secrets.find((s) => s.key === key) ?? { key, set: false, known: false, purpose: '' }
@@ -363,7 +391,7 @@ export function SettingsPage() {
       <div className="settings">
         <h2>AI reviewers</h2>
         <p className="lead">
-          A reviewer profile is a model and how to reach it. An AI review runs one of two ways: a validator step with the plumbix-ai-validator image asks the profile's provider from inside the pipeline, with the profile's key; an external step (external: true) is answered by plumbix review --watch running Claude Code on a machine of yours, which takes the profile's model and tool policy. A validator step picks its profile with reviewer: &lt;name&gt; in the pipeline; steps that name none get the default. Two steps with two profiles run side by side.
+          A reviewer profile is a model and how it is reached and paid for. Two families: API profiles (Anthropic, or any OpenAI-compatible endpoint) judge from inside the pipeline, through a plumbix-ai-validator step, billed per token to the profile's key; a Claude Code profile is answered outside the pipeline by plumbix review --watch on a machine of yours, on that machine's Claude subscription, and is what external steps (external: true) use. A validator step picks its profile with reviewer: &lt;name&gt;; steps that name none get their family's default. Two steps with two profiles run side by side.
         </p>
         {view && profiles.length === 0 && <p className="hint">No reviewer profiles yet. Add one below; validator steps that name none will use it once it is the default.</p>}
         <div className="profiles">

@@ -40,6 +40,7 @@ func newSettingsAPI(t *testing.T) *settingsAPI {
 type reviewerBody struct {
 	Name      string `json:"name"`
 	Kind      string `json:"kind"`
+	Family    string `json:"family"`
 	BaseURL   string `json:"base_url"`
 	Model     string `json:"model"`
 	Tools     string `json:"tools"`
@@ -50,10 +51,13 @@ type reviewerBody struct {
 }
 
 type settingsBody struct {
-	Guidance        string         `json:"guidance"`
-	DefaultReviewer string         `json:"default_reviewer"`
-	Reviewers       []reviewerBody `json:"reviewers"`
-	Secrets         []struct {
+	Guidance string `json:"guidance"`
+	Defaults struct {
+		API      string `json:"api"`
+		External string `json:"external"`
+	} `json:"defaults"`
+	Reviewers []reviewerBody `json:"reviewers"`
+	Secrets   []struct {
 		Key       string `json:"key"`
 		Set       bool   `json:"set"`
 		Known     bool   `json:"known"`
@@ -81,7 +85,7 @@ func TestSettingsEndpoints(t *testing.T) {
 	rec := a.do(http.MethodGet, "/api/v1/settings", "")
 	o.check("Settings", rec)
 	s := decode[settingsBody](t, rec)
-	if s.Guidance != "" || len(s.Reviewers) != 0 || s.DefaultReviewer != "" || len(s.Secrets) < 4 {
+	if s.Guidance != "" || len(s.Reviewers) != 0 || s.Defaults.API != "" || s.Defaults.External != "" || len(s.Secrets) < 4 {
 		t.Fatalf("initial settings = %+v", s)
 	}
 	if s.Secrets[0].Key != "PLUMBIX_GITHUB_TOKEN" || s.Secrets[0].Set || !s.Secrets[0].Known || s.Secrets[0].Purpose == "" || s.Secrets[0].Host != "github" {
@@ -119,7 +123,7 @@ func TestReviewerProfileEndpoints(t *testing.T) {
 		t.Fatalf("after creating a profile: %d %+v", rec.Code, s)
 	}
 	got := s.Reviewers[0]
-	want := reviewerBody{Name: "grok-4", Kind: "openai", BaseURL: "https://api.x.ai/v1", Model: "grok-4", Tools: "read-only", KeySecret: "PLUMBIX_REVIEWER_GROK_4_KEY", UpdatedAt: got.UpdatedAt}
+	want := reviewerBody{Name: "grok-4", Kind: "openai", Family: "api", BaseURL: "https://api.x.ai/v1", Model: "grok-4", Tools: "read-only", KeySecret: "PLUMBIX_REVIEWER_GROK_4_KEY", UpdatedAt: got.UpdatedAt}
 	if got != want || got.UpdatedAt == "" {
 		t.Errorf("profile = %+v\nwant %+v", got, want)
 	}
@@ -152,11 +156,25 @@ func TestReviewerProfileEndpoints(t *testing.T) {
 		t.Errorf("after the second profile: %+v", s.Reviewers)
 	}
 
-	// The default.
+	// A claude-code profile: the external family, no key, and its own default (A29).
+	rec = a.do(http.MethodPut, "/api/v1/settings/reviewers/mac", `{"kind": "claude-code", "tools": "full", "model": "claude-sonnet-5-5"}`)
+	o.check("Settings", rec)
+	if s = decode[settingsBody](t, rec); rec.Code != http.StatusOK || len(s.Reviewers) != 3 || s.Reviewers[2].Family != "external" || s.Reviewers[2].KeySecret != "" || s.Reviewers[2].KeySet {
+		t.Errorf("claude-code profile: %d %+v", rec.Code, s.Reviewers)
+	}
+	if rec := a.do(http.MethodPut, "/api/v1/settings/reviewers/mac", `{"kind": "claude-code", "key_secret": "SOME_KEY"}`); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "key_secret") {
+		t.Errorf("claude-code with a key: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Defaults, one per family: naming a profile makes it its family's default.
 	rec = a.do(http.MethodPut, "/api/v1/settings", `{"default_reviewer": "grok-4"}`)
 	o.check("Settings", rec)
-	if s = decode[settingsBody](t, rec); rec.Code != http.StatusOK || s.DefaultReviewer != "grok-4" || !s.Reviewers[1].Default || s.Reviewers[0].Default {
-		t.Errorf("default: %d %+v", rec.Code, s)
+	if s = decode[settingsBody](t, rec); rec.Code != http.StatusOK || s.Defaults.API != "grok-4" || s.Defaults.External != "" || !s.Reviewers[1].Default || s.Reviewers[0].Default || s.Reviewers[2].Default {
+		t.Errorf("api default: %d %+v", rec.Code, s)
+	}
+	rec = a.do(http.MethodPut, "/api/v1/settings", `{"default_reviewer": "mac"}`)
+	if s = decode[settingsBody](t, rec); rec.Code != http.StatusOK || s.Defaults.API != "grok-4" || s.Defaults.External != "mac" || !s.Reviewers[1].Default || !s.Reviewers[2].Default {
+		t.Errorf("external default: %d %+v", rec.Code, s)
 	}
 	rec = a.do(http.MethodPut, "/api/v1/settings", `{"default_reviewer": "nobody"}`)
 	o.check("Error", rec)
@@ -179,12 +197,12 @@ func TestReviewerProfileEndpoints(t *testing.T) {
 		}
 	}
 
-	// Removal clears the default; a second removal is 404.
+	// Removal clears its family's default only; a second removal is 404.
 	if rec := a.do(http.MethodDelete, "/api/v1/settings/reviewers/grok-4", ""); rec.Code != http.StatusNoContent {
 		t.Errorf("delete: %d %s", rec.Code, rec.Body.String())
 	}
 	s = decode[settingsBody](t, a.do(http.MethodGet, "/api/v1/settings", ""))
-	if len(s.Reviewers) != 1 || s.DefaultReviewer != "" {
+	if len(s.Reviewers) != 2 || s.Defaults.API != "" || s.Defaults.External != "mac" {
 		t.Errorf("after delete: %+v", s)
 	}
 	if rec := a.do(http.MethodDelete, "/api/v1/settings/reviewers/grok-4", ""); rec.Code != http.StatusNotFound {

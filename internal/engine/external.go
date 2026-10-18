@@ -53,15 +53,13 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 	if err != nil {
 		return errored(err)
 	}
-	// The reviewer runs Claude Code, so a profile lends only its tool policy
-	// and model: an anthropic profile the step names, else an anthropic
-	// default; an openai default is simply not applied here.
+	// The reviewer runs Claude Code on its own machine, so a claude-code
+	// profile (named, or the external default) lends its tool policy and
+	// model; an API profile named here is an error (A29).
 	tools, model, profile := review.ToolsReadOnly, "", ""
-	if prof, ok, err := e.reviewerProfile(ctx, st); err != nil {
+	if prof, ok, err := e.reviewerProfile(ctx, st, settings.FamilyExternal); err != nil {
 		return errored(err)
-	} else if ok && prof.Kind != settings.KindAnthropic && st.Reviewer != "" {
-		return errored(fmt.Errorf("reviewer profile %q asks an OpenAI-compatible endpoint, but external reviews run Claude Code: name an anthropic profile on step %s, or none", prof.Name, st.Name))
-	} else if ok && prof.Kind == settings.KindAnthropic {
+	} else if ok {
 		tools, model, profile = prof.Tools, prof.Model, prof.Name
 	}
 	deadline, _ := ctx.Deadline()

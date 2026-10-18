@@ -20,11 +20,11 @@ func TestExternalReviewsAreClaimedAndAnsweredOverTheAPI(t *testing.T) {
 	o := loadOpenAPI(t)
 	a := newRunAPI(t)
 	a.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalPipeline}, "external review")
-	// The default reviewer profile allows full tools; the brief carries it (WU-028).
-	if rec := a.do(http.MethodPut, "/api/v1/settings/reviewers/claude", `{"kind": "anthropic", "tools": "full"}`); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"tools":"full"`) {
+	// The external default profile allows full tools; the brief carries it (WU-028, A29).
+	if rec := a.do(http.MethodPut, "/api/v1/settings/reviewers/claude", `{"kind": "claude-code", "tools": "full"}`); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"tools":"full"`) {
 		t.Fatalf("set tools: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := a.do(http.MethodPut, "/api/v1/settings/reviewers/claude", `{"kind": "anthropic", "tools": "everything"}`); rec.Code != http.StatusBadRequest {
+	if rec := a.do(http.MethodPut, "/api/v1/settings/reviewers/claude", `{"kind": "claude-code", "tools": "everything"}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("bad tools: %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := a.do(http.MethodPut, "/api/v1/settings", `{"default_reviewer": "claude"}`); rec.Code != http.StatusOK {

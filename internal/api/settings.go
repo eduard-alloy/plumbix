@@ -55,19 +55,20 @@ type secretStatus struct {
 }
 
 // reviewerView is a reviewer profile as the settings list it (WU-028):
-// the profile, whether its key secret has a value, and whether it is the
-// default. The key itself never appears.
+// the profile, its family, whether its key secret has a value, and whether
+// it is its family's default. The key itself never appears.
 type reviewerView struct {
 	settings.Reviewer
-	KeySet  bool `json:"key_set"`
-	Default bool `json:"default"`
+	Family  settings.Family `json:"family"`
+	KeySet  bool            `json:"key_set"`
+	Default bool            `json:"default"`
 }
 
 type settingsView struct {
-	Guidance        string         `json:"guidance"`
-	DefaultReviewer string         `json:"default_reviewer"`
-	Reviewers       []reviewerView `json:"reviewers"`
-	Secrets         []secretStatus `json:"secrets"`
+	Guidance  string            `json:"guidance"`
+	Defaults  settings.Defaults `json:"defaults"`
+	Reviewers []reviewerView    `json:"reviewers"`
+	Secrets   []secretStatus    `json:"secrets"`
 }
 
 func (h *settingsHandlers) view(ctx context.Context) (settingsView, error) {
@@ -79,16 +80,23 @@ func (h *settingsHandlers) view(ctx context.Context) (settingsView, error) {
 	if err != nil {
 		return settingsView{}, err
 	}
-	def, err := h.settings.DefaultReviewer(ctx)
+	defs, err := h.settings.Defaults(ctx)
 	if err != nil {
 		return settingsView{}, err
 	}
-	v := settingsView{Guidance: g.Global, DefaultReviewer: def, Reviewers: make([]reviewerView, 0, len(profiles)), Secrets: []secretStatus{}}
+	v := settingsView{Guidance: g.Global, Defaults: defs, Reviewers: make([]reviewerView, 0, len(profiles)), Secrets: []secretStatus{}}
 	keyOf := map[string][]string{} // secret key -> profiles using it
 	for _, p := range profiles {
-		_, set := h.secrets.Get(p.KeySecret)
-		v.Reviewers = append(v.Reviewers, reviewerView{Reviewer: p, KeySet: set, Default: p.Name == def})
-		keyOf[p.KeySecret] = append(keyOf[p.KeySecret], p.Name)
+		set := false
+		if p.KeySecret != "" {
+			_, set = h.secrets.Get(p.KeySecret)
+			keyOf[p.KeySecret] = append(keyOf[p.KeySecret], p.Name)
+		}
+		isDefault := p.Name == defs.API
+		if p.Family() == settings.FamilyExternal {
+			isDefault = p.Name == defs.External
+		}
+		v.Reviewers = append(v.Reviewers, reviewerView{Reviewer: p, Family: p.Family(), KeySet: set, Default: isDefault})
 	}
 	listed := map[string]bool{}
 	add := func(key, purpose, hostKind string, known bool) error {
