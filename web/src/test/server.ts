@@ -19,7 +19,7 @@ export interface FakeDB {
   secrets: Record<string, string>
   secretUpdated: Record<string, string>
   secretChecks: Record<string, { ok: boolean; expires_at?: string; message: string }>
-  settings: { ai_model: string; ai_tools: 'read-only' | 'full'; guidance: string }
+  settings: { ai_model: string; ai_provider: 'anthropic' | 'openai'; ai_base_url: string; ai_tools: 'read-only' | 'full'; guidance: string }
   repoGuidance: Record<string, string>
   repoTokens: Record<string, string>
   repoChecks: Record<string, { ok: boolean; message: string }>
@@ -33,7 +33,8 @@ const KNOWN_SECRETS = [
   { key: 'PLUMBIX_GITHUB_TOKEN', purpose: 'Default token for every GitHub repository: contents read and write; fetches, pushes merges, checks expiry. A fine-grained token covers only the repositories chosen for it; a repository can carry its own token on the Repositories page', host: 'github' },
   { key: 'PLUMBIX_AZURE_DEVOPS_TOKEN', purpose: 'Default personal access token for every Azure DevOps repository, code read and write; a repository can carry its own token on the Repositories page', host: 'azuredevops' },
   { key: 'PLUMBIX_AZURE_DEVOPS_TOKEN_EXPIRES', purpose: 'Expiry date of the Azure DevOps token, YYYY-MM-DD, for the warning a week before' },
-  { key: 'ANTHROPIC_API_KEY', purpose: 'Used by the AI validator step through the pipeline secrets list' },
+  { key: 'ANTHROPIC_API_KEY', purpose: 'Used by the AI validator step through the pipeline secrets list, with the anthropic provider' },
+  { key: 'OPENAI_API_KEY', purpose: 'Used by the AI validator step with the openai provider: the key of whichever OpenAI-compatible vendor the base URL points at' },
 ]
 
 function settingsView(db: FakeDB) {
@@ -46,7 +47,7 @@ function settingsView(db: FakeDB) {
   for (const key of Object.keys(db.secrets).sort()) {
     if (!listed.has(key)) secrets.push({ key, set: true, known: false, purpose: 'Named by a pipeline step\'s secrets list', host: undefined, updated_at: db.secretUpdated[key] })
   }
-  return { ai_model: db.settings.ai_model, ai_tools: db.settings.ai_tools, guidance: db.settings.guidance, secrets }
+  return { ai_model: db.settings.ai_model, ai_provider: db.settings.ai_provider, ai_base_url: db.settings.ai_base_url, ai_tools: db.settings.ai_tools, guidance: db.settings.guidance, secrets }
 }
 
 export function freshDB(): FakeDB {
@@ -63,7 +64,7 @@ export function freshDB(): FakeDB {
     secrets: {},
     secretUpdated: {},
     secretChecks: {},
-    settings: { ai_model: '', ai_tools: 'read-only', guidance: '' },
+    settings: { ai_model: '', ai_provider: 'anthropic', ai_base_url: '', ai_tools: 'read-only', guidance: '' },
     repoGuidance: {},
     repoTokens: {},
     repoChecks: {},
@@ -151,7 +152,15 @@ export function fakeFetch(db: FakeDB): typeof fetch {
     if (path === '/api/v1/repos') return json(200, { repos: db.repos })
     if (path === '/api/v1/settings' && method === 'GET') return json(200, settingsView(db))
     if (path === '/api/v1/settings' && method === 'PUT') {
-      const body = JSON.parse(String(init?.body)) as { ai_model?: string; ai_tools?: 'read-only' | 'full'; guidance?: string }
+      const body = JSON.parse(String(init?.body)) as { ai_model?: string; ai_provider?: 'anthropic' | 'openai'; ai_base_url?: string; ai_tools?: 'read-only' | 'full'; guidance?: string }
+      if (body.ai_provider !== undefined) {
+        if (body.ai_provider !== 'anthropic' && body.ai_provider !== 'openai') return error(400, 'invalid_request', `provider "${body.ai_provider}": must be anthropic or openai`)
+        db.settings.ai_provider = body.ai_provider
+      }
+      if (body.ai_base_url !== undefined) {
+        if (body.ai_base_url !== '' && !/^https?:\/\/\S+$/.test(body.ai_base_url)) return error(400, 'invalid_request', `base URL "${body.ai_base_url}": must be an http(s) URL such as https://api.openai.com/v1`)
+        db.settings.ai_base_url = body.ai_base_url
+      }
       if (body.ai_tools !== undefined) {
         if (body.ai_tools !== 'read-only' && body.ai_tools !== 'full') return error(400, 'invalid_request', `tools "${body.ai_tools}": must be read-only or full`)
         db.settings.ai_tools = body.ai_tools

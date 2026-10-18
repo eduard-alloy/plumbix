@@ -220,6 +220,10 @@ export interface SecretStatus {
 
 export interface SettingsView {
   ai_model: string
+  /** What the container AI validator asks: Claude through Anthropic, or any OpenAI-compatible endpoint. */
+  ai_provider: 'anthropic' | 'openai'
+  /** The openai provider's chat-completions base, such as https://api.openai.com/v1. */
+  ai_base_url: string
   /** Whether external reviewers may run commands: 'read-only' or 'full'. */
   ai_tools: 'read-only' | 'full'
   guidance: string

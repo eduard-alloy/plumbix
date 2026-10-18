@@ -194,14 +194,16 @@ func TestStepsAreRecordedAsTheyFinish(t *testing.T) {
 
 // fakeSettings stands in for the operator's settings.
 type fakeSettings struct {
-	global, repo, model string
+	global, repo, model, provider, baseURL string
 }
 
 func (f fakeSettings) Guidance(context.Context, string) (settings.Guidance, error) {
 	return settings.Guidance{Global: f.global, Repository: f.repo}, nil
 }
-func (f fakeSettings) AIModel(context.Context) (string, error) { return f.model, nil }
-func (f fakeSettings) AITools(context.Context) (string, error) { return review.ToolsReadOnly, nil }
+func (f fakeSettings) AIModel(context.Context) (string, error)    { return f.model, nil }
+func (f fakeSettings) AITools(context.Context) (string, error)    { return review.ToolsReadOnly, nil }
+func (f fakeSettings) AIProvider(context.Context) (string, error) { return f.provider, nil }
+func (f fakeSettings) AIBaseURL(context.Context) (string, error)  { return f.baseURL, nil }
 
 // TestValidatorsGetGuidanceAndModel: validator steps see the operator's
 // guidance in change.json and the model as PLUMBIX_AI_MODEL, unless the
@@ -227,6 +229,26 @@ func TestValidatorsGetGuidanceAndModel(t *testing.T) {
 		}
 		if j.Name == "test" && got != "" {
 			t.Errorf("normal step got the model: %v", j.Env)
+		}
+		if _, ok := j.Env["PLUMBIX_AI_PROVIDER"]; ok {
+			t.Errorf("%s got a provider although anthropic is the default: %v", j.Name, j.Env)
+		}
+	}
+}
+
+func TestValidatorsGetTheOpenAIProviderAndBaseURL(t *testing.T) {
+	h := newHarness(t, Config{Settings: fakeSettings{provider: "openai", baseURL: "https://api.openai.com/v1", model: "gpt-5.5"}})
+	h.repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
+	c := h.submit("feat")
+	h.wait(h.validate(c.ID).ID)
+	h.fake.mu.Lock()
+	defer h.fake.mu.Unlock()
+	for _, j := range h.fake.jobs {
+		if j.Name == "validate" && (j.Env["PLUMBIX_AI_PROVIDER"] != "openai" || j.Env["PLUMBIX_AI_BASE_URL"] != "https://api.openai.com/v1" || j.Env["PLUMBIX_AI_MODEL"] != "gpt-5.5") {
+			t.Errorf("validator env = %v", j.Env)
+		}
+		if j.Name == "test" && (j.Env["PLUMBIX_AI_PROVIDER"] != "" || j.Env["PLUMBIX_AI_BASE_URL"] != "") {
+			t.Errorf("normal step got provider settings: %v", j.Env)
 		}
 	}
 }

@@ -25,16 +25,34 @@ const (
 	fallbackBeta = "server-side-fallback-2026-07-01"
 )
 
-// Config selects the model and credentials.
+// Providers the validator can ask (WU-025, A25).
+const (
+	ProviderAnthropic = "anthropic" // Claude through Anthropic's SDK, with structured output and effort
+	ProviderOpenAI    = "openai"    // any endpoint speaking the OpenAI chat-completions format
+)
+
+// Config selects the provider, model and credentials.
 type Config struct {
-	APIKey string
-	Model  string
-	Effort string
+	Provider string // ProviderAnthropic when empty
+	BaseURL  string // the openai provider's base, such as https://api.openai.com/v1
+	APIKey   string
+	Model    string
+	Effort   string // anthropic only
 }
 
 // Validate reviews the change described by inDir and returns a checked
 // verdict. Any failure returns an error and no verdict.
 func Validate(ctx context.Context, cfg Config, inDir, workspace string, opts ...option.RequestOption) (validation.Verdict, error) {
+	switch cfg.Provider {
+	case "", ProviderAnthropic:
+		return validateAnthropic(ctx, cfg, inDir, workspace, opts...)
+	case ProviderOpenAI:
+		return validateOpenAI(ctx, cfg, inDir, workspace)
+	}
+	return validation.Verdict{}, fmt.Errorf("PLUMBIX_AI_PROVIDER %q: must be anthropic or openai", cfg.Provider)
+}
+
+func validateAnthropic(ctx context.Context, cfg Config, inDir, workspace string, opts ...option.RequestOption) (validation.Verdict, error) {
 	if cfg.APIKey == "" {
 		return validation.Verdict{}, errors.New("ANTHROPIC_API_KEY is not set; add it to the step's secrets")
 	}

@@ -44,6 +44,13 @@ paths:
                 ai_model:
                   type: string
                   maxLength: 81
+                ai_provider:
+                  type: string
+                  enum: [anthropic, openai]
+                ai_base_url:
+                  description: For the openai provider, the chat-completions base such as https://api.openai.com/v1; empty clears it.
+                  type: string
+                  maxLength: 200
                 ai_tools:
                   type: string
                   enum: [read-only, full]
@@ -1556,10 +1563,17 @@ components:
     Settings:
       type: object
       additionalProperties: false
-      required: [ai_model, ai_tools, guidance, secrets]
+      required: [ai_model, ai_provider, ai_base_url, ai_tools, guidance, secrets]
       properties:
         ai_model:
-          description: Model handed to validator steps as PLUMBIX_AI_MODEL; empty leaves the validator's default.
+          description: Model handed to validator steps as PLUMBIX_AI_MODEL and to external reviewers as --model; empty leaves each one's default.
+          type: string
+        ai_provider:
+          description: What the container AI validator asks, handed to validator steps as PLUMBIX_AI_PROVIDER when not anthropic.
+          type: string
+          enum: [anthropic, openai]
+        ai_base_url:
+          description: The openai provider's base URL, handed to validator steps as PLUMBIX_AI_BASE_URL.
           type: string
         ai_tools:
           description: Whether external reviewers and the Claude Code validator may run commands (full) or only read (read-only, the default). Travels in every review brief.
