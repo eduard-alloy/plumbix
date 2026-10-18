@@ -813,13 +813,15 @@ func profileEnv(r settings.Reviewer, secrets map[string]string) map[string]strin
 const cacheDir = "cache"
 
 // setupPlain prepares a plain step: its cache paths become read-write
-// mounts of per-repository directories, created on first use (WU-029,
-// A30). Caches are never shared across repositories, and a validator
-// never gets one.
+// mounts of directories kept per repository and step, created on first
+// use (WU-029, A30). Steps run in parallel, so two steps never share a
+// writable cache even for the same path: concurrent module downloads
+// into one directory corrupted each other on the first cold run. Caches
+// are never shared across repositories, and a validator never gets one.
 func (e *Engine) setupPlain(repoID string, st pipeline.Step) (scheduler.StepSetup, error) {
 	var setup scheduler.StepSetup
 	for _, target := range st.Cache {
-		src := filepath.Join(e.cfg.DataDir, cacheDir, repoID, cacheSlug(target))
+		src := filepath.Join(e.cfg.DataDir, cacheDir, repoID, st.Name, cacheSlug(target))
 		if err := os.MkdirAll(src, 0o700); err != nil {
 			return scheduler.StepSetup{}, fmt.Errorf("cache directory for %s: %w", target, err)
 		}

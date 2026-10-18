@@ -1,0 +1,7 @@
+# cache paths carry no whitespace or backslashes.
+version: 1
+steps:
+  - name: build
+    image: golang:1.27
+    run: go build ./...
+    cache: ["/go/pkg mod"]

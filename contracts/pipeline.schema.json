@@ -114,7 +114,7 @@
           "maxItems": 8,
           "items": {
             "type": "string",
-            "pattern": "^/.+",
+            "pattern": "^/[^\\s\\\\]+$",
             "not": {
               "anyOf": [
                 {
