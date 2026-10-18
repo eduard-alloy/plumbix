@@ -17,6 +17,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/engine"
 	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/host"
+	"github.com/eduard-alloy/plumbix/internal/images"
 	"github.com/eduard-alloy/plumbix/internal/poller"
 	"github.com/eduard-alloy/plumbix/internal/runner"
 	"github.com/eduard-alloy/plumbix/internal/secrets"
@@ -125,6 +126,7 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		Sessions: auth.NewSessions(db), Origin: "http://" + ln.Addr().String(),
 		Web:      web.Handler(web.Dist()),
 		Settings: prefs, Secrets: secretStore, Hosts: hosts,
+		Images: images.New(docker.Client(), version, filepath.Join(cfg.DataDir, "images", "builds")),
 	}
 	if err := api.Run(ctx, ln, api.NewHandler(deps), logger, config.DefaultShutdownTimeout); err != nil {
 		logger.Error("server stopped with error", "err", err)

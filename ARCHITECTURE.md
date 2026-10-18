@@ -35,6 +35,7 @@ Each package lives under `internal/` unless noted.
 | Component | Package | Responsibility |
 |-----------|---------|----------------|
 | CLI | `cmd/plumbix` | Entry point. `serve` starts the server. Other subcommands (`submit`, `change`, `review`, `mcp`) are thin HTTP clients of the public API. |
+| Images | `internal/images` | What the server knows about the images its pipelines run (WU-032, A32): inspects each referenced image through the Docker client, knows the two Plumbix ships (`plumbix-reference-validator`, `plumbix-ai-validator`) with the version label their build carries, and rebuilds them from the build context embedded at the module root (`embed.go`: `go.mod`, `go.sum`, `internal/`, `validators/`), one build at a time, logs under `images/builds/`. Own images with a Dockerfile editor follow (WU-033). |
 | MCP server | `internal/mcpserver` | `plumbix mcp`: an MCP server over stdio (official Go SDK) whose tools wrap the API for an agent session: register a repository (no token), submit, follow, read verdicts, merge, refresh, and the reviewer loop (`next_review`, `post_verdict`); `approve_change` only with `--allow-approve`, since approval is a person's act (A23). Each process acts as `mcp:<name>:<id>`, used as `submitted_by` and as the reviewer name, so a session never reviews its own change (WU-024). |
 | API | `api` | HTTP JSON handlers for `/api/v1`. Validates requests against the contracts. Serves the embedded web interface. |
 | Changes | `change` | Change lifecycle state machine, iterations, fix-round counting, escalation. |
@@ -138,6 +139,9 @@ The base address comes from config `server.listen`, default `127.0.0.1:6400`. Ev
 | DELETE | `/api/v1/sessions` | Token only. Signs every browser out (`plumbix logout`). |
 | DELETE | `/api/v1/sessions/current` | Cookie only. Signs this browser out. |
 | GET | `/api/v1/session` | How the caller is signed in, with the cookie's expiry. |
+| GET | `/api/v1/images` | Every image the registered pipelines run plus the shipped two: presence, created, size, digest, users, and for shipped images the version label against the server (WU-032). |
+| POST | `/api/v1/images/{name}/build` | Build a shipped image from the embedded sources; 202 with a build to follow, 409 while one runs. A person's act: not offered by the MCP server. |
+| GET | `/api/v1/images/builds/{id}` | A build's status and log so far. |
 | GET, PUT | `/api/v1/settings` | Reviewer profiles with whether each key is set, the default profile, global review guidance, and which secrets are set (never their values); PUT takes `guidance` and `default_reviewer`. |
 | PUT, DELETE | `/api/v1/settings/reviewers/{name}` | Create or replace a reviewer profile (kind `anthropic`, `openai` or `claude-code`, base URL, model, tools, key secret name), or remove one (WU-028, A28, A29). The key of an API profile is set through the secrets endpoint under the profile's `key_secret`; a `claude-code` profile has none. |
 | PUT, DELETE | `/api/v1/settings/secrets/{key}` | Set or remove a secret in the server's secrets file; used from the next fetch on. |
@@ -322,6 +326,7 @@ Everything lives under the data directory, config key `data_dir`, default `~/.pl
 | `mirrors/<repo-id>.git` | Bare mirrors. |
 | `work/<run-id>/` | Temporary worktrees, deleted after the run. |
 | `evidence/<run-id>/<step>/` | Logs, status and artifacts. Kept until a configurable retention limit. |
+| `images/builds/<id>.log` | The output of an image build started from the Images page. |
 | `cache/<repo-id>/<step>/<slug>/` | A step cache (`steps[].cache`), one directory per repository, step and container path, named after the path plus a short hash. Nothing prunes it; deleting a directory resets that cache. |
 
 Key config entries, with defaults:
@@ -380,6 +385,7 @@ These are implementation calls made in this architecture step, with the reasons 
 | A29 | Claude Code is its own reviewer kind (`claude-code`, no key, tools), beside the API kinds `anthropic` and `openai`; each family has its own default profile, and a step binds within its family only | They are different reviewers: the API is billed per token to a key the operator holds, Claude Code runs on a person's machine on its subscription quota with tools. One profile serving both (A28's first form) hid the cost difference and made "the default" ambiguous, which surprised the owner. | One default with a family-dependent fallback; a per-step flag instead of a kind; supersedes that part of A28 |
 | A30 | Step caches are host directories kept per repository and step, named by container path, mounted read-write into plain steps only | Dependencies downloaded on every run were most of a step's time; a per-repository cache is the smallest mechanism that removes that, keeps repositories apart, and asks nothing of the image. A validator must not depend on what an earlier change left behind, so it gets none. The accepted risk, a change poisoning its own repository's cache for later runs, is the trust the branch already has in a single-operator tool, and a cache can be deleted. | Named presets (`go`, `npm`) that guess paths per image; per-branch caches (cold on every first run); content-addressed caches |
 | A31 | An advisory validator's verdict is recorded in full and tagged, and never counted: not the state, not a criterion, not the need for a person, not the required list | A second model can judge every change for comparison without being able to block or approve one; weighting it in would defeat the comparison, hiding it would too. The flag is on the step, not the profile, since the same model may be advisory in one repository and binding in another. | Weighted verdicts; advisory as a profile property; hiding advisory output from the page |
+| A32 | Plumbix owns the images its pipelines run: an Images page inspects them and builds the shipped two from sources embedded in the binary; own Dockerfiles will live in Settings, never in the judged repository; a build is a person's act | Images were opaque and unmanaged, and a stale shipped validator went unnoticed. A validator image must not come from the repository it judges, or a branch could rewrite its own judge. A build is arbitrary code on the server's Docker daemon outside the step sandbox, which for a single operator is the trust a pipeline edit already carries, said plainly on the page. | A `plumbix images` command alone; validator Dockerfiles in the repository; a build sandbox |
 
 ## 9. Risks and open items
 

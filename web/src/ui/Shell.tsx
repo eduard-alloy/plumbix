@@ -60,6 +60,7 @@ export function Shell({ children }: { children: ReactNode }) {
     { key: 'alerts', label: 'Alerts', count: state.loaded && openAlerts ? String(openAlerts) : '', path: '/alerts', on: route.screen === 'alerts' },
     { key: 'repos', label: 'Repositories', count: state.loaded ? String(state.repos.length) : '', path: '/repos', on: route.screen === 'repos' },
     { key: 'pipelines', label: 'Pipelines', count: state.loaded ? String(state.repos.length) : '', path: '/pipelines', on: route.screen === 'pipelines' },
+    { key: 'images', label: 'Images', count: '', path: '/images', on: route.screen === 'images' },
     { key: 'settings', label: 'Settings', count: '', path: '/settings', on: route.screen === 'settings' },
   ]
   const last = state.lastEvent ? `${state.lastEvent.text} · ${duration(Math.max(0, (now.getTime() - state.lastEvent.at) / 1000))} ago` : ''

@@ -17,6 +17,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/gitops/gittest"
 	"github.com/eduard-alloy/plumbix/internal/host"
+	"github.com/eduard-alloy/plumbix/internal/images"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/runner"
 	"github.com/eduard-alloy/plumbix/internal/secrets"
@@ -55,6 +56,7 @@ type runAPI struct {
 	db     *store.DB
 	repo   *gittest.Repo
 	hub    *events.Hub
+	docker *fakeDockerImages
 }
 
 func newRunAPI(t *testing.T) *runAPI {
@@ -81,8 +83,10 @@ func newRunAPI(t *testing.T) *runAPI {
 	hub := events.NewHub(db)
 	db.OnEvent(hub.Publish)
 	t.Cleanup(hub.Close)
-	h := NewHandler(Deps{Version: "dev", Token: testToken, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub, Settings: settings.New(db), Secrets: sec, Hosts: host.Live(sec.Values)})
-	return &runAPI{testAPI: &testAPI{t: t, h: h}, repoID: repoID, db: db, repo: repo, hub: hub}
+	docker := &fakeDockerImages{known: map[string]bool{}}
+	h := NewHandler(Deps{Version: "dev", Token: testToken, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub, Settings: settings.New(db), Secrets: sec, Hosts: host.Live(sec.Values),
+		Images: images.New(docker, "dev", filepath.Join(t.TempDir(), "builds"))})
+	return &runAPI{testAPI: &testAPI{t: t, h: h}, repoID: repoID, db: db, repo: repo, hub: hub, docker: docker}
 }
 
 func TestRunStepsCarryRetriesAllowancesReasonsAndStages(t *testing.T) {
