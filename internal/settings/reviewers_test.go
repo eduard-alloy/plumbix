@@ -98,6 +98,16 @@ func TestReviewerProfilesAreStoredValidatedAndDefaulted(t *testing.T) {
 	if d, _ := s.Defaults(ctx); d.External != "" {
 		t.Errorf("external default not cleared: %+v", d)
 	}
+	// A default edited into the other family stops being that default.
+	if err := s.SetDefaultReviewer(ctx, "mac"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PutReviewer(ctx, Reviewer{Name: "mac", Kind: KindAnthropic}); err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := s.Defaults(ctx); d.External != "" || d.API != "" {
+		t.Errorf("defaults after mac moved to the api family = %+v, want none", d)
+	}
 
 	// Validation: each refusal names the field.
 	for _, bad := range []struct {
@@ -215,6 +225,27 @@ func TestAServerUpgradedFromWU028GetsAClaudeCodeProfile(t *testing.T) {
 	if !ok || c.Kind != KindClaudeCode || c.Model != "claude-opus-5-5" || c.Tools != review.ToolsFull || c.KeySecret != "" {
 		t.Errorf("claude-code profile = %+v %v", c, ok)
 	}
+	// An api profile already called claude-code keeps its name; the new
+	// external one is claude-code-2 and becomes the external default.
+	clash := newService(t)
+	if _, err := clash.PutReviewer(ctx, Reviewer{Name: "claude-code", Kind: KindAnthropic, KeySecret: "ANTHROPIC_API_KEY"}); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range map[string]string{keyReviewersMigrated: "1", "reviewers.default": "claude-code"} {
+		if err := clash.db.SetSetting(ctx, k, v, clash.now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := clash.EnsureReviewers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := clash.Defaults(ctx); d.API != "claude-code" || d.External != "claude-code-2" {
+		t.Errorf("defaults with a name clash = %+v", d)
+	}
+	if list, _ := clash.Reviewers(ctx); len(list) != 2 || list[1].Kind != KindClaudeCode {
+		t.Errorf("profiles with a name clash = %+v", list)
+	}
+
 	// A third start changes nothing, even with claude-code removed.
 	if err := s.DeleteReviewer(ctx, "claude-code"); err != nil {
 		t.Fatal(err)
