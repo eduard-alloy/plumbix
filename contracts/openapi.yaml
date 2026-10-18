@@ -154,7 +154,7 @@ paths:
   /images/{name}/build:
     post:
       operationId: buildImage
-      summary: Build one of the images Plumbix ships, from the sources embedded in the server.
+      summary: Build one of the images Plumbix ships, from the sources embedded in the server, or an own image from its Dockerfile.
       description: >
         Starts the build and answers at once; follow it with GET /images/builds/{id}. One build runs at
         a time. The build runs on the server's Docker daemon outside the step sandbox, so it is a
@@ -186,6 +186,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /images/own/{name}:
+    put:
+      operationId: putOwnImage
+      summary: Create or replace an own image's Dockerfile (WU-033).
+      description: >
+        The Dockerfile is stored under the server's data directory and is the image's whole build
+        context; the image is built from it with POST /images/{name}/build and tagged <name>:latest,
+        which a pipeline's bare `image: <name>` resolves to. A person's act, not offered by the MCP server.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9._-]{0,62}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [dockerfile]
+              properties:
+                dockerfile:
+                  type: string
+                  maxLength: 65536
+      responses:
+        "200":
+          description: The images after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Images"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      operationId: deleteOwnImage
+      summary: Remove an own image's definition; a built image stays until Docker prunes it.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Removed. Pipeline steps still naming it fail to pull once Docker forgets it.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /images/builds/{id}:
     get:
       operationId: getImageBuild
@@ -1770,10 +1824,16 @@ components:
     Image:
       type: object
       additionalProperties: false
-      required: [ref, present, shipped, status, used_by]
+      required: [ref, present, shipped, own, status, used_by]
       properties:
         ref:
-          description: The image as pipelines name it, such as golang:1.27 or plumbix-ai-validator:dev.
+          description: The image as pipelines name it, such as golang:1.27 or plumbix-ai-validator:dev; a bare name is shown as name:latest.
+          type: string
+        own:
+          description: Defined by a Dockerfile on the Images page (WU-033).
+          type: boolean
+        dockerfile:
+          description: The own image's Dockerfile.
           type: string
         present:
           type: boolean
@@ -1793,7 +1853,7 @@ components:
           description: For a shipped image, the server version that built it (the org.plumbix.version label).
           type: string
         status:
-          description: missing, present (third-party), current, stale or unlabelled (a shipped image built outside Plumbix).
+          description: missing, present (third-party), current, stale (built by another server version, or from an older Dockerfile) or unlabelled (built outside Plumbix).
           type: string
           enum: [missing, present, current, stale, unlabelled]
         used_by:

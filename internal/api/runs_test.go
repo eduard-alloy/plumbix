@@ -85,7 +85,7 @@ func newRunAPI(t *testing.T) *runAPI {
 	t.Cleanup(hub.Close)
 	docker := &fakeDockerImages{known: map[string]bool{}}
 	h := NewHandler(Deps{Version: "dev", Token: testToken, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub, Settings: settings.New(db), Secrets: sec, Hosts: host.Live(sec.Values),
-		Images: images.New(docker, "dev", filepath.Join(t.TempDir(), "builds"))})
+		Images: images.New(docker, "dev", filepath.Join(t.TempDir(), "images"))})
 	return &runAPI{testAPI: &testAPI{t: t, h: h}, repoID: repoID, db: db, repo: repo, hub: hub, docker: docker}
 }
 

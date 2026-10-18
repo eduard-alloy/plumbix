@@ -60,7 +60,7 @@ func TestImagesListAndShippedBuild(t *testing.T) {
 	a := newRunAPI(t)
 	fake := a.docker
 	fake.mu.Lock()
-	fake.known["x"] = true
+	fake.known["x:latest"] = true
 	fake.mu.Unlock()
 
 	rec := a.do(http.MethodGet, "/api/v1/images", "")
@@ -79,10 +79,10 @@ func TestImagesListAndShippedBuild(t *testing.T) {
 	if view.Version != "dev" || len(view.Images) != 4 {
 		t.Fatalf("view = %+v", view)
 	}
-	if x := by["x"]; !x.Present || x.Shipped || x.Status != "present" || len(x.UsedBy) != 1 || x.UsedBy[0].Step != "test" || x.UsedBy[0].Validator {
+	if x := by["x:latest"]; !x.Present || x.Shipped || x.Status != "present" || len(x.UsedBy) != 1 || x.UsedBy[0].Step != "test" || x.UsedBy[0].Validator {
 		t.Errorf("x = %+v", x)
 	}
-	if v := by["v"]; v.Present || v.Status != "missing" || len(v.UsedBy) != 1 || !v.UsedBy[0].Validator {
+	if v := by["v:latest"]; v.Present || v.Status != "missing" || len(v.UsedBy) != 1 || !v.UsedBy[0].Validator {
 		t.Errorf("v = %+v", v)
 	}
 	if ai := by["plumbix-ai-validator:dev"]; !ai.Shipped || ai.Status != "missing" || len(ai.UsedBy) != 0 {
@@ -98,14 +98,16 @@ func TestImagesListAndShippedBuild(t *testing.T) {
 	var b struct {
 		ID, Image, Status string
 	}
-	if json.Unmarshal(rec.Body.Bytes(), &b); rec.Code != http.StatusAccepted || b.Image != "plumbix-ai-validator:dev" || b.ID == "" {
-		t.Fatalf("build: %d %s", rec.Code, rec.Body.String())
+	if err := json.Unmarshal(rec.Body.Bytes(), &b); err != nil || rec.Code != http.StatusAccepted || b.Image != "plumbix-ai-validator:dev" || b.ID == "" {
+		t.Fatalf("build: %d %s %v", rec.Code, rec.Body.String(), err)
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		rec = a.do(http.MethodGet, "/api/v1/images/builds/"+b.ID, "")
 		o.check("ImageBuild", rec)
-		json.Unmarshal(rec.Body.Bytes(), &b)
+		if err := json.Unmarshal(rec.Body.Bytes(), &b); err != nil {
+			t.Fatalf("build body: %v", err)
+		}
 		if b.Status != "running" || time.Now().After(deadline) {
 			break
 		}
@@ -117,9 +119,55 @@ func TestImagesListAndShippedBuild(t *testing.T) {
 	if rec := a.do(http.MethodGet, "/api/v1/images/builds/ib_nope", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown build: %d", rec.Code)
 	}
-	// The image now exists and is current.
+	// The image now exists; the fake daemon keeps no labels, so it reads as
+	// built outside Plumbix rather than current.
 	rec = a.do(http.MethodGet, "/api/v1/images", "")
-	if !strings.Contains(rec.Body.String(), `"ref":"plumbix-ai-validator:dev","present":true`) {
-		t.Errorf("after the build: %s", rec.Body.String())
+	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	by = map[string]imageBody{}
+	for _, im := range view.Images {
+		by[im.Ref] = im
+	}
+	if ai := by["plumbix-ai-validator:dev"]; !ai.Present || ai.Status != "unlabelled" {
+		t.Errorf("after the build: %+v", ai)
+	}
+}
+
+// TestOwnImagesOverTheAPI (WU-033): an own image is created with its
+// Dockerfile, listed with it, built, and removed; bad input names the field.
+func TestOwnImagesOverTheAPI(t *testing.T) {
+	o := loadOpenAPI(t)
+	a := newRunAPI(t)
+	rec := a.do(http.MethodPut, "/api/v1/images/own/lint-tools", `{"dockerfile": "FROM alpine:3.20\nRUN apk add --no-cache shellcheck"}`)
+	o.check("Images", rec)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ref":"lint-tools:latest"`) || !strings.Contains(rec.Body.String(), `"own":true`) || !strings.Contains(rec.Body.String(), `shellcheck`) {
+		t.Fatalf("put own: %d %s", rec.Code, rec.Body.String())
+	}
+	for _, c := range []struct{ path, body, field string }{
+		{"/api/v1/images/own/BadName", `{"dockerfile": "FROM alpine"}`, "name"},
+		{"/api/v1/images/own/plumbix-ai-validator", `{"dockerfile": "FROM alpine"}`, "name"},
+		{"/api/v1/images/own/ok", `{"dockerfile": "RUN true"}`, "dockerfile"},
+		{"/api/v1/images/own/ok", `{"nope": 1}`, ""},
+	} {
+		rec := a.do(http.MethodPut, c.path, c.body)
+		o.check("Error", rec)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), c.field) {
+			t.Errorf("PUT %s %s: %d %s", c.path, c.body, rec.Code, rec.Body.String())
+		}
+	}
+	rec = a.do(http.MethodPost, "/api/v1/images/lint-tools/build", "")
+	o.check("ImageBuild", rec)
+	if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"image":"lint-tools:latest"`) {
+		t.Errorf("build own: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := a.do(http.MethodDelete, "/api/v1/images/own/lint-tools", ""); rec.Code != http.StatusNoContent {
+		t.Errorf("delete own: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := a.do(http.MethodDelete, "/api/v1/images/own/lint-tools", ""); rec.Code != http.StatusNotFound {
+		t.Errorf("second delete: %d", rec.Code)
+	}
+	if rec := a.do(http.MethodGet, "/api/v1/images", ""); strings.Contains(rec.Body.String(), "lint-tools") {
+		t.Errorf("removed image still listed: %s", rec.Body.String())
 	}
 }

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -27,6 +28,37 @@ func registerImageRoutes(mux *http.ServeMux, h *imageHandlers) {
 	mux.HandleFunc("GET /api/v1/images", h.list)
 	mux.HandleFunc("POST /api/v1/images/{name}/build", h.build)
 	mux.HandleFunc("GET /api/v1/images/builds/{id}", h.getBuild)
+	mux.HandleFunc("PUT /api/v1/images/own/{name}", h.putOwn)
+	mux.HandleFunc("DELETE /api/v1/images/own/{name}", h.deleteOwn)
+}
+
+// putOwn creates or replaces an own image's Dockerfile (WU-033) and
+// answers with the whole list, as the page shows it.
+func (h *imageHandlers) putOwn(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Dockerfile string `json:"dockerfile"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	own, err := h.images.PutOwn(r.PathValue("name"), body.Dockerfile)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	h.log.Info("own image saved", "image", own.Name)
+	h.list(w, r)
+}
+
+// deleteOwn removes an own image's definition; a built image stays until
+// Docker prunes it.
+func (h *imageHandlers) deleteOwn(w http.ResponseWriter, r *http.Request) {
+	if err := h.images.DeleteOwn(r.PathValue("name")); err != nil {
+		h.fail(w, err)
+		return
+	}
+	h.log.Info("own image removed", "image", r.PathValue("name"))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type imagesView struct {
@@ -81,7 +113,7 @@ func (h *imageHandlers) build(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, images.ErrNotShipped):
-			writeError(w, http.StatusBadRequest, "invalid_request", err.Error()+": only the images Plumbix ships can be built here")
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error()+": only the images Plumbix ships, or own images defined on the Images page, can be built here")
 		case errors.Is(err, images.ErrBusy):
 			writeError(w, http.StatusConflict, "busy", err.Error())
 		default:
@@ -103,6 +135,11 @@ func (h *imageHandlers) getBuild(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *imageHandlers) fail(w http.ResponseWriter, err error) {
+	var inv *change.InvalidError
+	if errors.As(err, &inv) {
+		writeProblems(w, fmt.Sprintf("the request has %d problem(s)", len(inv.Problems)), inv.Problems)
+		return
+	}
 	if errors.Is(err, change.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", err.Error())
 		return

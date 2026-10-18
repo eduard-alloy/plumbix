@@ -11,8 +11,8 @@ import (
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
+	"github.com/eduard-alloy/plumbix/internal/change"
 	dockerspec "github.com/moby/docker-image-spec/specs-go/v1"
-	"github.com/moby/moby/api/types/image"
 	"github.com/moby/moby/client"
 )
 
@@ -206,4 +206,102 @@ func waitBuild(t *testing.T, s *Service, id string) Build {
 	return Build{}
 }
 
-var _ = image.InspectResponse{}
+// TestOwnImagesAreStoredBuiltFromTheirDirectoryAndReportedAgainstTheirDockerfile (WU-033).
+func TestOwnImagesAreStoredBuiltFromTheirDirectoryAndReportedAgainstTheirDockerfile(t *testing.T) {
+	f := &fakeDocker{images: map[string]client.ImageInspectResult{}, stream: `{"stream":"Step 1/2 : FROM alpine:3.20\n"}` + "\n"}
+	s := New(f, "3ce0061", t.TempDir())
+	if list, _ := s.ListOwn(); len(list) != 0 {
+		t.Fatalf("own images on a fresh service = %+v", list)
+	}
+	// Validation names the field.
+	for _, bad := range []struct{ name, file, field string }{
+		{"My Image", "FROM alpine", "name"},
+		{"plumbix-ai-validator", "FROM alpine", "name"},
+		{"ok", "   ", "dockerfile"},
+		{"ok", "RUN echo no base", "dockerfile"},
+		{"ok", "FROM alpine\n" + strings.Repeat("# x\n", MaxDockerfileBytes/4), "dockerfile"},
+	} {
+		_, err := s.PutOwn(bad.name, bad.file)
+		var inv *change.InvalidError
+		if !errors.As(err, &inv) || inv.Problems[0].Field != bad.field {
+			t.Errorf("PutOwn(%q, …) = %v, want a problem on %s", bad.name, err, bad.field)
+		}
+	}
+	own, err := s.PutOwn("lint-tools", "FROM alpine:3.20\nRUN apk add --no-cache shellcheck")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if own.Name != "lint-tools" || !strings.HasSuffix(own.Dockerfile, "shellcheck\n") || own.UpdatedAt.IsZero() {
+		t.Errorf("stored = %+v", own)
+	}
+	if list, _ := s.ListOwn(); len(list) != 1 || list[0].Name != "lint-tools" {
+		t.Errorf("own list = %+v", list)
+	}
+
+	// Not built yet: missing, own, with its Dockerfile; a bare reference in a
+	// pipeline is the same image as name:latest.
+	uses := map[string][]Use{"lint-tools": {{RepoID: "r_1", Repo: "plumbix", Step: "lint"}}}
+	list, err := s.List(context.Background(), uses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lt Info
+	for _, in := range list {
+		if in.Ref == "lint-tools:latest" {
+			lt = in
+		}
+	}
+	if !lt.Own || lt.Status != StatusMissing || lt.Dockerfile != own.Dockerfile || len(lt.UsedBy) != 1 || lt.Shipped {
+		t.Errorf("own image before the build = %+v", lt)
+	}
+	if list[0].Shipped != true || list[2].Ref != "lint-tools:latest" {
+		t.Errorf("order = %v", []string{list[0].Ref, list[1].Ref, list[2].Ref})
+	}
+
+	// Built from its own directory, labelled with the Dockerfile's hash.
+	b, err := s.Build(context.Background(), "lint-tools")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done := waitBuild(t, s, b.ID); done.Status != BuildSucceeded || done.Image != "lint-tools:latest" {
+		t.Fatalf("build = %+v", done)
+	}
+	f.mu.Lock()
+	opts, entries := f.builds[len(f.builds)-1], f.entries
+	f.mu.Unlock()
+	if opts.Tags[0] != "lint-tools:latest" || opts.Dockerfile != "Dockerfile" || opts.Labels[LabelOwn] != "lint-tools" || opts.Labels[LabelDockerfile] != dockerfileHash(own.Dockerfile) {
+		t.Errorf("own build options = %+v", opts)
+	}
+	if len(entries) != 1 || entries[0] != "Dockerfile" {
+		t.Errorf("own build context = %v, want just the Dockerfile", entries)
+	}
+	// Docker now has it with the labels: current. After an edit: stale.
+	f.mu.Lock()
+	f.images["lint-tools:latest"] = inspected("2026-10-18T19:00:00Z", 9_000_000, map[string]string{LabelVersion: "3ce0061", LabelOwn: "lint-tools", LabelDockerfile: dockerfileHash(own.Dockerfile)})
+	f.mu.Unlock()
+	list, _ = s.List(context.Background(), nil)
+	if list[2].Status != StatusCurrent {
+		t.Errorf("after the build = %s", list[2].Status)
+	}
+	if _, err := s.PutOwn("lint-tools", "FROM alpine:3.20\nRUN apk add --no-cache shellcheck shfmt"); err != nil {
+		t.Fatal(err)
+	}
+	list, _ = s.List(context.Background(), nil)
+	if list[2].Status != StatusStale {
+		t.Errorf("after editing the Dockerfile = %s", list[2].Status)
+	}
+
+	// Removal: the definition goes, the local image is Docker's to prune.
+	if err := s.DeleteOwn("lint-tools"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteOwn("lint-tools"); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("deleting twice: %v", err)
+	}
+	if _, err := s.Build(context.Background(), "lint-tools"); !errors.Is(err, ErrNotShipped) {
+		t.Errorf("building a removed own image: %v", err)
+	}
+	if list, _ := s.List(context.Background(), nil); len(list) != 2 {
+		t.Errorf("list after removal = %d images", len(list))
+	}
+}
