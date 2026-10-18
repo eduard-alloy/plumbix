@@ -4,9 +4,10 @@
  * see: CSI sequences (colours, cursor and erase controls, private modes),
  * OSC strings (titles, hyperlinks) ended by BEL or ST, charset selects
  * (ESC ( B), and any other escape with its one following character
- * (ESC 7, ESC 8, ESC =, ESC >, ESC M, and the C1 range). */
+ * (ESC 7, ESC 8, ESC =, ESC >, ESC M, and the C1 range). A sequence cut off
+ * at the end of the text is dropped as well. */
 // eslint-disable-next-line no-control-regex
-const ansi = /\x1b\[[0-?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][@-~]|\x1b[0-~]/g
+const ansi = /\x1b\[[0-?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][@-~]|\x1b\[[0-?]*$|\x1b[0-~]|\x1b$/g
 
 /** stripAnsi removes terminal escape sequences from log text. */
 export function stripAnsi(text: string): string {

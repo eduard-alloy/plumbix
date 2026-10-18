@@ -192,7 +192,6 @@ function AddProfile({ onAdded }: { onAdded: () => Promise<void> }) {
   )
 }
 
-
 function SecretRow({ secret, onChanged }: { secret: SecretStatus; onChanged: () => Promise<void> }) {
   const now = useNow()
   const [editing, setEditing] = useState(false)
