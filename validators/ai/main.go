@@ -47,6 +47,7 @@ func run(getenv func(string) string, stderr io.Writer, opts ...option.RequestOpt
 		APIKey:   getenv("ANTHROPIC_API_KEY"),
 		Model:    or("PLUMBIX_AI_MODEL", aivalidator.DefaultModel),
 		Effort:   or("PLUMBIX_AI_EFFORT", aivalidator.DefaultEffort),
+		Progress: stderr,
 	}
 	if cfg.Provider == aivalidator.ProviderOpenAI {
 		cfg.APIKey = or("PLUMBIX_AI_API_KEY", getenv("OPENAI_API_KEY"))

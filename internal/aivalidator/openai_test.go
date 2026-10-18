@@ -1,6 +1,7 @@
 package aivalidator
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,7 @@ import (
 // fakeOpenAI is a chat-completions endpoint that records requests and can
 // refuse response_format kinds, as some vendors do.
 type fakeOpenAI struct {
+	progress    bytes.Buffer // what the validator reported while it worked
 	mu          sync.Mutex
 	requests    []map[string]any
 	auth        []string
@@ -63,7 +65,7 @@ func runOpenAI(t *testing.T, f *fakeOpenAI, key string) (validation.Verdict, err
 	t.Helper()
 	fx := newFixture(t, nil, []validation.StepEvidence{{Step: "test", Status: "succeeded"}})
 	srv := f.server(t)
-	cfg := Config{Provider: ProviderOpenAI, BaseURL: srv.URL + "/v1", APIKey: key, Model: "gpt-5.5", Effort: DefaultEffort}
+	cfg := Config{Provider: ProviderOpenAI, BaseURL: srv.URL + "/v1", APIKey: key, Model: "gpt-5.5", Effort: DefaultEffort, Progress: &f.progress}
 	return Validate(context.Background(), cfg, fx.in, fx.ws)
 }
 
@@ -102,6 +104,15 @@ func TestOpenAICompatibleRequestAndVerdict(t *testing.T) {
 	if _, has := req["temperature"]; has {
 		t.Error("temperature was set; vendors reject it on reasoning models")
 	}
+	// The progress line names the model, the host, the prompt size and the
+	// format, and never the key (WU-031).
+	progress := f.progress.String()
+	if !strings.Contains(progress, "ai validator: asking gpt-5.5 at 127.0.0.1:") || !strings.Contains(progress, "characters of prompt, response_format json_schema") {
+		t.Errorf("progress = %q", progress)
+	}
+	if strings.Contains(progress, "sk-vendor") {
+		t.Errorf("the key reached the progress output: %q", progress)
+	}
 }
 
 func TestOpenAICompatibleFallsBackWhenAVendorRejectsTheFormat(t *testing.T) {
@@ -112,6 +123,9 @@ func TestOpenAICompatibleFallsBackWhenAVendorRejectsTheFormat(t *testing.T) {
 	}
 	if len(f.requests) != 2 || f.requests[1]["response_format"].(map[string]any)["type"] != "json_object" {
 		t.Errorf("requests = %v", f.requests)
+	}
+	if p := f.progress.String(); !strings.Contains(p, "refused response_format json_schema; retrying with json_object") {
+		t.Errorf("fallback progress = %q", p)
 	}
 	// Both refused: a plain request, and the prompt's instruction has to carry it.
 	f = &fakeOpenAI{content: goodOutput, rejectKinds: map[string]bool{"json_schema": true, "json_object": true}}

@@ -154,7 +154,7 @@
           "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
         },
         "validator": {
-          "description": "Marks a validator step, which receives validator inputs and must write a verdict.",
+          "description": "Marks a validator step. It has no run: the image's entrypoint is the validator, started with the change's inputs mounted read-only at /plumbix/in and the workspace at /workspace, and it must write /plumbix/out/verdict.json. Plumbix ships plumbix-reference-validator and plumbix-ai-validator (built from validators/ in its repository); any image honouring the validator contract works.",
           "type": "boolean"
         },
         "retries": {
