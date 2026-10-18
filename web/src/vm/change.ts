@@ -14,6 +14,7 @@ export interface AssessmentVM {
   status: CriterionStatus
   reason: string
   evidence: string[]
+  advisory: boolean
 }
 
 export interface CriterionVM {
@@ -30,6 +31,8 @@ export interface CriterionVM {
 export interface StepVM {
   name: string
   validator: boolean
+  /** Recorded, never counted (WU-030). */
+  advisory: boolean
   status: Step['status'] | 'queued'
   /** Exit code plus notes: 'exit 1 · allowed · attempt 3'; for a skipped step, why it did not run. */
   exit: string
@@ -45,6 +48,7 @@ export interface FindingVM {
   severity: Severity
   message: string
   validator: string
+  advisory: boolean
   criterion: string
   loc: string
   file: string
@@ -61,6 +65,7 @@ export interface RiskVM {
   area: string
   message: string
   validator: string
+  advisory: boolean
   humanRequired: boolean
 }
 
@@ -137,7 +142,7 @@ function exitNote(s: Step): string {
 /** stepVM is one step row; a running step (WU-027) has no exit or duration yet. */
 export function stepVM(s: Step, outcomes?: ValidatorOutcome[]): StepVM {
   const live = s.status === 'running'
-  const vm: StepVM = { name: s.name, validator: s.validator, status: s.status, exit: live ? '' : exitNote(s), dur: live ? '' : duration(s.duration_ms / 1000), hasLog: s.status !== 'skipped' }
+  const vm: StepVM = { name: s.name, validator: s.validator, advisory: !!s.advisory, status: s.status, exit: live ? '' : exitNote(s), dur: live ? '' : duration(s.duration_ms / 1000), hasLog: s.status !== 'skipped' }
   if (s.stage) vm.stage = s.stage
   if (s.validator && outcomes) {
     const o = outcomes.find((x) => x.name === s.name)
@@ -194,7 +199,10 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       }
       return { id: ac.id, text: ac.text, check, status, reason, by: '', evidence: [], more: [] }
     }
-    const [head, ...rest] = combined.assessments
+    // The headline is the first counting assessment; advisory ones follow under "more".
+    const headIndex = combined.assessments.findIndex((a) => !a.advisory)
+    const head = headIndex >= 0 ? combined.assessments[headIndex] : undefined
+    const rest = combined.assessments.filter((_, i) => i !== headIndex)
     return {
       id: ac.id,
       text: ac.text,
@@ -203,14 +211,17 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       reason: head?.reason ?? 'Not judged',
       by: head?.validator ?? '',
       evidence: head?.evidence ?? [],
-      more: rest.map((a) => ({ validator: a.validator, status: a.status, reason: a.reason, evidence: a.evidence ?? [] })),
+      more: rest.map((a) => ({ validator: a.validator, status: a.status, reason: a.reason, evidence: a.evidence ?? [], advisory: !!a.advisory })),
     }
   })
   const met = criteria.filter((x) => x.status === 'met').length
   const tot = criteria.length
   const findingsAll = result?.findings ?? []
-  const blockers = findingsAll.filter((f) => f.severity === 'blocker').length
+  // Counts cover what counted: advisory findings and risks are shown, tagged, but not summed (WU-030).
+  const counting = findingsAll.filter((f) => !f.advisory)
+  const blockers = counting.filter((f) => f.severity === 'blocker').length
   const risksAll = result?.risks ?? []
+  const countingRisks = risksAll.filter((r) => !r.advisory)
 
   const sentences: Record<ChangeState, string> = {
     approved: `All ${tot} criteria met. No blockers.`,
@@ -235,7 +246,7 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       label: { blocker: 'Blockers', major: 'Major', minor: 'Minor' }[sev],
       items: findingsAll
         .filter((f) => f.severity === sev)
-        .map((f) => ({ severity: sev, message: f.message, validator: f.validator, criterion: f.criterion ?? '', loc: f.file ? `${f.file}:${f.line ?? ''}` : '', file: f.file ?? '', line: f.line ?? 0 })),
+        .map((f) => ({ severity: sev, message: f.message, validator: f.validator, advisory: !!f.advisory, criterion: f.criterion ?? '', loc: f.file ? `${f.file}:${f.line ?? ''}` : '', file: f.file ?? '', line: f.line ?? 0 })),
     }))
     .filter((g) => g.items.length)
 
@@ -262,7 +273,7 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       state: c.state,
       iterLabel: cur?.iteration ? `iteration ${cur.iteration}` : '',
       sentence: sentences[c.state],
-      counts: judged && result && c.state !== 'needs_human' ? `${met}/${tot} met · ${plural(blockers, 'blocker')} · ${plural(findingsAll.length, 'finding')} · ${plural(risksAll.length, 'risk')}` : '',
+      counts: judged && result && c.state !== 'needs_human' ? `${met}/${tot} met · ${plural(blockers, 'blocker')} · ${plural(counting.length, 'finding')} · ${plural(countingRisks.length, 'risk')}` : '',
       reasons: ['rejected', 'needs_human', 'escalated'].includes(c.state) ? reasons : [],
       stepsLabel: showPipeline ? 'Pipeline' : 'Validators',
       steps: verdictSteps.map((s) => stepVM(s, cur?.result?.validators)),
@@ -270,7 +281,7 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       record: c.state === 'merged' && c.merge ? { commit: c.merge.commit.slice(0, 12), previous: c.merge.previous.slice(0, 12), strategy: c.merge.strategy, mergedAt: dateTime(c.merge.merged_at) } : undefined,
     },
     findings: groups,
-    risks: risksAll.map((r) => ({ area: r.area, message: r.message, validator: r.validator, humanRequired: r.human_required })),
+    risks: risksAll.map((r) => ({ area: r.area, message: r.message, validator: r.validator, advisory: !!r.advisory, humanRequired: r.human_required })),
     iterations: [...runs]
       .map((r, i) => ({ r, i }))
       .reverse()

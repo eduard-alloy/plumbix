@@ -348,7 +348,7 @@ func (e *Engine) secrets() map[string]string {
 func (e *Engine) recordStarted(r run.Run, position int, st pipeline.Step) {
 	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 	defer cancel()
-	if err := e.store.RecordStep(ctx, r.ID, position, run.Step{Name: st.Name, Validator: st.Validator, Status: "running", Stage: st.Stage}); err != nil {
+	if err := e.store.RecordStep(ctx, r.ID, position, run.Step{Name: st.Name, Validator: st.Validator, Advisory: st.Advisory, Status: "running", Stage: st.Stage}); err != nil {
 		e.log.Error("record running step", "run", r.ID, "step", st.Name, "err", err)
 	}
 	if _, err := e.store.AppendEvent(ctx, events.Event{Type: events.StepStarted, Time: e.now().UTC(), RepoID: r.RepoID, ChangeID: r.ChangeID, RunID: r.ID,
@@ -392,7 +392,7 @@ func toSteps(p *pipeline.Pipeline, res scheduler.Result) []run.Step {
 
 // toStep is the run record of one step's outcome.
 func toStep(st pipeline.Step, s scheduler.StepResult) run.Step {
-	out := run.Step{Name: s.Name, Validator: st.Validator, Status: string(s.Status), ExitCode: s.ExitCode, DurationMS: s.Duration.Milliseconds(),
+	out := run.Step{Name: s.Name, Validator: st.Validator, Advisory: st.Advisory, Status: string(s.Status), ExitCode: s.ExitCode, DurationMS: s.Duration.Milliseconds(),
 		AllowedFailure: s.Allowed, Reason: s.Reason, Stage: st.Stage}
 	if s.Attempts > 1 {
 		out.Attempts = s.Attempts
@@ -480,7 +480,9 @@ func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([
 	for i, s := range res.Steps {
 		st := prep.pipeline.Steps[i]
 		if st.Validator {
-			results = append(results, readVerdict(work, s, c.AcceptanceCriteria))
+			vr := readVerdict(work, s, c.AcceptanceCriteria)
+			vr.Advisory = st.Advisory
+			results = append(results, vr)
 		} else if s.Status == scheduler.Errored {
 			infra = append(infra, fmt.Sprintf("step %s could not run: %v", s.Name, s.Err))
 		}
@@ -542,7 +544,7 @@ func (e *Engine) prepare(ctx context.Context, r run.Run, c change.Change, work s
 	if targetSrc, ok, err := m.Show(ctx, target, PipelineFile); err == nil && ok {
 		if tp, err := pipeline.Parse(targetSrc); err == nil {
 			for _, st := range tp.Steps {
-				if st.Validator {
+				if st.Validator && !st.Advisory {
 					p.required = append(p.required, st.Name)
 				}
 			}

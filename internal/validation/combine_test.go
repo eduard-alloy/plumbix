@@ -160,3 +160,48 @@ func TestValidatorsAreRecorded(t *testing.T) {
 		t.Error("validators must be an empty list, never null")
 	}
 }
+
+// TestAdvisoryVerdictsAreRecordedButNeverCounted (WU-030, A31): an
+// advisory validator's outcome, assessments, findings and risks appear in
+// the result, tagged, and none of it moves the state or a criterion.
+func TestAdvisoryVerdictsAreRecordedButNeverCounted(t *testing.T) {
+	r := combine([]ValidatorResult{
+		{Name: "validate", Verdict: verdict(Approve, allMet)},
+		{Name: "ai-grok", Advisory: true, Verdict: verdict(Reject, map[string]Status{"AC-1": Unmet}, Finding{Severity: "blocker", Message: "wrong"})},
+	}, []string{"validate"})
+	if r.State != change.Approved || len(r.Reasons) != 0 {
+		t.Fatalf("an advisory rejection moved the state: %+v", r)
+	}
+	if len(r.Validators) != 2 || !r.Validators[1].Advisory || r.Validators[1].Outcome != Reject || r.Validators[0].Advisory {
+		t.Errorf("validators = %+v", r.Validators)
+	}
+	ac1 := r.Criteria[0]
+	if ac1.Status != Met || len(ac1.Assessments) != 2 || !ac1.Assessments[1].Advisory || ac1.Assessments[1].Status != Unmet {
+		t.Errorf("AC-1 = %+v", ac1)
+	}
+	if len(r.Findings) != 1 || !r.Findings[0].Advisory || r.Findings[0].Validator != "ai-grok" {
+		t.Errorf("findings = %+v", r.Findings)
+	}
+
+	// A human-required risk, a missing verdict, or being the only validator:
+	// advisory never brings a human in.
+	risky := verdict(Approve, nil)
+	risky.Risks = []Risk{{Area: "security", Message: "look", HumanRequired: true}}
+	r = combine([]ValidatorResult{
+		{Name: "validate", Verdict: verdict(Approve, allMet)},
+		{Name: "ai-grok", Advisory: true, Verdict: risky},
+		{Name: "ai-kimi", Advisory: true, Err: errors.New("validator step timed_out")},
+	}, []string{"validate"})
+	if r.State != change.Approved || len(r.Risks) != 1 || !r.Risks[0].Advisory || len(r.Validators) != 3 || r.Validators[2].Error == "" || !r.Validators[2].Advisory {
+		t.Errorf("advisory risk or missing verdict counted: %+v", r)
+	}
+	r = combine([]ValidatorResult{{Name: "ai-grok", Advisory: true, Verdict: verdict(Approve, allMet)}}, nil)
+	if r.State != change.NeedsHuman || !strings.Contains(strings.Join(r.Reasons, " "), "no validator ran") {
+		t.Errorf("an advisory validator alone approved a change: %+v", r)
+	}
+	for _, c := range r.Criteria {
+		if c.Status != Unknown {
+			t.Errorf("%s judged by an advisory validator alone: %s", c.ID, c.Status)
+		}
+	}
+}

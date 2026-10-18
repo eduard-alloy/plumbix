@@ -57,6 +57,7 @@ type pipelineStep struct {
 	Cache        []string          `json:"cache"`
 	Timeout      string            `json:"timeout,omitempty"`
 	Validator    bool              `json:"validator"`
+	Advisory     bool              `json:"advisory"`
 	External     bool              `json:"external"`
 	Reviewer     string            `json:"reviewer,omitempty"`
 	Retries      int               `json:"retries"`
@@ -110,7 +111,7 @@ func toModel(p *pipeline.Pipeline) *pipelineModel {
 			env = map[string]string{}
 		}
 		s := pipelineStep{Name: st.Name, Image: st.Image, Commands: nonNilStrings(cmds), Needs: nonNilStrings(st.Needs), Env: env,
-			Secrets: nonNilStrings(st.Secrets), Artifacts: nonNilStrings(st.Artifacts), Cache: nonNilStrings(st.Cache), Validator: st.Validator, External: st.External, Reviewer: st.Reviewer, Retries: st.Retries,
+			Secrets: nonNilStrings(st.Secrets), Artifacts: nonNilStrings(st.Artifacts), Cache: nonNilStrings(st.Cache), Validator: st.Validator, Advisory: st.Advisory, External: st.External, Reviewer: st.Reviewer, Retries: st.Retries,
 			AllowFailure: st.AllowFailure, Paths: nonNilStrings(st.OnlyPaths), Stage: st.Stage}
 		if st.Timeout > 0 {
 			s.Timeout = st.Timeout.String()

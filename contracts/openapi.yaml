@@ -1833,6 +1833,9 @@ components:
           type: string
         validator:
           type: boolean
+        advisory:
+          description: A validator whose verdict was recorded but not counted (WU-030).
+          type: boolean
         status:
           type: string
           enum: [succeeded, failed, timed_out, errored, skipped, cancelled]
@@ -1862,6 +1865,9 @@ components:
       additionalProperties: false
       required: [validator, status, reason]
       properties:
+        advisory:
+          description: From an advisory validator; shown, not merged into the criterion's status (WU-030).
+          type: boolean
         validator:
           type: string
         status:
@@ -1891,6 +1897,9 @@ components:
             properties:
               name:
                 type: string
+              advisory:
+                description: Recorded, never counted (WU-030).
+                type: boolean
               outcome:
                 type: string
                 enum: [approve, fix, reject]
@@ -1925,6 +1934,8 @@ components:
             properties:
               validator:
                 type: string
+              advisory:
+                type: boolean
               severity:
                 type: string
                 enum: [blocker, major, minor]
@@ -1946,6 +1957,8 @@ components:
             properties:
               validator:
                 type: string
+              advisory:
+                type: boolean
               area:
                 type: string
               message:
@@ -2087,7 +2100,7 @@ components:
     PipelineStep:
       type: object
       additionalProperties: false
-      required: [name, image, commands, needs, env, secrets, artifacts, cache, validator, external, retries, allow_failure, paths]
+      required: [name, image, commands, needs, env, secrets, artifacts, cache, validator, advisory, external, retries, allow_failure, paths]
       properties:
         name:
           type: string
@@ -2123,6 +2136,9 @@ components:
           description: Go duration string; absent for the server default.
           type: string
         validator:
+          type: boolean
+        advisory:
+          description: The validator's verdict is recorded but never counted (WU-030).
           type: boolean
         external:
           description: The validator waits for a reviewer outside the pipeline.

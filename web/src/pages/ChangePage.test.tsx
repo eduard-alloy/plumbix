@@ -44,6 +44,10 @@ describe('Change page', () => {
     expect(ac1.textContent).toContain('step test succeeded')
     expect(verdict.textContent).toContain('All 3 criteria met. No blockers.')
     expect(verdict.textContent).toContain('3/3 met · 0 blockers · 1 finding · 1 risk')
+    // The advisory validator is tagged in the verdict's list, the evidence rows and its finding (WU-030).
+    expect(within(verdict).getByText('ai-grok').closest('.vstep')!.textContent).toContain('advisory')
+    expect(screen.getByText('ai-grok', { selector: '.step .name' }).closest('.step')!.textContent).toContain('advisory')
+    expect(screen.getAllByText('advisory', { selector: '.tag' }).length).toBeGreaterThanOrEqual(3)
     expect(verdict.textContent).toContain('Merge squashes 9f3c1e2 onto main')
     expect(screen.getByText('Backoff ceiling is hard-coded at 8 s; consider a constant')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'internal/evidence/upload.go:71' })).toBeTruthy()
