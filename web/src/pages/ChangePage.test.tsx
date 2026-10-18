@@ -154,13 +154,17 @@ describe('Change page', () => {
     expect(verdict.textContent).toContain('Validating iteration 1')
     expect(verdict.textContent).toContain('Pipeline')
     expect(within(verdict).getByText('build')).toBeTruthy()
+    // The step that runs now is listed with the running pill and an open log.
+    const testRow = within(verdict).getByText('test').closest('button')!
+    expect(testRow.textContent).toContain('Running')
+    expect(testRow.hasAttribute('disabled')).toBe(false)
     expect(screen.getByText('1 pending')).toBeTruthy()
     expect(screen.getByText('Waiting for step test')).toBeTruthy()
     const run = db.runs[running.id][0]
-    run.steps.push({ name: 'test', validator: false, status: 'succeeded', exit_code: 0, duration_ms: 70000 })
+    run.steps[1] = { name: 'test', validator: false, status: 'succeeded', exit_code: 0, duration_ms: 70000 }
     await streamOpen()
     emit({ type: 'step.finished', change_id: running.id, run_id: run.id, repo_id: running.repo_id, payload: { step: 'test', status: 'succeeded' } })
-    await waitFor(() => expect(within(screen.getByRole('complementary', { name: 'Verdict' })).getByText('test')).toBeTruthy())
+    await waitFor(() => expect(within(screen.getByRole('complementary', { name: 'Verdict' })).getByText('test').closest('button')!.textContent).toContain('1m 10s'))
   })
 
   it('goes back to the list with the back button and Escape', async () => {

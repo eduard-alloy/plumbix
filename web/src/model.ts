@@ -26,7 +26,7 @@ export const CHANGE_STATES: ChangeState[] = [
 export const NEEDS_YOU: ChangeState[] = ['approved', 'needs_human', 'escalated']
 
 export type RunStatus = 'running' | 'finished' | 'errored' | 'cancelled'
-export type StepStatus = 'succeeded' | 'failed' | 'timed_out' | 'errored' | 'skipped' | 'cancelled'
+export type StepStatus = 'running' | 'succeeded' | 'failed' | 'timed_out' | 'errored' | 'skipped' | 'cancelled'
 export type CriterionStatus = 'met' | 'unmet' | 'unknown'
 export type Severity = 'blocker' | 'major' | 'minor'
 
@@ -247,6 +247,7 @@ export type EventType =
   | 'change.state_changed'
   | 'change.merged'
   | 'run.started'
+  | 'step.started'
   | 'step.finished'
   | 'run.finished'
   | 'verdict.issued'

@@ -33,6 +33,34 @@ func registerReviewRoutes(mux *http.ServeMux, h *reviewHandlers) {
 	mux.HandleFunc("GET /api/v1/reviews/next", h.next)
 	mux.HandleFunc("POST /api/v1/reviews/{id}/verdict", h.verdict)
 	mux.HandleFunc("GET /api/v1/reviewers", h.reviewers)
+	mux.HandleFunc("POST /api/v1/reviews/{id}/log", h.appendLog)
+}
+
+// logBody is one progress line from the reviewer holding the claim.
+type logBody struct {
+	Token string `json:"token"`
+	Line  string `json:"line"`
+}
+
+// appendLog adds a reviewer's progress line to the waiting step's log (WU-027).
+func (h *reviewHandlers) appendLog(w http.ResponseWriter, r *http.Request) {
+	var body logBody
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if body.Token == "" {
+		writeProblems(w, "the request has 1 problem(s)", []change.Problem{{Field: "token", Message: "is required: the token that came with the brief"}})
+		return
+	}
+	if err := h.engine.AppendReviewLog(r.Context(), r.PathValue("id"), body.Token, body.Line); err != nil {
+		if errors.Is(err, engine.ErrTooManyLines) {
+			writeError(w, http.StatusTooManyRequests, "too_many", err.Error())
+			return
+		}
+		h.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // reviewers lists the external reviewers the server has heard from since

@@ -160,3 +160,37 @@ func TestReviewersListsWhoPolled(t *testing.T) {
 		t.Errorf("reviewers = %+v", got.Reviewers)
 	}
 }
+
+func TestAReviewerPostsProgressLines(t *testing.T) {
+	o := loadOpenAPI(t)
+	a := newRunAPI(t)
+	a.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalPipeline}, "external review")
+	a.repo.Commit("ext", map[string]string{"b.go": "package b\n"}, "feature on the new pipeline")
+	a.do(http.MethodPost, "/api/v1/changes", changeBody(a.repoID, "ext"))
+	b := decode[review.Brief](t, a.do(http.MethodGet, "/api/v1/reviews/next?reviewer=kai&wait=20", ""))
+	if rec := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/log", `{"token": "`+b.Token+`", "line": "turn 1: Read b.go"}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("append: %d %s", rec.Code, rec.Body.String())
+	}
+	wrong := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/log", `{"token": "nope", "line": "x"}`)
+	o.check("Error", wrong)
+	if wrong.Code != http.StatusConflict {
+		t.Errorf("wrong token: %d %s", wrong.Code, wrong.Body.String())
+	}
+	empty := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/log", `{"token": "`+b.Token+`", "line": " "}`)
+	o.check("Error", empty)
+	if empty.Code != http.StatusBadRequest {
+		t.Errorf("empty line: %d %s", empty.Code, empty.Body.String())
+	}
+	if rec := a.do(http.MethodPost, "/api/v1/reviews/rv_nope/log", `{"token": "x", "line": "x"}`); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown review: %d", rec.Code)
+	}
+	// Two lines within the minimum interval: the second is too many.
+	fast := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/log", `{"token": "`+b.Token+`", "line": "turn 1: Grep x"}`)
+	o.check("Error", fast)
+	if fast.Code != http.StatusTooManyRequests || decode[apiError](t, fast).Error.Code != "too_many" {
+		t.Errorf("flood: %d %s", fast.Code, fast.Body.String())
+	}
+	if rec := a.do(http.MethodGet, "/api/v1/runs/"+b.RunID+"/steps/ai-review/log", ""); !strings.Contains(rec.Body.String(), "reviewer: turn 1: Read b.go") {
+		t.Errorf("step log: %s", rec.Body.String())
+	}
+}

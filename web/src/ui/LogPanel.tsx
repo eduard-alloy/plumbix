@@ -1,5 +1,6 @@
 // The step log: a fixed right panel with numbered lines, search and wrap.
-// Follow mode waits for the API to list running steps (WU-017 notes).
+// A running step's log follows (WU-027): refetched on a timer, view kept at
+// the bottom, until the step ends.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import type { Run } from '../model'
@@ -8,6 +9,9 @@ import { highlight, lineTone, splitLines } from '../vm/log'
 import type { StepVM } from '../vm/change'
 
 export const CLOSE_LOG = 'plumbix:close-log'
+
+/** logFollow.every is how often a running step's log is refetched (ms); tests shorten it. */
+export const logFollow = { every: 2000 }
 
 export interface LogTarget {
   changeId: string
@@ -23,20 +27,36 @@ export function LogPanel({ target, onClose }: { target: LogTarget; onClose: () =
   const [wrap, setWrap] = useState(false)
   const bodyRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const following = step.status === 'running'
 
+  // Load on open; while the step runs, keep loading. When it ends the
+  // effect runs once more and fetches the final log.
   useEffect(() => {
     let live = true
+    const load = () =>
+      api
+        .stepLog(run.id, step.name)
+        .then((t) => live && setText((old) => (old === t ? old : t)))
+        .catch((e: unknown) => live && setText(`could not load the log: ${e instanceof Error ? e.message : String(e)}`))
+    void load()
+    const timer = following ? setInterval(() => void load(), logFollow.every) : undefined
+    return () => {
+      live = false
+      if (timer) clearInterval(timer)
+    }
+  }, [run.id, step.name, following])
+
+  useEffect(() => {
     setText(null)
     setQ('')
     setCurrent(0)
-    api
-      .stepLog(run.id, step.name)
-      .then((t) => live && setText(t))
-      .catch((e: unknown) => live && setText(`could not load the log: ${e instanceof Error ? e.message : String(e)}`))
-    return () => {
-      live = false
-    }
   }, [run.id, step.name])
+
+  // A followed log stays at its end as lines arrive.
+  useEffect(() => {
+    if (!following || !bodyRef.current) return
+    bodyRef.current.scrollTop = bodyRef.current.scrollHeight
+  }, [text, following])
 
   useEffect(() => {
     const close = () => onClose()
@@ -141,7 +161,7 @@ export function LogPanel({ target, onClose }: { target: LogTarget; onClose: () =
         ))}
       </div>
       <div className="log-foot">
-        <span>Step {step.status.replace('_', ' ')}. Full log, fetched on open.</span>
+        <span>{following ? 'Step running. The log follows until the step ends.' : `Step ${step.status.replace('_', ' ')}. Full log, fetched on open.`}</span>
         <span className="spacer" />
         <span className="mono">{lines.length} lines</span>
       </div>

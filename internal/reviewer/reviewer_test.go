@@ -18,7 +18,7 @@ import (
 )
 
 // fakeClaude puts a `claude` on the PATH that records how it was called
-// and prints result, as claude -p --output-format json would.
+// and prints result as one JSON object, which the stream reader accepts.
 func fakeClaude(t *testing.T, result string) (rec string) {
 	t.Helper()
 	bin, rec := t.TempDir(), t.TempDir()
@@ -34,7 +34,7 @@ for a in "$@"; do
   if [ "$prev" = "--system-prompt-file" ]; then cat "$a" > "$PLUMBIX_TEST_REC/system"; fi
   prev="$a"
 done
-cat "$PLUMBIX_TEST_REC/result.json"
+sed "s|WORKTREE|$(pwd)|g" "$PLUMBIX_TEST_REC/result.json"
 `
 	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
@@ -66,6 +66,7 @@ type fakeServer struct {
 		Verdict json.RawMessage `json:"verdict"`
 	}
 	postedID string
+	progress []string
 }
 
 func (f *fakeServer) handler() http.Handler {
@@ -80,6 +81,17 @@ func (f *fakeServer) handler() http.Handler {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(f.brief)
+	})
+	mux.HandleFunc("POST /api/v1/reviews/{id}/log", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Token string `json:"token"`
+			Line  string `json:"line"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.mu.Lock()
+		f.progress = append(f.progress, body.Token+"|"+body.Line)
+		f.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("POST /api/v1/reviews/{id}/verdict", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -133,7 +145,7 @@ func TestOneReviewRunsClaudeInAWorktreeAndPostsTheVerdict(t *testing.T) {
 	}
 	// claude ran non-interactively, read-only, with the brief's prompt and schema, in a checkout of head.
 	args := recorded(t, rec, "args")
-	for _, want := range []string{"-p", "--output-format\njson", "--json-schema", "--system-prompt-file", "--restricted", "--no-session-persistence", "--max-turns", "--permission-prompts\nnone"} {
+	for _, want := range []string{"-p", "--output-format\nstream-json", "--json-schema", "--system-prompt-file", "--restricted", "--no-session-persistence", "--max-turns", "--permission-prompts\nnone"} {
 		if !strings.Contains(args, want) {
 			t.Errorf("claude args lack %q:\n%s", want, args)
 		}
@@ -257,5 +269,43 @@ func TestRecordedModelIsTheBriefsOrTheBusiest(t *testing.T) {
 				t.Error("the override was not passed to claude")
 			}
 		})
+	}
+}
+
+// streamed is what claude -p --output-format stream-json prints: one JSON
+// object per line, tool uses inside assistant messages, the result last.
+const streamed = `{"type":"system","subtype":"init","session_id":"s1","tools":["Read","Grep"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Let me look."},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"WORKTREE/app.go"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"package app"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Grep","input":{"pattern":"func Greet","path":"WORKTREE"}},{"type":"tool_use","id":"t3","name":"Bash","input":{"command":"go test ./... && echo done with a very long command line that keeps going on and on and on and on and on and on past the limit"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Verdict follows."}]}}
+` + approving + "\n"
+
+func TestStreamedToolUsesBecomeProgressLines(t *testing.T) {
+	repo := gittest.New(t)
+	base := repo.Commit("main", map[string]string{"README.md": "# base\n"}, "base")
+	head := repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	rec := fakeClaude(t, streamed)
+	fs := &fakeServer{brief: newBrief(repo.Remote, head, base)}
+	srv := httptest.NewServer(fs.handler())
+	defer srv.Close()
+	var out, errOut bytes.Buffer
+	if err := Run(context.Background(), Options{Client: client.New(strings.TrimPrefix(srv.URL, "http://"), "t"), Reviewer: "kai", Once: true, WorkDir: t.TempDir(), Stdout: &out, Stderr: &errOut, progressEvery: -1}); err != nil {
+		t.Fatalf("run: %v\nstderr: %s", err, errOut.String())
+	}
+	if fs.postedID != "rv_1" {
+		t.Fatalf("no verdict posted: %+v", fs.posted)
+	}
+	args := recorded(t, rec, "args")
+	if !strings.Contains(args, "--output-format\nstream-json") || !strings.Contains(args, "--verbose") {
+		t.Errorf("claude args lack the streaming format:\n%s", args)
+	}
+	longCmd := "go test ./... && echo done with a very long command line that keeps going on and on and on and on and on and on past the limit"
+	want := []string{"tok-1|turn 1: Read app.go", "tok-1|turn 2: Grep func Greet", "tok-1|turn 2: Bash " + string([]rune(longCmd)[:maxProgressArg]) + "…"}
+	if strings.Join(fs.progress, "\n") != strings.Join(want, "\n") {
+		t.Errorf("progress = %q\nwant %q", fs.progress, want)
+	}
+	if !strings.Contains(out.String(), "approve") {
+		t.Errorf("stdout = %q", out.String())
 	}
 }

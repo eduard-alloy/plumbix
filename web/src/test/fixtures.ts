@@ -195,7 +195,7 @@ export const runningRuns: Run[] = [
     head: '77aa11beeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
     base: 'a81d7c0bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     status: 'running',
-    steps: [step('build', 'succeeded', 25000)],
+    steps: [step('build', 'succeeded', 25000), step('test', 'running', 0)],
     started_at: new Date(NOW.getTime() - 72000).toISOString(),
   },
 ]

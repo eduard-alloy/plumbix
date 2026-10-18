@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -1172,4 +1173,112 @@ func TestReviewerPresenceAndTheNoReviewerAlert(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.wait(r2.ID)
+}
+
+func TestARunningStepIsRecordedWhenItStarts(t *testing.T) {
+	h := newHarness(t, Config{})
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalYAML}, "external review")
+	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	c := h.submit("feat")
+	before, _ := h.db.EventsAfter(ctx, 0, events.Filter{ChangeID: c.ID}, 200)
+	r, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// While the external step waits, the run lists it as running, with a log to read.
+	b := h.claimSoon("kai")
+	time.Sleep(2 * reviewPoll)
+	got, err := h.db.GetRun(ctx, r.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ext *run.Step
+	for i := range got.Steps {
+		if got.Steps[i].Name == "ai-review" {
+			ext = &got.Steps[i]
+		}
+	}
+	if ext == nil || ext.Status != "running" || !ext.Validator {
+		t.Fatalf("steps while waiting = %+v", got.Steps)
+	}
+	if log, _ := os.ReadFile(h.eng.LogPath(r.ID, "ai-review")); !strings.Contains(string(log), "claimed by kai") {
+		t.Errorf("running step's log = %q", log)
+	}
+	after, _ := h.db.EventsAfter(ctx, 0, events.Filter{ChangeID: c.ID}, 200)
+	var starts []string
+	for _, e := range after[len(before):] {
+		if e.Type == events.StepStarted {
+			raw, _ := json.Marshal(e.Payload)
+			var p events.StepStartedPayload
+			_ = json.Unmarshal(raw, &p)
+			starts = append(starts, p.Step)
+		}
+	}
+	if strings.Join(starts, ",") != "test,validate,ai-review" && strings.Join(starts, ",") != "test,ai-review,validate" {
+		t.Errorf("step.started events = %v", starts)
+	}
+	// The final record replaces the running one.
+	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"Fine.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}]}`)
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); err != nil {
+		t.Fatal(err)
+	}
+	done := h.wait(r.ID)
+	for _, s := range done.Steps {
+		if s.Name == "ai-review" && s.Status != "succeeded" {
+			t.Errorf("final record = %+v", s)
+		}
+	}
+	if n := len(done.Steps); n != 3 {
+		t.Errorf("%d step records, want one per step", n)
+	}
+}
+
+func TestAReviewerAppendsBoundedProgressLines(t *testing.T) {
+	old := reviewLogMinInterval
+	reviewLogMinInterval = 0
+	t.Cleanup(func() { reviewLogMinInterval = old })
+	h := newHarness(t, Config{})
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalYAML}, "external review")
+	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	c := h.submit("feat")
+	r, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := h.claimSoon("kai")
+	if err := h.eng.AppendReviewLog(ctx, b.ID, "wrong", "turn 1: Read app.go"); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("wrong token: %v", err)
+	}
+	var inv *change.InvalidError
+	if err := h.eng.AppendReviewLog(ctx, b.ID, b.Token, "   "); !errors.As(err, &inv) {
+		t.Errorf("empty line: %v", err)
+	}
+	if err := h.eng.AppendReviewLog(ctx, b.ID, b.Token, strings.Repeat("x", MaxReviewLogLine+1)); !errors.As(err, &inv) {
+		t.Errorf("overlong line: %v", err)
+	}
+	if err := h.eng.AppendReviewLog(ctx, b.ID, b.Token, "turn 1: Read app.go\nsecond line"); err != nil {
+		t.Fatal(err)
+	}
+	log, _ := os.ReadFile(h.eng.LogPath(r.ID, "ai-review"))
+	if !strings.Contains(string(log), "reviewer: turn 1: Read app.go second line") {
+		t.Errorf("log lacks the progress line (newlines folded):\n%s", log)
+	}
+	// The cap: no more than MaxReviewLogLines per review.
+	for i := 1; i < MaxReviewLogLines; i++ {
+		if err := h.eng.AppendReviewLog(ctx, b.ID, b.Token, fmt.Sprintf("turn %d: Grep x", i)); err != nil {
+			t.Fatalf("line %d: %v", i, err)
+		}
+	}
+	if err := h.eng.AppendReviewLog(ctx, b.ID, b.Token, "one too many"); !errors.Is(err, ErrTooManyLines) {
+		t.Errorf("over the cap: %v", err)
+	}
+	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"Fine.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}]}`)
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, good); err != nil {
+		t.Fatal(err)
+	}
+	h.wait(r.ID)
+	// After the verdict the review is done: nothing more is appended.
+	if err := h.eng.AppendReviewLog(ctx, b.ID, b.Token, "late"); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("append after the verdict: %v", err)
+	}
 }

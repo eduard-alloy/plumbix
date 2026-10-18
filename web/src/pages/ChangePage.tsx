@@ -8,7 +8,7 @@ import { useNow, useStore } from '../store'
 import { StatePill, type PillStatus } from '../ui/StatePill'
 import { LogPanel, type LogTarget } from '../ui/LogPanel'
 import { DiffView, type Highlight } from '../ui/DiffView'
-import { changeView, refusalNotice, type NoticeVM, type StepVM, refreshNotice } from '../vm/change'
+import { stepVM, changeView, refusalNotice, type NoticeVM, type StepVM, refreshNotice } from '../vm/change'
 
 type Busy = 'merge' | 'close' | 'validate' | 'approve' | 'refresh' | null
 
@@ -217,6 +217,14 @@ export function ChangePage({ id }: { id: string }) {
   function openLog(run: typeof latestRun | undefined, s: StepVM) {
     if (run) setLog({ changeId: c!.id, run, step: s })
   }
+  // The open log follows the store: a running step's row changes as the
+  // run is refetched, and the panel sees the step end.
+  const liveLog = ((): LogTarget | null => {
+    if (!log) return null
+    const run = runs.find((r) => r.id === log.run.id) ?? log.run
+    const raw = run.steps.find((s) => s.name === log.step.name)
+    return raw ? { ...log, run, step: { ...log.step, ...stepVM(raw, run.result?.validators) } } : log
+  })()
   function openPathLog(path: string) {
     const stepName = path.split('/')[1] ?? ''
     const run = latestRun
@@ -660,7 +668,7 @@ export function ChangePage({ id }: { id: string }) {
           {diff.state === 'open' && diff.data && <DiffView diff={diff.data} findings={v.findings.flatMap((g) => g.items.filter((f) => f.file).map((f) => ({ validator: f.validator, severity: f.severity, message: f.message, criterion: f.criterion || undefined, file: f.file, line: f.line })))} highlight={highlight} />}
         </section>
       </div>
-      {log && <LogPanel target={log} onClose={() => setLog(null)} />}
+      {liveLog && <LogPanel target={liveLog} onClose={() => setLog(null)} />}
     </>
   )
 }

@@ -135,6 +135,59 @@ paths:
                 $ref: "#/components/schemas/ReviewerList"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /reviews/{id}/log:
+    post:
+      operationId: appendReviewLog
+      summary: Append one progress line from the reviewer to the waiting step's log.
+      description: >
+        For the reviewer holding the claim: the line is written to the external
+        step's log prefixed "reviewer:", so the change page shows what the
+        reviewer is doing while it works. Lines are folded to one line,
+        bounded to 300 characters and 300 per review, and no more than one
+        every 500 ms; beyond that the answer is 429.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, line]
+              properties:
+                token:
+                  type: string
+                  minLength: 1
+                line:
+                  type: string
+                  minLength: 1
+                  maxLength: 300
+      responses:
+        "204":
+          description: The line was appended.
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The review is not claimed with this token, or was answered or expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many lines, or too fast.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /reviews/{id}/verdict:
     post:
       operationId: postReviewVerdict

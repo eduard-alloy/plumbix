@@ -185,6 +185,21 @@
       ]
     },
     {
+      "description": "A step of a run began; the run lists it as running until step.finished.",
+      "properties": {
+        "type": {
+          "const": "step.started"
+        },
+        "payload": {
+          "$ref": "#/$defs/stepStarted"
+        }
+      },
+      "required": [
+        "repo_id",
+        "run_id"
+      ]
+    },
+    {
       "description": "Plumbix merged the target branch into a branch it created (a pipeline editor change) and pushed the result; the run.started event of the new iteration follows.",
       "properties": {
         "type": {
@@ -249,6 +264,26 @@
     }
   ],
   "$defs": {
+    "stepStarted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step",
+        "validator"
+      ],
+      "properties": {
+        "step": {
+          "type": "string",
+          "minLength": 1
+        },
+        "validator": {
+          "type": "boolean"
+        },
+        "stage": {
+          "type": "string"
+        }
+      }
+    },
     "reviewRequested": {
       "type": "object",
       "additionalProperties": false,

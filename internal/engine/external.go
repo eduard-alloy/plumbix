@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/pipeline"
@@ -265,4 +266,69 @@ func randomHex(n int) (string, error) {
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
+}
+
+// Bounds on reviewer progress lines (WU-027).
+const (
+	MaxReviewLogLine  = 300 // characters per line
+	MaxReviewLogLines = 300 // lines per review
+)
+
+// reviewLogMinInterval is the least time between two lines of one review;
+// a test sets it to zero.
+var reviewLogMinInterval = 500 * time.Millisecond
+
+// ErrTooManyLines means a reviewer exceeded the line cap or the rate.
+var ErrTooManyLines = errors.New("too many progress lines")
+
+type reviewLogState struct {
+	count int
+	last  time.Time
+}
+
+// AppendReviewLog appends one progress line from the reviewer holding the
+// claim to the waiting step's log, prefixed "reviewer:". Newlines are
+// folded so one call is one line. The review must be claimed with token.
+func (e *Engine) AppendReviewLog(ctx context.Context, id, token, line string) error {
+	line = strings.Join(strings.Fields(line), " ")
+	switch {
+	case line == "":
+		return &change.InvalidError{Problems: []change.Problem{{Field: "line", Message: "is empty"}}}
+	case utf8.RuneCountInString(line) > MaxReviewLogLine:
+		return &change.InvalidError{Problems: []change.Problem{{Field: "line", Message: fmt.Sprintf("is longer than %d characters", MaxReviewLogLine)}}}
+	}
+	rv, err := e.store.GetReview(ctx, id)
+	if err != nil {
+		if errors.Is(err, change.ErrNotFound) {
+			return fmt.Errorf("%w: review %s", change.ErrNotFound, id)
+		}
+		return err
+	}
+	if rv.Status != review.Claimed || rv.TokenHash != hashToken(token) {
+		return fmt.Errorf("%w: review %s is %s, or the token is not the one handed out with its brief", change.ErrConflict, id, rv.Status)
+	}
+	now := e.now()
+	e.reviewLogMu.Lock()
+	if e.reviewLogs == nil {
+		e.reviewLogs = map[string]*reviewLogState{}
+	}
+	st := e.reviewLogs[id]
+	if st == nil {
+		st = &reviewLogState{}
+		e.reviewLogs[id] = st
+	}
+	if st.count >= MaxReviewLogLines || (st.count > 0 && now.Sub(st.last) < reviewLogMinInterval) {
+		e.reviewLogMu.Unlock()
+		return fmt.Errorf("%w: at most %d lines per review and one every %s", ErrTooManyLines, MaxReviewLogLines, reviewLogMinInterval)
+	}
+	st.count++
+	st.last = now
+	e.reviewLogMu.Unlock()
+	f, err := os.OpenFile(e.LogPath(rv.RunID, rv.Step), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = fmt.Fprintf(f, "reviewer: %s\n", line)
+	return err
 }

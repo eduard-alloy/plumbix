@@ -186,6 +186,11 @@ func TestLifecycleEmitsEvents(t *testing.T) {
 		Payload: events.ChangeRefreshedPayload{FromHead: "ffff", Head: "abab", TargetHead: "cdcd"}}); err != nil {
 		t.Fatal(err)
 	}
+	// A step begins: the engine appends step.started itself, like step.finished.
+	if _, err := db.AppendEvent(ctx, events.Event{Type: events.StepStarted, Time: at.Add(15500 * time.Millisecond), RepoID: "r_1", ChangeID: "c_2", RunID: "run_1",
+		Payload: events.StepStartedPayload{Step: "build", Validator: false}}); err != nil {
+		t.Fatal(err)
+	}
 	// An external validator step of c_2's run publishes a review and a reviewer takes it.
 	if err := db.CreateRun(ctx, run.Run{ID: "run_2", RepoID: "r_1", ChangeID: "c_2", Iteration: 1, Status: run.Running, StartedAt: at.Add(16 * time.Second)}); err != nil {
 		t.Fatal(err)
@@ -206,7 +211,7 @@ func TestLifecycleEmitsEvents(t *testing.T) {
 		events.RunFinished, events.VerdictIssued, events.StateChanged, events.ChangeMerged, events.StateChanged,
 		events.AlertRaised, events.AlertResolved, events.AlertRaised, events.AlertResolved,
 		events.ChangeSubmitted, events.StateChanged, events.ApprovedByPerson, events.StateChanged, events.ChangeRefreshed,
-		events.RunStarted, events.ReviewRequested, events.ReviewClaimed, events.ReviewReleased,
+		events.StepStarted, events.RunStarted, events.ReviewRequested, events.ReviewClaimed, events.ReviewReleased,
 	}
 	var got []events.Type
 	for i, e := range notified {

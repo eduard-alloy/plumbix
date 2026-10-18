@@ -17,6 +17,8 @@ export interface FakeDB {
   refreshResult: 'ok' | 'already_current' | 'merge_conflict' | 'push_denied' | 'push_rejected'
   requests: string[]
   secrets: Record<string, string>
+  /** liveLog is what the running step's log holds; tests append lines. */
+  liveLog: string[]
   secretUpdated: Record<string, string>
   secretChecks: Record<string, { ok: boolean; expires_at?: string; message: string }>
   settings: { ai_model: string; ai_provider: 'anthropic' | 'openai'; ai_base_url: string; ai_tools: 'read-only' | 'full'; guidance: string }
@@ -62,6 +64,7 @@ export function freshDB(): FakeDB {
     reviewers: [],
     requests: [],
     secrets: {},
+    liveLog: ['$ go test ./... -count=1'],
     secretUpdated: {},
     secretChecks: {},
     settings: { ai_model: '', ai_provider: 'anthropic', ai_base_url: '', ai_tools: 'read-only', guidance: '' },
@@ -242,7 +245,8 @@ export function fakeFetch(db: FakeDB): typeof fetch {
     if (path.startsWith('/api/v1/alerts')) return json(200, { alerts: db.alerts.filter((a) => path.includes('include_resolved') || !a.resolved_at) })
     const log = path.match(/^\/api\/v1\/runs\/([^/]+)\/steps\/([^/]+)\/log$/)
     if (log) {
-      const text = log[2] === 'test' ? sampleLog : `$ ${log[2]}\nok\nstep ${log[2]} succeeded in 4s (exit 0)\n`
+      const liveRun = Object.values(db.runs).flat().find((r) => r.id === log[1] && r.steps.some((s) => s.name === log[2] && s.status === 'running'))
+      const text = liveRun ? db.liveLog.map((l) => l + '\n').join('') : log[2] === 'test' ? sampleLog : `$ ${log[2]}\nok\nstep ${log[2]} succeeded in 4s (exit 0)\n`
       return new Response(text, { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
     }
     const m = path.match(/^\/api\/v1\/changes\/([^/?]+)(?:\/([a-z]+))?(\?.*)?$/)
