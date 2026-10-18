@@ -596,8 +596,8 @@ func (e *Engine) setupValidator(r run.Run, p prepared, work string, st pipeline.
 		if provider != "" && provider != "anthropic" {
 			setup.Env["PLUMBIX_AI_PROVIDER"] = provider
 		}
-		if baseURL != "" {
-			setup.Env["PLUMBIX_AI_BASE_URL"] = baseURL
+		if baseURL != "" && provider == "openai" {
+			setup.Env["PLUMBIX_AI_BASE_URL"] = baseURL // meaningless to the anthropic path
 		}
 		if len(setup.Env) == 0 {
 			setup.Env = nil

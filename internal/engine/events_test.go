@@ -209,7 +209,8 @@ func (f fakeSettings) AIBaseURL(context.Context) (string, error)  { return f.bas
 // guidance in change.json and the model as PLUMBIX_AI_MODEL, unless the
 // pipeline step sets its own; normal steps see neither.
 func TestValidatorsGetGuidanceAndModel(t *testing.T) {
-	h := newHarness(t, Config{Settings: fakeSettings{global: "Prefer small diffs.", repo: "Go needs tests.", model: "claude-sonnet-5-5"}})
+	// A base URL left over from an openai spell stays out of an anthropic step's env.
+	h := newHarness(t, Config{Settings: fakeSettings{global: "Prefer small diffs.", repo: "Go needs tests.", model: "claude-sonnet-5-5", baseURL: "https://api.openai.com/v1"}})
 	h.repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
 	c := h.submit("feat")
 	h.wait(h.validate(c.ID).ID)
@@ -232,6 +233,9 @@ func TestValidatorsGetGuidanceAndModel(t *testing.T) {
 		}
 		if _, ok := j.Env["PLUMBIX_AI_PROVIDER"]; ok {
 			t.Errorf("%s got a provider although anthropic is the default: %v", j.Name, j.Env)
+		}
+		if _, ok := j.Env["PLUMBIX_AI_BASE_URL"]; ok {
+			t.Errorf("%s got a base URL although the provider is anthropic: %v", j.Name, j.Env)
 		}
 	}
 }
