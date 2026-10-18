@@ -10,7 +10,8 @@ describe('changeView for an approved change', () => {
   it('fills the header from the change and its latest run', () => {
     expect(v.header).toMatchObject({ repo: 'plumbix', host: 'GitHub', src: 'feat/retry-uploads', tgt: 'main', head: '9f3c1e2', base: 'a81d7c0', iter: '2 of 2', by: 'kai', updated: 'Updated 4 min ago' })
     expect(v.header.submitted).toMatch(/^\d\d:\d\d$/)
-    expect(v.intent).toHaveLength(2)
+    expect(v.intent).toHaveLength(3)
+    expect(v.intent[2]).toMatchObject({ kind: 'ul' })
     expect(v.constraints).toEqual(['no new dependencies'])
   })
 

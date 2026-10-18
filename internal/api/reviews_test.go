@@ -2,10 +2,12 @@ package api
 
 import (
 	"errors"
+	"github.com/eduard-alloy/plumbix/internal/engine"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/review"
@@ -184,7 +186,11 @@ func TestAReviewerPostsProgressLines(t *testing.T) {
 	if rec := a.do(http.MethodPost, "/api/v1/reviews/rv_nope/log", `{"token": "x", "line": "x"}`); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown review: %d", rec.Code)
 	}
-	// Two lines within the minimum interval: the second is too many.
+	// A second line before the minimum interval has passed is too many. The
+	// interval is raised so the check does not depend on how fast this runs.
+	oldInterval := engine.ReviewLogMinInterval
+	engine.ReviewLogMinInterval = time.Hour
+	t.Cleanup(func() { engine.ReviewLogMinInterval = oldInterval })
 	fast := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/log", `{"token": "`+b.Token+`", "line": "turn 1: Grep x"}`)
 	o.check("Error", fast)
 	if fast.Code != http.StatusTooManyRequests || decode[apiError](t, fast).Error.Code != "too_many" {

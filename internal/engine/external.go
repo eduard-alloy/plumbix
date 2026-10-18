@@ -73,6 +73,7 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 	if err := e.store.CreateReview(ctx, review.Review{ID: b.ID, RunID: r.ID, RepoID: c.RepoID, ChangeID: c.ID, Step: st.Name, Brief: raw, CreatedAt: now, ExpiresAt: deadline}); err != nil {
 		return errored(err)
 	}
+	defer e.forgetReviewLog(b.ID)
 	fmt.Fprintf(log, "waiting for an external reviewer: review %s, until %s. A reviewer takes it with plumbix review --watch or GET /api/v1/reviews/next.\n", b.ID, deadline.UTC().Format(time.RFC3339))
 	e.log.Info("external review published", "run", r.ID, "step", st.Name, "review", b.ID)
 
@@ -156,16 +157,48 @@ func (e *Engine) takeVerdict(dir string, rv review.Review, log io.Writer) schedu
 	}
 	fmt.Fprintf(log, "verdict posted by %s at %s\n", rv.Reviewer, rv.FinishedAt.UTC().Format(time.RFC3339))
 	// The container validator printed its verdict as its last line; the
-	// external step does the same from the posted verdict, on one line.
+	// external step does the same from the posted verdict: the verdict line,
+	// then the rest of the summary and each finding and risk, so the log
+	// alone says what the reviewer found.
 	var v validation.Verdict
 	if json.Unmarshal(rv.Verdict, &v) == nil {
-		summary := strings.TrimSpace(v.Summary)
-		if i := strings.IndexByte(summary, '\n'); i >= 0 {
-			summary = strings.TrimSpace(summary[:i]) + " …"
-		}
-		fmt.Fprintf(log, "verdict: %s — %s%s\n", v.Outcome, summary, usageNote(v.Usage))
+		writeVerdictNotes(log, v)
 	}
 	return scheduler.StepResult{Status: scheduler.Succeeded}
+}
+
+// writeVerdictNotes prints a posted verdict for a step log: one verdict line
+// with the summary's first line and the usage, the remaining summary lines
+// indented, then "finding <severity>:" and "risk <area>:" lines.
+func writeVerdictNotes(log io.Writer, v validation.Verdict) {
+	summary := strings.TrimSpace(v.Summary)
+	first, rest := summary, ""
+	if i := strings.IndexByte(summary, '\n'); i >= 0 {
+		first, rest = strings.TrimSpace(summary[:i]), strings.TrimSpace(summary[i+1:])
+	}
+	fmt.Fprintf(log, "verdict: %s — %s%s\n", v.Outcome, first, usageNote(v.Usage))
+	for _, line := range strings.Split(rest, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			fmt.Fprintf(log, "  %s\n", line)
+		}
+	}
+	for _, f := range v.Findings {
+		where := f.File
+		if where != "" && f.Line != nil {
+			where = fmt.Sprintf("%s:%d", f.File, *f.Line)
+		}
+		if where != "" {
+			where = " (" + where + ")"
+		}
+		fmt.Fprintf(log, "finding %s: %s%s\n", f.Severity, strings.Join(strings.Fields(f.Message), " "), where)
+	}
+	for _, r := range v.Risks {
+		human := ""
+		if r.HumanRequired {
+			human = ", a person must look"
+		}
+		fmt.Fprintf(log, "risk %s: %s%s\n", r.Area, strings.Join(strings.Fields(r.Message), " "), human)
+	}
 }
 
 // usageNote renders a verdict's usage for the step log: model and tokens,
@@ -274,9 +307,9 @@ const (
 	MaxReviewLogLines = 300 // lines per review
 )
 
-// reviewLogMinInterval is the least time between two lines of one review;
-// a test sets it to zero.
-var reviewLogMinInterval = 500 * time.Millisecond
+// ReviewLogMinInterval is the least time between two lines of one review.
+// It is a variable so tests can lower or raise it.
+var ReviewLogMinInterval = 500 * time.Millisecond
 
 // ErrTooManyLines means a reviewer exceeded the line cap or the rate.
 var ErrTooManyLines = errors.New("too many progress lines")
@@ -284,6 +317,15 @@ var ErrTooManyLines = errors.New("too many progress lines")
 type reviewLogState struct {
 	count int
 	last  time.Time
+}
+
+// forgetReviewLog drops a review's line counters once its step no longer
+// waits (answered, expired or cancelled), so the map does not grow with
+// every review the server ever published.
+func (e *Engine) forgetReviewLog(id string) {
+	e.reviewLogMu.Lock()
+	delete(e.reviewLogs, id)
+	e.reviewLogMu.Unlock()
 }
 
 // AppendReviewLog appends one progress line from the reviewer holding the
@@ -317,9 +359,9 @@ func (e *Engine) AppendReviewLog(ctx context.Context, id, token, line string) er
 		st = &reviewLogState{}
 		e.reviewLogs[id] = st
 	}
-	if st.count >= MaxReviewLogLines || (st.count > 0 && now.Sub(st.last) < reviewLogMinInterval) {
+	if st.count >= MaxReviewLogLines || (st.count > 0 && now.Sub(st.last) < ReviewLogMinInterval) {
 		e.reviewLogMu.Unlock()
-		return fmt.Errorf("%w: at most %d lines per review and one every %s", ErrTooManyLines, MaxReviewLogLines, reviewLogMinInterval)
+		return fmt.Errorf("%w: at most %d lines per review and one every %s", ErrTooManyLines, MaxReviewLogLines, ReviewLogMinInterval)
 	}
 	st.count++
 	st.last = now

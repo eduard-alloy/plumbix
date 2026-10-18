@@ -434,6 +434,10 @@ func readStream(r io.Reader, worktree string, progress func(string)) (result, bo
 			}
 		}
 	}
+	// Whatever claude prints after the result (or after a line that is not
+	// JSON) is read and dropped, so the process never blocks on a full pipe
+	// and cmd.Wait returns.
+	_, _ = io.Copy(io.Discard, r)
 	if found {
 		return res, true, ""
 	}

@@ -931,7 +931,7 @@ func TestExternalValidatorPublishesABriefAndTakesThePostedVerdict(t *testing.T) 
 	if err := h.eng.PostReviewVerdict(ctx, b.ID, "wrong-token", bad); !errors.Is(err, change.ErrConflict) {
 		t.Errorf("invalid verdict with a wrong token: %v, want ErrConflict", err)
 	}
-	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"The feature does what the intent says.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}],"usage":{"model":"claude-opus-5-5","input_tokens":1200,"output_tokens":300,"turns":13,"cost_usd":3.06}}`)
+	good := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"The feature does what the intent says.\nOne follow-up is worth doing.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}],"findings":[{"severity":"minor","message":"The error is not named\nin the log line.","file":"a.go","line":4}],"risks":[{"area":"security","message":"The token is read from a flag.","human_required":false}],"usage":{"model":"claude-opus-5-5","input_tokens":1200,"output_tokens":300,"turns":13,"cost_usd":3.06}}`)
 	if err := h.eng.PostReviewVerdict(ctx, b.ID, "wrong-token", good); !errors.Is(err, change.ErrConflict) {
 		t.Errorf("wrong token: %v", err)
 	}
@@ -977,7 +977,8 @@ func TestExternalValidatorPublishesABriefAndTakesThePostedVerdict(t *testing.T) 
 	}
 	log, _ := os.ReadFile(h.eng.LogPath(r.ID, "ai-review"))
 	for _, want := range []string{"waiting for an external reviewer", "claimed by kai", "claim by kai was released", "claimed by otto", "verdict posted by otto",
-		"verdict: approve", "The feature does what the intent says.", "claude-opus-5-5", "1200 input and 300 output tokens", "13 turns", "$3.06"} {
+		"verdict: approve — The feature does what the intent says. (claude-opus-5-5", "1200 input and 300 output tokens", "13 turns", "$3.06",
+		"\n  One follow-up is worth doing.\n", "finding minor: The error is not named in the log line. (a.go:4)", "risk security: The token is read from a flag.\n"} {
 		if !strings.Contains(string(log), want) {
 			t.Errorf("step log lacks %q:\n%s", want, log)
 		}
@@ -1234,9 +1235,9 @@ func TestARunningStepIsRecordedWhenItStarts(t *testing.T) {
 }
 
 func TestAReviewerAppendsBoundedProgressLines(t *testing.T) {
-	old := reviewLogMinInterval
-	reviewLogMinInterval = 0
-	t.Cleanup(func() { reviewLogMinInterval = old })
+	old := ReviewLogMinInterval
+	ReviewLogMinInterval = 0
+	t.Cleanup(func() { ReviewLogMinInterval = old })
 	h := newHarness(t, Config{})
 	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalYAML}, "external review")
 	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
@@ -1277,8 +1278,15 @@ func TestAReviewerAppendsBoundedProgressLines(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.wait(r.ID)
-	// After the verdict the review is done: nothing more is appended.
+	// After the verdict the review is done: nothing more is appended, and
+	// its counters are gone.
 	if err := h.eng.AppendReviewLog(ctx, b.ID, b.Token, "late"); !errors.Is(err, change.ErrConflict) {
 		t.Errorf("append after the verdict: %v", err)
+	}
+	h.eng.reviewLogMu.Lock()
+	n := len(h.eng.reviewLogs)
+	h.eng.reviewLogMu.Unlock()
+	if n != 0 {
+		t.Errorf("%d review log counters kept after the step ended, want none", n)
 	}
 }
