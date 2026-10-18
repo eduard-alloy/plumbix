@@ -1,9 +1,22 @@
 // Pure helpers for the step log panel.
 
+/** ansi matches what a terminal would act on and a log reader should not
+ * see: CSI sequences (colours, cursor and erase controls, private modes),
+ * OSC strings (titles, hyperlinks) ended by BEL or ST, charset selects
+ * (ESC ( B), and any other escape with its one following character
+ * (ESC 7, ESC 8, ESC =, ESC >, ESC M, and the C1 range). */
+// eslint-disable-next-line no-control-regex
+const ansi = /\x1b\[[0-?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][@-~]|\x1b[0-~]/g
+
+/** stripAnsi removes terminal escape sequences from log text. */
+export function stripAnsi(text: string): string {
+  return text.replace(ansi, '')
+}
+
 /** splitLines breaks a log into lines, tolerating CRLF and one final newline. */
 export function splitLines(text: string): string[] {
   if (text === '') return []
-  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const lines = stripAnsi(text).replace(/\r\n/g, '\n').split('\n')
   if (lines[lines.length - 1] === '') lines.pop()
   return lines
 }
