@@ -41,6 +41,7 @@ steps:
     validator: true
     reviewer: grok-4
     advisory: true
+    effort: medium
     needs: [build, test, lint, web]
 stages:
   checks: [build, test, lint, web]
