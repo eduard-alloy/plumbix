@@ -11,7 +11,8 @@ describe('pipeline model', () => {
     const p = model()
     expect(p.steps.map((s) => s.id)).toEqual(['build', 'test', 'contract', 'deploy-check', 'validate'])
     const test = find(p, 'test')!
-    expect(test).toMatchObject({ timeout: '15m', retries: 1, group: 'checks', evidence: ['coverage.out'], last: 118, lastStatus: 'succeeded' })
+    expect(test).toMatchObject({ timeout: '15m', retries: 1, group: 'checks', evidence: ['coverage.out'], cache: [], last: 118, lastStatus: 'succeeded' })
+    expect(find(p, 'build')!.cache).toEqual(['/go/pkg/mod', '/root/.cache/go-build'])
     expect(test.env).toEqual([{ k: 'GOFLAGS', v: '-mod=readonly', secret: false }])
     expect(find(p, 'contract')!.env).toEqual([{ k: 'API_TOKEN', v: '', secret: true }])
     expect(find(p, 'contract')).toMatchObject({ allowFail: true, paths: ['api/**'], last: null })
@@ -30,6 +31,7 @@ describe('pipeline model', () => {
         '  - name: build',
         '    image: golang:1.27',
         '    run: go build ./...',
+        '    cache: [/go/pkg/mod, /root/.cache/go-build]',
         '    timeout: 10m',
         '  - name: test',
         '    image: golang:1.27',

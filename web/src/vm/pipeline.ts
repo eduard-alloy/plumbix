@@ -22,6 +22,8 @@ export interface PStep {
   allowFail: boolean
   env: EnvRow[]
   evidence: string[]
+  /** cache lists absolute container paths kept between runs (WU-029). */
+  cache: string[]
   paths: string[]
   group: string | null
   validator: boolean
@@ -57,6 +59,7 @@ export function fromApi(f: PipelineFile): PModel | null {
     allowFail: s.allow_failure,
     env: [...Object.entries(s.env).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => ({ k, v, secret: false })), ...s.secrets.map((k) => ({ k, v: '', secret: true }))],
     evidence: [...s.artifacts],
+    cache: [...(s.cache ?? [])],
     paths: [...s.paths],
     group: s.stage || null,
     validator: s.validator,
@@ -124,7 +127,7 @@ export function uniqueId(p: PModel, base: string): string {
 }
 
 export function newStep(id: string, extra: Partial<PStep> = {}): PStep {
-  return { id, image: 'alpine:3', run: ['echo "replace me"'], needs: [], timeout: '', retries: 0, allowFail: false, env: [], evidence: [], paths: [], group: null, validator: false, last: null, lastStatus: '', ...extra }
+  return { id, image: 'alpine:3', run: ['echo "replace me"'], needs: [], timeout: '', retries: 0, allowFail: false, env: [], evidence: [], cache: [], paths: [], group: null, validator: false, last: null, lastStatus: '', ...extra }
 }
 
 /** detach rewires every step that needs id to id's own needs, so chains survive a removal. */
@@ -193,6 +196,7 @@ export function toggleValidator(p: PModel, id: string): PModel {
     s.validator = true
     s.needs = []
     s.paths = []
+    s.cache = []
     s.group = null
     s.allowFail = false
     // Validators sit after every step in the file.
@@ -222,6 +226,7 @@ export function mergeSteps(p: PModel, selected: string[]): { model: PModel; id: 
     allowFail: parts.every((s) => s.allowFail),
     env,
     evidence: Array.from(new Set(parts.flatMap((s) => s.evidence))),
+    cache: Array.from(new Set(parts.flatMap((s) => s.cache))),
     paths: parts.every((s) => s.paths.length) ? Array.from(new Set(parts.flatMap((s) => s.paths))) : [],
     group: parts[0].group,
     last: parts.reduce((a, s) => a + (s.last || 0), 0) || null,
@@ -291,6 +296,7 @@ export function toYaml(p: PModel): string[] {
     const secrets = s.env.filter((e) => e.secret && e.k).map((e) => e.k)
     if (secrets.length) out.push(`    secrets: ${list(secrets)}`)
     if (s.evidence.length) out.push(`    artifacts: ${list(s.evidence)}`)
+    if (s.cache.length && !s.validator) out.push(`    cache: ${list(s.cache)}`)
     if (s.timeout) out.push(`    timeout: ${s.timeout}`)
     if (s.retries) out.push(`    retries: ${s.retries}`)
     if (s.allowFail && !s.validator) out.push('    allow_failure: true')
@@ -351,6 +357,7 @@ export function diffSummary(a: PModel, b: PModel): string[] {
     if (sa.allowFail !== sb.allowFail) ch.push(sb.allowFail ? 'allowed to fail' : 'must pass')
     if (JSON.stringify(sa.env) !== JSON.stringify(sb.env)) ch.push('env')
     if (sa.evidence.join() !== sb.evidence.join()) ch.push('evidence')
+    if (sa.cache.join() !== sb.cache.join()) ch.push(sb.cache.length ? `caches ${sb.cache.join(', ')}` : 'no caches')
     if (sa.paths.join() !== sb.paths.join()) ch.push(sb.paths.length ? `only if ${sb.paths.join(', ')}` : 'always runs')
     if ((sa.group || '') !== (sb.group || '')) ch.push(sb.group ? `in stage ${sb.group}` : 'no stage')
     if (ch.length) out.push(`${id}: ${ch.join(', ')}`)
@@ -540,6 +547,7 @@ function cardOf(s: PStep, q: Placed, bandOf: Record<string, number>, sel: Set<st
   if (s.allowFail) chips.push(plainChip('allowed to fail'))
   if (s.paths.length) chips.push(plainChip(`if ${s.paths.join(', ')}`))
   if (s.evidence.length) chips.push(plainChip(`${s.evidence.length} evidence`))
+  if (s.cache.length) chips.push(plainChip(`${s.cache.length} cache${s.cache.length > 1 ? 's' : ''}`))
   const secrets = s.env.filter((e) => e.secret).length
   if (secrets) chips.push(plainChip(`${secrets} secret${secrets > 1 ? 's' : ''}`))
   const budget = 210

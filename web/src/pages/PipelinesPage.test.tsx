@@ -66,11 +66,16 @@ describe('Pipelines page', () => {
     expect(Array.from(add.options).map((o) => o.value)).toEqual(['', 'contract'])
     fireEvent.click(within(panel).getByRole('switch', { name: 'Allowed to fail' }))
     expect(screen.getByText('test: retries 2, allowed to fail')).toBeTruthy()
+    // Caches kept between runs (WU-029): a path is added and written as cache:.
+    fireEvent.click(within(panel).getByRole('button', { name: '+ cache path' }))
+    fireEvent.change(within(panel).getByLabelText('Cache path 1'), { target: { value: '/root/.cache/go-build' } })
+    expect(screen.getByText('test: retries 2, allowed to fail, caches /root/.cache/go-build')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'YAML' }))
     const yaml = screen.getByRole('region', { name: 'Pipeline YAML' })
     const added = Array.from(yaml.querySelectorAll('.yl.add')).map((l) => l.textContent)
     expect(added.some((t) => t!.includes('retries: 2'))).toBe(true)
     expect(added.some((t) => t!.includes('allow_failure: true'))).toBe(true)
+    expect(added.some((t) => t!.includes('cache: [/root/.cache/go-build]'))).toBe(true)
     expect(yaml.textContent).toContain('Read-only here.')
   })
 

@@ -310,6 +310,8 @@ export interface PipelineStep {
   env: Record<string, string>
   secrets: string[]
   artifacts: string[]
+  /** Absolute container paths kept between runs of the repository (WU-029). */
+  cache: string[]
   timeout?: string
   validator: boolean
   /** The validator waits for a reviewer outside the pipeline. */

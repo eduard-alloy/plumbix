@@ -49,7 +49,7 @@ An AI review can run outside the pipeline too: a validator step with `external: 
 
 Which model judges is a reviewer profile, defined under AI reviewers in Settings. API profiles (Anthropic, or any OpenAI-compatible endpoint: OpenAI, Gemini, Grok, Kimi, DeepSeek, Groq, a local server) judge from inside the pipeline with their own key, billed per token; a Claude Code profile is the loop above, on that machine's Claude subscription, with its model and whether it may run commands. A validator step names its profile with `reviewer: <name>`; steps that name none get their family's default. Two validator steps with two profiles run side by side, so models can be compared on the same change.
 
-Plumbix also accepts `file://` paths and SSH remotes (`ssh://host/path` or `user@host:path`), which use your own SSH keys. Your repository needs a `.plumbix/pipeline.yaml`; see [ARCHITECTURE.md](ARCHITECTURE.md) section 4.2.
+Plumbix also accepts `file://` paths and SSH remotes (`ssh://host/path` or `user@host:path`), which use your own SSH keys. Your repository needs a `.plumbix/pipeline.yaml`; see [ARCHITECTURE.md](ARCHITECTURE.md) section 4.2. A step can keep its dependency caches between runs with `cache: [/go/pkg/mod, /root/.cache/go-build]` (or `/root/.npm`, `/root/.cache/pip`): each path is a per-repository directory mounted into the container.
 
 ## Use Plumbix from an agent session
 
