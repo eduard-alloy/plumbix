@@ -233,10 +233,10 @@ describe('advisory validators in the editor (WU-030)', () => {
   it('reads advisory, writes it back after the validator line, and lists it as a change', () => {
     const m = fromApi(served())!
     expect(find(m, 'ai-grok')!.advisory).toBe(true)
-    expect(toYaml(m)).toContain('    validator: true\n    advisory: true\n')
+    expect(toYaml(m).join('\n')).toContain('    validator: true\n    advisory: true\n')
     const plainAgain = toggleValidator(m, 'ai-grok')
     expect(find(plainAgain, 'ai-grok')).toMatchObject({ validator: false, advisory: false })
-    expect(toYaml(plainAgain)).not.toContain('advisory')
+    expect(toYaml(plainAgain).join('\n')).not.toContain('advisory')
     const counted = setField(m, 'ai-grok', 'advisory', false)
     expect(diffSummary(m, counted)).toContain('ai-grok: counts')
     expect(diffSummary(counted, m)).toContain('ai-grok: advisory')
