@@ -263,6 +263,9 @@ func TestExtendedFieldErrors(t *testing.T) {
 		{"external with secrets", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, secrets: [K]}\n"), "steps[1].secrets", 4, "external"},
 		{"external with env", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, env: {A: b}}\n"), "steps[1].env", 4, "external"},
 		{"external with retries", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, retries: 1}\n"), "steps[1].retries", 4, "external"},
+		{"reviewer on plain step", wrap("  - {name: a, image: x, run: x, reviewer: grok}\n"), "steps[0].reviewer", 3, "validator"},
+		{"reviewer shape", wrap("  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true, reviewer: Grok 4}\n"), "steps[1].reviewer", 4, "lowercase"},
+		{"reviewer not text", wrap("  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true, reviewer: [grok]}\n"), "steps[1].reviewer", 4, "string"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -319,5 +322,17 @@ func TestExternalValidatorNeedsNoImage(t *testing.T) {
 	}
 	if p.Steps[0].External {
 		t.Error("a plain step reads as external")
+	}
+}
+
+// TestReviewerBindsAValidatorStepToAProfile (WU-028): reviewer names the
+// profile that judges, on container and external validators alike.
+func TestReviewerBindsAValidatorStepToAProfile(t *testing.T) {
+	p, err := Parse([]byte(wrap("  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true, reviewer: grok-4}\n  - {name: e, validator: true, external: true, reviewer: claude}\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Steps[1].Reviewer != "grok-4" || p.Steps[2].Reviewer != "claude" || p.Steps[0].Reviewer != "" {
+		t.Errorf("reviewers = %q %q %q", p.Steps[0].Reviewer, p.Steps[1].Reviewer, p.Steps[2].Reviewer)
 	}
 }

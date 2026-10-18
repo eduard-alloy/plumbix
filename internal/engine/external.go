@@ -20,6 +20,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/review"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/scheduler"
+	"github.com/eduard-alloy/plumbix/internal/settings"
 	"github.com/eduard-alloy/plumbix/internal/validation"
 )
 
@@ -52,19 +53,21 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 	if err != nil {
 		return errored(err)
 	}
-	tools, model := review.ToolsReadOnly, ""
-	if e.cfg.Settings != nil {
-		if tools, err = e.cfg.Settings.AITools(ctx); err != nil {
-			return errored(fmt.Errorf("read tools setting: %w", err))
-		}
-		if model, err = e.cfg.Settings.AIModel(ctx); err != nil {
-			return errored(fmt.Errorf("read model setting: %w", err))
-		}
+	// The reviewer runs Claude Code, so a profile lends only its tool policy
+	// and model: an anthropic profile the step names, else an anthropic
+	// default; an openai default is simply not applied here.
+	tools, model, profile := review.ToolsReadOnly, "", ""
+	if prof, ok, err := e.reviewerProfile(ctx, st); err != nil {
+		return errored(err)
+	} else if ok && prof.Kind != settings.KindAnthropic && st.Reviewer != "" {
+		return errored(fmt.Errorf("reviewer profile %q asks an OpenAI-compatible endpoint, but external reviews run Claude Code: name an anthropic profile on step %s, or none", prof.Name, st.Name))
+	} else if ok && prof.Kind == settings.KindAnthropic {
+		tools, model, profile = prof.Tools, prof.Model, prof.Name
 	}
 	deadline, _ := ctx.Deadline()
 	ids := review.CriterionIDs(c.AcceptanceCriteria)
 	b := review.Brief{ID: change.NewID("rv_"), RunID: r.ID, ChangeID: c.ID, RepoID: c.RepoID, RepoURL: repo.URL, Step: st.Name, Iteration: r.Iteration,
-		Head: p.head, Base: p.base, ExpiresAt: deadline, Tools: tools, Model: model, Prompt: prompt, Schema: review.OutputSchema(ids), Criteria: ids}
+		Head: p.head, Base: p.base, ExpiresAt: deadline, Tools: tools, Model: model, Reviewer: profile, Prompt: prompt, Schema: review.OutputSchema(ids), Criteria: ids}
 	raw, err := json.Marshal(b)
 	if err != nil {
 		return errored(err)

@@ -20,12 +20,15 @@ func TestExternalReviewsAreClaimedAndAnsweredOverTheAPI(t *testing.T) {
 	o := loadOpenAPI(t)
 	a := newRunAPI(t)
 	a.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalPipeline}, "external review")
-	// The operator allows full tools; the brief carries it.
-	if rec := a.do(http.MethodPut, "/api/v1/settings", `{"ai_tools": "full"}`); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ai_tools":"full"`) {
+	// The default reviewer profile allows full tools; the brief carries it (WU-028).
+	if rec := a.do(http.MethodPut, "/api/v1/settings/reviewers/claude", `{"kind": "anthropic", "tools": "full"}`); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"tools":"full"`) {
 		t.Fatalf("set tools: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := a.do(http.MethodPut, "/api/v1/settings", `{"ai_tools": "everything"}`); rec.Code != http.StatusBadRequest {
+	if rec := a.do(http.MethodPut, "/api/v1/settings/reviewers/claude", `{"kind": "anthropic", "tools": "everything"}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("bad tools: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := a.do(http.MethodPut, "/api/v1/settings", `{"default_reviewer": "claude"}`); rec.Code != http.StatusOK {
+		t.Fatalf("set default: %d %s", rec.Code, rec.Body.String())
 	}
 	// A branch cut after the pipeline change, so its run has the external step.
 	a.repo.Commit("ext", map[string]string{"b.go": "package b\n"}, "feature on the new pipeline")

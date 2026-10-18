@@ -76,12 +76,9 @@ type Config struct {
 // Settings is what the engine reads from the operator's settings.
 type Settings interface {
 	Guidance(ctx context.Context, repoID string) (settings.Guidance, error)
-	AIModel(ctx context.Context) (string, error)
-	// AITools is the tool policy external reviewers follow: read-only or full.
-	AITools(ctx context.Context) (string, error)
-	// AIProvider and AIBaseURL select what the container AI validator asks.
-	AIProvider(ctx context.Context) (string, error)
-	AIBaseURL(ctx context.Context) (string, error)
+	// Reviewer returns the reviewer profile called name, or the default
+	// profile for an empty name; ok is false when there is none (WU-028).
+	Reviewer(ctx context.Context, name string) (r settings.Reviewer, ok bool, err error)
 }
 
 // Engine runs validations in the background.
@@ -594,30 +591,15 @@ func (e *Engine) setupValidator(r run.Run, p prepared, work string, st pipeline.
 		if g.Global != "" || g.Repository != "" {
 			input.Guidance = &validation.Guidance{Global: g.Global, Repository: g.Repository}
 		}
-		model, err := e.cfg.Settings.AIModel(context.Background())
+		// The reviewer profile the step is bound to, or the default: it
+		// reaches the container as the AI validator's environment, the key
+		// included, unless the step's own env or secrets set a variable.
+		prof, ok, err := e.reviewerProfile(context.Background(), st)
 		if err != nil {
-			return scheduler.StepSetup{}, fmt.Errorf("read model setting: %w", err)
+			return scheduler.StepSetup{}, err
 		}
-		provider, err := e.cfg.Settings.AIProvider(context.Background())
-		if err != nil {
-			return scheduler.StepSetup{}, fmt.Errorf("read provider setting: %w", err)
-		}
-		baseURL, err := e.cfg.Settings.AIBaseURL(context.Background())
-		if err != nil {
-			return scheduler.StepSetup{}, fmt.Errorf("read base URL setting: %w", err)
-		}
-		setup.Env = map[string]string{}
-		if model != "" {
-			setup.Env["PLUMBIX_AI_MODEL"] = model
-		}
-		if provider != "" && provider != "anthropic" {
-			setup.Env["PLUMBIX_AI_PROVIDER"] = provider
-		}
-		if baseURL != "" && provider == "openai" {
-			setup.Env["PLUMBIX_AI_BASE_URL"] = baseURL // meaningless to the anthropic path
-		}
-		if len(setup.Env) == 0 {
-			setup.Env = nil
+		if ok {
+			setup.Env = profileEnv(prof, e.secrets())
 		}
 	}
 	if err := validation.PrepareInputs(in, input, evidence); err != nil {
@@ -768,4 +750,46 @@ func short(sha string) string {
 		return sha[:12]
 	}
 	return sha
+}
+
+// reviewerProfile resolves the profile a validator step judges with: the
+// one it names, else the default. A named profile that does not exist is
+// an error that fails the step, so a typo never judges with another model.
+func (e *Engine) reviewerProfile(ctx context.Context, st pipeline.Step) (settings.Reviewer, bool, error) {
+	if e.cfg.Settings == nil {
+		return settings.Reviewer{}, false, nil
+	}
+	r, ok, err := e.cfg.Settings.Reviewer(ctx, st.Reviewer)
+	if err != nil {
+		return settings.Reviewer{}, false, fmt.Errorf("read reviewer profile: %w", err)
+	}
+	if st.Reviewer != "" && !ok {
+		return settings.Reviewer{}, false, fmt.Errorf("reviewer profile %q is not defined: add it under AI reviewers in Settings, or remove reviewer from step %s", st.Reviewer, st.Name)
+	}
+	return r, ok, nil
+}
+
+// profileEnv is what a container validator learns from its profile:
+// PLUMBIX_AI_MODEL, for openai the provider and base URL, and the key under
+// the variable the kind reads, when the named secret has a value.
+func profileEnv(r settings.Reviewer, secrets map[string]string) map[string]string {
+	env := map[string]string{}
+	if r.Model != "" {
+		env["PLUMBIX_AI_MODEL"] = r.Model
+	}
+	keyVar := "ANTHROPIC_API_KEY"
+	if r.Kind == settings.KindOpenAI {
+		env["PLUMBIX_AI_PROVIDER"] = settings.KindOpenAI
+		if r.BaseURL != "" {
+			env["PLUMBIX_AI_BASE_URL"] = r.BaseURL
+		}
+		keyVar = "PLUMBIX_AI_API_KEY"
+	}
+	if v, set := secrets[r.KeySecret]; set && v != "" {
+		env[keyVar] = v
+	}
+	if len(env) == 0 {
+		return nil
+	}
+	return env
 }

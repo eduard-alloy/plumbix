@@ -31,8 +31,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
     put:
       operationId: updateSettings
-      summary: Set the AI model, the reviewer tool policy and the global review guidance.
-      description: Fields left out are unchanged; an empty string clears a field. Guidance is handed to every validator as operator instructions; the model reaches validator steps as PLUMBIX_AI_MODEL; ai_tools travels in every review brief and says whether external reviewers may run commands.
+      summary: Set the global review guidance and the default reviewer profile.
+      description: Fields left out are unchanged; an empty string clears a field. Guidance is handed to every validator as operator instructions. The default reviewer profile judges every validator step that names none.
       requestBody:
         required: true
         content:
@@ -41,22 +41,13 @@ paths:
               type: object
               additionalProperties: false
               properties:
-                ai_model:
-                  type: string
-                  maxLength: 81
-                ai_provider:
-                  type: string
-                  enum: [anthropic, openai]
-                ai_base_url:
-                  description: For the openai provider, the chat-completions base such as https://api.openai.com/v1; empty clears it.
-                  type: string
-                  maxLength: 200
-                ai_tools:
-                  type: string
-                  enum: [read-only, full]
                 guidance:
                   type: string
                   maxLength: 4000
+                default_reviewer:
+                  description: The name of an existing reviewer profile; empty clears the default.
+                  type: string
+                  maxLength: 32
       responses:
         "200":
           description: The settings after the change.
@@ -68,6 +59,78 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /settings/reviewers/{name}:
+    put:
+      operationId: putReviewerProfile
+      summary: Create or replace a reviewer profile.
+      description: >
+        A reviewer profile (WU-028) is a named model configuration a validator step is bound to with
+        reviewer: <name>; the default profile applies to steps that name none. A container AI validator
+        receives the profile's provider, base URL, model and key; an external step's brief carries an
+        anthropic profile's tool policy and model. The key is set through the secrets endpoint under the
+        profile's key_secret and never travels here.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9-]{0,31}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind]
+              properties:
+                kind:
+                  type: string
+                  enum: [anthropic, openai]
+                base_url:
+                  description: For openai, the chat-completions base such as https://api.openai.com/v1.
+                  type: string
+                  maxLength: 200
+                model:
+                  description: Empty means the kind's default.
+                  type: string
+                  maxLength: 81
+                tools:
+                  description: Whether a reviewer with tools (Claude Code) may run commands; read-only by default.
+                  type: string
+                  enum: [read-only, full]
+                key_secret:
+                  description: The secret holding the key; defaults to PLUMBIX_REVIEWER_<NAME>_KEY.
+                  type: string
+                  maxLength: 128
+      responses:
+        "200":
+          description: The settings after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      operationId: deleteReviewerProfile
+      summary: Remove a reviewer profile; the default is cleared if it was it.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Removed. Pipeline steps still naming it fail until they are changed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /reviews/next:
     get:
       operationId: claimReview
@@ -1566,6 +1629,9 @@ components:
         model:
           description: The operator's model, if one is set.
           type: string
+        reviewer:
+          description: The reviewer profile whose tools and model apply, when one does (WU-028).
+          type: string
         prompt:
           type: object
           additionalProperties: false
@@ -1616,29 +1682,50 @@ components:
     Settings:
       type: object
       additionalProperties: false
-      required: [ai_model, ai_provider, ai_base_url, ai_tools, guidance, secrets]
+      required: [guidance, default_reviewer, reviewers, secrets]
       properties:
-        ai_model:
-          description: Model handed to validator steps as PLUMBIX_AI_MODEL and to external reviewers as --model; empty leaves each one's default.
-          type: string
-        ai_provider:
-          description: What the container AI validator asks, handed to validator steps as PLUMBIX_AI_PROVIDER when not anthropic.
-          type: string
-          enum: [anthropic, openai]
-        ai_base_url:
-          description: The openai provider's base URL, handed to validator steps as PLUMBIX_AI_BASE_URL.
-          type: string
-        ai_tools:
-          description: Whether external reviewers and the Claude Code validator may run commands (full) or only read (read-only, the default). Travels in every review brief.
-          type: string
-          enum: [read-only, full]
         guidance:
           description: Global operator guidance for validators.
           type: string
+        default_reviewer:
+          description: The profile that judges validator steps naming none; empty when there is no default.
+          type: string
+        reviewers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewerProfile"
         secrets:
           type: array
           items:
             $ref: "#/components/schemas/SecretStatus"
+    ReviewerProfile:
+      type: object
+      additionalProperties: false
+      required: [name, kind, base_url, model, tools, key_secret, updated_at, key_set, default]
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [anthropic, openai]
+        base_url:
+          type: string
+        model:
+          type: string
+        tools:
+          type: string
+          enum: [read-only, full]
+        key_secret:
+          description: The secret holding the key; set through the secrets endpoint.
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        key_set:
+          description: Whether the key secret currently has a value.
+          type: boolean
+        default:
+          type: boolean
     SecretStatus:
       type: object
       additionalProperties: false
@@ -1986,7 +2073,7 @@ components:
     PipelineStep:
       type: object
       additionalProperties: false
-      required: [name, image, commands, needs, env, secrets, artifacts, validator, retries, allow_failure, paths]
+      required: [name, image, commands, needs, env, secrets, artifacts, validator, external, retries, allow_failure, paths]
       properties:
         name:
           type: string
@@ -2018,6 +2105,12 @@ components:
           type: string
         validator:
           type: boolean
+        external:
+          description: The validator waits for a reviewer outside the pipeline.
+          type: boolean
+        reviewer:
+          description: The reviewer profile the validator step names; absent for the default.
+          type: string
         retries:
           type: integer
         allow_failure:

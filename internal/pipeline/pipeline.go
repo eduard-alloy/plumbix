@@ -58,6 +58,9 @@ type Step struct {
 	OnlyPaths []string
 	// Stage is the stage the step belongs to, or empty.
 	Stage string
+	// Reviewer names the reviewer profile that judges this validator step
+	// (WU-028); empty means the default profile.
+	Reviewer string
 	// External marks a validator whose verdict comes from a reviewer outside
 	// the pipeline: nothing runs in a container, Plumbix publishes a brief
 	// and waits (WU-023). Timeout bounds the wait.
@@ -98,7 +101,9 @@ func (p *Pipeline) WithoutValidators() *Pipeline {
 
 var (
 	stepNameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
-	varNameRe  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	// reviewerNameRe is the shape of a reviewer profile name (settings.Reviewer).
+	reviewerNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
+	varNameRe      = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
 const reservedPrefix = "PLUMBIX_"
@@ -207,7 +212,7 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 		return st, refs
 	}
 	seen := map[string]bool{}
-	var envNode, secretsNode, whenKey, allowKey, externalKey *yaml.Node
+	var envNode, secretsNode, whenKey, allowKey, externalKey, reviewerKey *yaml.Node
 	keyNodes := map[string]*yaml.Node{}
 	for i := 0; i+1 < len(n.Content); i += 2 {
 		key, val := n.Content[i], n.Content[i+1]
@@ -267,6 +272,14 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 		case "when":
 			whenKey = key
 			st.OnlyPaths = ps.when(fp, val)
+		case "reviewer":
+			reviewerKey = key
+			if s, ok := ps.str(fp, val); ok {
+				if !reviewerNameRe.MatchString(s) {
+					ps.add(fp, val.Line, "must be lowercase letters, digits and dashes, start with a letter or digit, at most 32 characters: the name of a reviewer profile in Settings")
+				}
+				st.Reviewer = s
+			}
 		case "external":
 			externalKey = key
 			if val.Kind != yaml.ScalarNode || val.Tag != "!!bool" {
@@ -285,6 +298,9 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 		if whenKey != nil {
 			ps.add(p+".when", whenKey.Line, "is not allowed on a validator step: validators always run")
 		}
+	}
+	if reviewerKey != nil && !st.Validator {
+		ps.add(p+".reviewer", reviewerKey.Line, "is only for validator steps: a reviewer profile says which model judges")
 	}
 	if st.External && !st.Validator {
 		ps.add(p+".external", externalKey.Line, "is only for validator steps: a plain step has nobody outside the pipeline to answer for it")

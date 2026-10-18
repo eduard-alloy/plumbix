@@ -82,6 +82,10 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return 1
 	}
 	prefs := settings.New(db)
+	if err := prefs.EnsureReviewers(context.Background()); err != nil {
+		logger.Error("reviewer profiles failed", "err", err)
+		return 1
+	}
 	docker, err := runner.NewDocker()
 	if err != nil {
 		logger.Error("docker client failed", "err", err)

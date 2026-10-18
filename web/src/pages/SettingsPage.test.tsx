@@ -56,14 +56,14 @@ describe('Settings page', () => {
     expect(db.secrets.PLUMBIX_AZURE_DEVOPS_TOKEN).toBeUndefined()
   })
 
-  it('edits the model and the global guidance, and adds a custom secret', async () => {
+
+
+  it('edits the global guidance and adds a custom secret', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'Settings' })
-    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'claude-sonnet-5-5' } })
     fireEvent.change(screen.getByLabelText('Review guidance'), { target: { value: 'Prefer small diffs.' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save guidance' }))
-    await waitFor(() => expect(db.settings.ai_model).toBe('claude-sonnet-5-5'))
-    expect(db.settings.guidance).toBe('Prefer small diffs.')
+    await waitFor(() => expect(db.settings.guidance).toBe('Prefer small diffs.'))
     await screen.findByText('Saved')
 
     fireEvent.change(screen.getByLabelText('New secret name'), { target: { value: 'MY_DEPLOY_KEY' } })
@@ -74,23 +74,94 @@ describe('Settings page', () => {
     expect(row('MY_DEPLOY_KEY').textContent).toContain('Named by a pipeline step')
   })
 
-  it('lets the operator allow external reviewers to run commands', async () => {
+  it('lists the reviewer profiles with their key, which steps they judge, and lets the operator change tools and model', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'Settings' })
-    const readOnly = screen.getByLabelText('Read only') as HTMLInputElement
-    const full = screen.getByLabelText('Full, including commands') as HTMLInputElement
-    expect(readOnly.checked).toBe(true)
+    const card = await screen.findByLabelText('Reviewer claude')
+    expect(card.textContent).toContain('default')
+    expect(card.textContent).toContain('Anthropic')
+    // The default judges the steps naming no reviewer: ledger-api's external ai-review.
+    await waitFor(() => expect(card.textContent).toContain('Judges ledger-api: ai-review'))
+    expect(card.textContent).not.toContain('ai-grok')
+    // Its key is the known Anthropic key, set from the card and never shown.
+    expect(within(card).getByText('ANTHROPIC_API_KEY', { selector: '.secret .key' })).toBeTruthy()
+    expect(within(card).getByText('ANTHROPIC_API_KEY', { selector: '.secret .key' }).closest('.secret')!.textContent).toContain('Not set')
+    const anthropicRow = within(card).getByText('ANTHROPIC_API_KEY', { selector: '.secret .key' }).closest('.secret') as HTMLElement
+    fireEvent.click(within(anthropicRow).getByRole('button', { name: 'Set' }))
+    fireEvent.change(within(anthropicRow).getByLabelText('ANTHROPIC_API_KEY value'), { target: { value: 'sk-ant-secret' } })
+    fireEvent.click(within(anthropicRow).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(db.secrets.ANTHROPIC_API_KEY).toBe('sk-ant-secret'))
+    expect(document.body.textContent).not.toContain('sk-ant-secret')
+    // The Anthropic key is not repeated under Other secrets.
+    expect(screen.getAllByText('ANTHROPIC_API_KEY', { selector: '.secret .key' })).toHaveLength(1)
+
+    // Tools and model.
+    const full = within(card).getByLabelText('Full, including commands') as HTMLInputElement
+    expect((within(card).getByLabelText('Read only') as HTMLInputElement).checked).toBe(true)
     fireEvent.click(full)
-    fireEvent.click(screen.getByRole('button', { name: 'Save guidance' }))
-    await waitFor(() => expect(db.settings.ai_tools).toBe('full'))
-    await screen.findByText('Saved')
-    expect(full.checked).toBe(true)
+    fireEvent.change(within(card).getByLabelText('Model'), { target: { value: 'claude-sonnet-5-5' } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Save reviewer' }))
+    await waitFor(() => expect(db.profiles.find((p) => p.name === 'claude')?.tools).toBe('full'))
+    expect(db.profiles.find((p) => p.name === 'claude')?.model).toBe('claude-sonnet-5-5')
+    await waitFor(() => expect(screen.getByLabelText('Reviewer claude').textContent).toContain('Saved'))
+
+    // A refusal is shown inline, naming the field.
+    fireEvent.change(within(screen.getByLabelText('Reviewer claude')).getByLabelText('Model'), { target: { value: 'Not A Model' } })
+    fireEvent.click(within(screen.getByLabelText('Reviewer claude')).getByRole('button', { name: 'Save reviewer' }))
+    await screen.findByText(/model lowercase letters, digits, dots and dashes only/)
+  })
+
+  it('adds an OpenAI-compatible reviewer with its own key, makes it the default, and removes it', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Settings' })
+    await screen.findByLabelText('Reviewer claude')
+    const add = within(screen.getByLabelText('Add a reviewer'))
+    fireEvent.change(add.getByLabelText('Name'), { target: { value: 'grok-4' } })
+    expect((add.getByLabelText('Kind') as HTMLSelectElement).value).toBe('openai')
+    expect(document.body.textContent).toContain('https://api.x.ai/v1')
+    fireEvent.change(add.getByLabelText('Base URL'), { target: { value: 'https://api.x.ai/v1' } })
+    fireEvent.change(add.getByLabelText('Model'), { target: { value: 'grok-4' } })
+    fireEvent.click(add.getByRole('button', { name: 'Add reviewer' }))
+    const card = await screen.findByLabelText('Reviewer grok-4')
+    expect(db.profiles.find((p) => p.name === 'grok-4')).toMatchObject({ kind: 'openai', base_url: 'https://api.x.ai/v1', model: 'grok-4', tools: 'read-only', key_secret: 'PLUMBIX_REVIEWER_GROK_4_KEY' })
+    expect(card.textContent).toContain('OpenAI-compatible')
+    // ledger-api's ai-grok step names it.
+    await waitFor(() => expect(screen.getByLabelText('Reviewer grok-4').textContent).toContain('Judges ledger-api: ai-grok'))
+    // Its key.
+    const keyRow = within(card).getByText('PLUMBIX_REVIEWER_GROK_4_KEY', { selector: '.secret .key' }).closest('.secret') as HTMLElement
+    expect(keyRow.textContent).toContain('Not set')
+    fireEvent.click(within(keyRow).getByRole('button', { name: 'Set' }))
+    fireEvent.change(within(keyRow).getByLabelText('PLUMBIX_REVIEWER_GROK_4_KEY value'), { target: { value: 'xai-secret' } })
+    fireEvent.click(within(keyRow).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(db.secrets.PLUMBIX_REVIEWER_GROK_4_KEY).toBe('xai-secret'))
+    expect(document.body.textContent).not.toContain('xai-secret')
+    await waitFor(() => expect(within(screen.getByLabelText('Reviewer grok-4')).getByText('PLUMBIX_REVIEWER_GROK_4_KEY', { selector: '.secret .key' }).closest('.secret')!.textContent).toContain('Set'))
+    // Default moves.
+    fireEvent.click(within(screen.getByLabelText('Reviewer grok-4')).getByRole('button', { name: 'Make default' }))
+    await waitFor(() => expect(db.settings.default_reviewer).toBe('grok-4'))
+    await waitFor(() => expect(screen.getByLabelText('Reviewer grok-4').textContent).toContain('default'))
+    expect(within(screen.getByLabelText('Reviewer claude')).queryByText('default', { selector: '.default-tag' })).toBeNull()
+    // Removal clears the default.
+    fireEvent.click(within(screen.getByLabelText('Reviewer grok-4')).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(screen.queryByLabelText('Reviewer grok-4')).toBeNull())
+    expect(db.settings.default_reviewer).toBe('')
+  })
+
+  it('refuses a profile the server rejects, naming the field', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Settings' })
+    await screen.findByLabelText('Reviewer claude')
+    const add = within(screen.getByLabelText('Add a reviewer'))
+    fireEvent.change(add.getByLabelText('Name'), { target: { value: 'local' } })
+    fireEvent.change(add.getByLabelText('Base URL'), { target: { value: 'localhost:11434' } })
+    fireEvent.click(add.getByRole('button', { name: 'Add reviewer' }))
+    await screen.findByText(/base_url "localhost:11434" must be an http\(s\) URL/)
   })
 
   it('shows which external reviewers the server has heard from, or how to start one', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'Settings' })
-    expect(document.body.textContent).toContain('external reviewers (plumbix review --watch) pass it to Claude Code as --model')
+    expect(document.body.textContent).toContain('answered by plumbix review --watch running Claude Code')
     const section = (await screen.findByRole('heading', { name: 'External reviewers' })).parentElement!
     await waitFor(() => expect(section.textContent).toContain('No reviewer has polled since the server started'))
     expect(section.textContent).toContain('plumbix review install')
@@ -102,31 +173,7 @@ describe('Settings page', () => {
     expect(section.textContent).toContain('just now')
   })
 
-  it('lets the operator point the AI validator at an OpenAI-compatible endpoint', async () => {
-    render(<App />)
-    await screen.findByRole('heading', { name: 'Settings' })
-    const provider = screen.getByLabelText('Provider') as HTMLSelectElement
-    expect(provider.value).toBe('anthropic')
-    expect(screen.queryByLabelText('Base URL')).toBeNull()
-    fireEvent.change(provider, { target: { value: 'openai' } })
-    const base = screen.getByLabelText('Base URL') as HTMLInputElement
-    expect(document.body.textContent).toContain('https://generativelanguage.googleapis.com/v1beta/openai')
-    fireEvent.change(base, { target: { value: 'https://api.openai.com/v1' } })
-    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'gpt-5.5' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save guidance' }))
-    await waitFor(() => expect(db.settings.ai_provider).toBe('openai'))
-    expect(db.settings.ai_base_url).toBe('https://api.openai.com/v1')
-    expect(db.settings.ai_model).toBe('gpt-5.5')
-    expect(row('OPENAI_API_KEY').textContent).toContain('openai provider')
-  })
 
-  it('shows a server refusal inline', async () => {
-    render(<App />)
-    await screen.findByRole('heading', { name: 'Settings' })
-    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'Not A Model' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save guidance' }))
-    await screen.findByText(/lowercase letters, digits, dots and dashes only/)
-  })
 
   it('edits per-repository guidance from the repositories page', async () => {
     window.history.replaceState(null, '', '/repos')

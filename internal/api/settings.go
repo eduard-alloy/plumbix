@@ -31,6 +31,8 @@ type settingsHandlers struct {
 func registerSettingsRoutes(mux *http.ServeMux, h *settingsHandlers) {
 	mux.HandleFunc("GET /api/v1/settings", h.get)
 	mux.HandleFunc("PUT /api/v1/settings", h.update)
+	mux.HandleFunc("PUT /api/v1/settings/reviewers/{name}", h.putReviewer)
+	mux.HandleFunc("DELETE /api/v1/settings/reviewers/{name}", h.deleteReviewer)
 	mux.HandleFunc("PUT /api/v1/settings/secrets/{key}", h.setSecret)
 	mux.HandleFunc("DELETE /api/v1/settings/secrets/{key}", h.removeSecret)
 	mux.HandleFunc("POST /api/v1/settings/secrets/{key}/check", h.checkSecret)
@@ -52,13 +54,20 @@ type secretStatus struct {
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
+// reviewerView is a reviewer profile as the settings list it (WU-028):
+// the profile, whether its key secret has a value, and whether it is the
+// default. The key itself never appears.
+type reviewerView struct {
+	settings.Reviewer
+	KeySet  bool `json:"key_set"`
+	Default bool `json:"default"`
+}
+
 type settingsView struct {
-	AIModel    string         `json:"ai_model"`
-	AIProvider string         `json:"ai_provider"`
-	AIBaseURL  string         `json:"ai_base_url"`
-	AITools    string         `json:"ai_tools"`
-	Guidance   string         `json:"guidance"`
-	Secrets    []secretStatus `json:"secrets"`
+	Guidance        string         `json:"guidance"`
+	DefaultReviewer string         `json:"default_reviewer"`
+	Reviewers       []reviewerView `json:"reviewers"`
+	Secrets         []secretStatus `json:"secrets"`
 }
 
 func (h *settingsHandlers) view(ctx context.Context) (settingsView, error) {
@@ -66,25 +75,26 @@ func (h *settingsHandlers) view(ctx context.Context) (settingsView, error) {
 	if err != nil {
 		return settingsView{}, err
 	}
-	model, err := h.settings.AIModel(ctx)
+	profiles, err := h.settings.Reviewers(ctx)
 	if err != nil {
 		return settingsView{}, err
 	}
-	tools, err := h.settings.AITools(ctx)
+	def, err := h.settings.DefaultReviewer(ctx)
 	if err != nil {
 		return settingsView{}, err
 	}
-	provider, err := h.settings.AIProvider(ctx)
-	if err != nil {
-		return settingsView{}, err
+	v := settingsView{Guidance: g.Global, DefaultReviewer: def, Reviewers: make([]reviewerView, 0, len(profiles)), Secrets: []secretStatus{}}
+	keyOf := map[string][]string{} // secret key -> profiles using it
+	for _, p := range profiles {
+		_, set := h.secrets.Get(p.KeySecret)
+		v.Reviewers = append(v.Reviewers, reviewerView{Reviewer: p, KeySet: set, Default: p.Name == def})
+		keyOf[p.KeySecret] = append(keyOf[p.KeySecret], p.Name)
 	}
-	baseURL, err := h.settings.AIBaseURL(ctx)
-	if err != nil {
-		return settingsView{}, err
-	}
-	v := settingsView{AIModel: model, AIProvider: provider, AIBaseURL: baseURL, AITools: tools, Guidance: g.Global, Secrets: []secretStatus{}}
 	listed := map[string]bool{}
 	add := func(key, purpose, hostKind string, known bool) error {
+		if names := keyOf[key]; len(names) > 0 {
+			purpose = "API key of reviewer profile " + strings.Join(names, ", ") + ". " + purpose
+		}
 		_, set := h.secrets.Get(key)
 		s := secretStatus{Key: key, Set: set, Known: known, Purpose: purpose, Host: hostKind}
 		if set {
@@ -106,13 +116,20 @@ func (h *settingsHandlers) view(ctx context.Context) (settingsView, error) {
 		}
 	}
 	extra := h.secrets.Keys()
+	for key := range keyOf {
+		extra = append(extra, key) // a profile's key is listed even before it is set
+	}
 	sort.Strings(extra)
 	for _, k := range extra {
 		if host.IsRepoTokenKey(k) {
 			continue // shown on the repository, not here
 		}
 		if !listed[k] {
-			if err := add(k, "Named by a pipeline step's secrets list", "", false); err != nil {
+			purpose := "Named by a pipeline step's secrets list"
+			if len(keyOf[k]) > 0 {
+				purpose = ""
+			}
+			if err := add(k, purpose, "", false); err != nil {
 				return settingsView{}, err
 			}
 		}
@@ -131,36 +148,15 @@ func (h *settingsHandlers) get(w http.ResponseWriter, r *http.Request) {
 
 func (h *settingsHandlers) update(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		AIModel    *string `json:"ai_model"`
-		AIProvider *string `json:"ai_provider"`
-		AIBaseURL  *string `json:"ai_base_url"`
-		AITools    *string `json:"ai_tools"`
-		Guidance   *string `json:"guidance"`
+		Guidance        *string `json:"guidance"`
+		DefaultReviewer *string `json:"default_reviewer"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if body.AIModel != nil {
-		if err := h.settings.SetAIModel(r.Context(), *body.AIModel); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
-			return
-		}
-	}
-	if body.AIProvider != nil {
-		if err := h.settings.SetAIProvider(r.Context(), *body.AIProvider); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
-			return
-		}
-	}
-	if body.AIBaseURL != nil {
-		if err := h.settings.SetAIBaseURL(r.Context(), *body.AIBaseURL); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
-			return
-		}
-	}
-	if body.AITools != nil {
-		if err := h.settings.SetAITools(r.Context(), *body.AITools); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+	if body.DefaultReviewer != nil {
+		if err := h.settings.SetDefaultReviewer(r.Context(), *body.DefaultReviewer); err != nil {
+			h.fail(w, err)
 			return
 		}
 	}
@@ -171,6 +167,41 @@ func (h *settingsHandlers) update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.get(w, r)
+}
+
+// reviewerInput is what creates or replaces a reviewer profile; the name
+// comes from the path, the key through the secrets endpoint.
+type reviewerInput struct {
+	Kind      string `json:"kind"`
+	BaseURL   string `json:"base_url"`
+	Model     string `json:"model"`
+	Tools     string `json:"tools"`
+	KeySecret string `json:"key_secret"`
+}
+
+// putReviewer creates or replaces the profile named in the path (WU-028).
+func (h *settingsHandlers) putReviewer(w http.ResponseWriter, r *http.Request) {
+	var body reviewerInput
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	prof := settings.Reviewer{Name: r.PathValue("name"), Kind: body.Kind, BaseURL: body.BaseURL, Model: body.Model, Tools: body.Tools, KeySecret: body.KeySecret}
+	if _, err := h.settings.PutReviewer(r.Context(), prof); err != nil {
+		h.fail(w, err)
+		return
+	}
+	h.log.Info("reviewer profile saved", "name", prof.Name, "kind", prof.Kind)
+	h.get(w, r)
+}
+
+// deleteReviewer removes a profile; the default is cleared if it was it.
+func (h *settingsHandlers) deleteReviewer(w http.ResponseWriter, r *http.Request) {
+	if err := h.settings.DeleteReviewer(r.Context(), r.PathValue("name")); err != nil {
+		h.fail(w, err)
+		return
+	}
+	h.log.Info("reviewer profile removed", "name", r.PathValue("name"))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // setSecret writes a value into the secrets file. The value is read from
@@ -398,6 +429,11 @@ func redactSecrets(text string, values map[string]string) string {
 }
 
 func (h *settingsHandlers) fail(w http.ResponseWriter, err error) {
+	var inv *change.InvalidError
+	if errors.As(err, &inv) {
+		writeProblems(w, fmt.Sprintf("the request has %d problem(s)", len(inv.Problems)), inv.Problems)
+		return
+	}
 	if errors.Is(err, change.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", err.Error())
 		return
