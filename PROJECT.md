@@ -107,6 +107,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-025 | Any model for the container AI validator: an OpenAI-compatible provider with base URL and model in Settings | F-003 | ✅ |
 | WU-027 | Live steps and external review progress: running steps in the run, `step.started`, reviewer progress lines in the step log, a log panel that follows | F-003, F-004 | ✅ |
 | WU-028 | Reviewer profiles: named model configurations bound to validator steps with `reviewer:`, keys per profile, the Settings page redesigned around them | F-003, F-004 | ✅ |
+| WU-029 | Step caches: `cache:` paths on plain steps become per-repository directories mounted between runs | F-002 | ✅ |
 
 ## Milestone 2 candidates
 

@@ -2087,7 +2087,7 @@ components:
     PipelineStep:
       type: object
       additionalProperties: false
-      required: [name, image, commands, needs, env, secrets, artifacts, validator, external, retries, allow_failure, paths]
+      required: [name, image, commands, needs, env, secrets, artifacts, cache, validator, external, retries, allow_failure, paths]
       properties:
         name:
           type: string
@@ -2111,6 +2111,11 @@ components:
           items:
             type: string
         artifacts:
+          type: array
+          items:
+            type: string
+        cache:
+          description: Absolute container paths kept between runs of the repository (WU-029).
           type: array
           items:
             type: string

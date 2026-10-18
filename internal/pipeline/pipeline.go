@@ -46,6 +46,10 @@ type Step struct {
 	Env       map[string]string
 	Secrets   []string
 	Artifacts []string
+	// Cache lists absolute container paths kept between runs of the
+	// repository (WU-029): each is a per-repository directory mounted
+	// read-write. Plain steps only.
+	Cache     []string
 	Timeout   time.Duration // zero means the server default
 	Validator bool
 	// Retries is how many more times a failed or timed-out step is run.
@@ -212,7 +216,7 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 		return st, refs
 	}
 	seen := map[string]bool{}
-	var envNode, secretsNode, whenKey, allowKey, externalKey, reviewerKey *yaml.Node
+	var envNode, secretsNode, whenKey, allowKey, externalKey, reviewerKey, cacheKey *yaml.Node
 	keyNodes := map[string]*yaml.Node{}
 	for i := 0; i+1 < len(n.Content); i += 2 {
 		key, val := n.Content[i], n.Content[i+1]
@@ -258,6 +262,9 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 			st.Secrets = ps.secrets(fp, val)
 		case "artifacts":
 			st.Artifacts = ps.artifacts(fp, val)
+		case "cache":
+			cacheKey = key
+			st.Cache = ps.cache(fp, val)
 		case "timeout":
 			st.Timeout = ps.timeout(fp, val)
 		case "retries":
@@ -292,6 +299,9 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 		}
 	}
 	if st.Validator {
+		if cacheKey != nil {
+			ps.add(p+".cache", cacheKey.Line, "is not allowed on a validator step: a validator judges from evidence and must not depend on what an earlier run left behind")
+		}
 		if allowKey != nil {
 			ps.add(p+".allow_failure", allowKey.Line, "is not allowed on a validator step: a validator without a verdict is handled by the verdict rules")
 		}
@@ -416,6 +426,50 @@ func (ps *parser) artifacts(p string, n *yaml.Node) []string {
 			ps.add(fp, item.Line, "must not contain .. segments")
 		default:
 			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// MaxCachePaths bounds the cache list of one step.
+const MaxCachePaths = 8
+
+// cache parses the cache list: absolute, cleaned container paths, not the
+// root, not the workspace or under it, no .. segments, no duplicates.
+func (ps *parser) cache(p string, n *yaml.Node) []string {
+	items := ps.list(p, n)
+	if len(items) > MaxCachePaths {
+		ps.add(p, n.Line, "lists %d paths; at most %d per step", len(items), MaxCachePaths)
+		return nil
+	}
+	var out []string
+	seen := map[string]bool{}
+	for j, item := range items {
+		fp := fmt.Sprintf("%s[%d]", p, j)
+		s, ok := ps.str(fp, item)
+		if !ok {
+			continue
+		}
+		switch {
+		case s == "":
+			ps.add(fp, item.Line, "must not be empty")
+		case hasDotDot(s):
+			ps.add(fp, item.Line, "must not contain .. segments")
+		case !path.IsAbs(s) || strings.ContainsAny(s, `\ `+"\t\r\n"):
+			ps.add(fp, item.Line, "must be an absolute container path such as /go/pkg/mod")
+		default:
+			clean := path.Clean(s)
+			switch {
+			case clean == "/":
+				ps.add(fp, item.Line, "must not be the root of the container")
+			case clean == "/workspace" || strings.HasPrefix(clean, "/workspace/"):
+				ps.add(fp, item.Line, "must not be the workspace or inside it: the workspace is the change itself")
+			case seen[clean]:
+				ps.add(fp, item.Line, "names %s twice", clean)
+			default:
+				seen[clean] = true
+				out = append(out, clean)
+			}
 		}
 	}
 	return out

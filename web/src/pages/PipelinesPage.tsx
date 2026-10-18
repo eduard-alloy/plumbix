@@ -582,6 +582,23 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName }:
           + path
         </button>
       </div>
+      {!s.validator && (
+        <div className="group">
+          <span className="label">Caches kept between runs</span>
+          <p className="sub">Absolute paths inside the container, kept per repository: /go/pkg/mod and /root/.cache/go-build for Go, /root/.npm for npm, /root/.cache/pip for pip.</p>
+          {s.cache.map((v, i) => (
+            <div key={i} className="env-row">
+              <input className="mono wide" aria-label={`Cache path ${i + 1}`} value={v} onChange={(ev) => set('cache', s.cache.map((x, j) => (j === i ? ev.target.value : x)))} />
+              <button className="quiet" aria-label={`Remove cache path ${i + 1}`} onClick={() => set('cache', s.cache.filter((_, j) => j !== i))}>
+                ×
+              </button>
+            </div>
+          ))}
+          <button className="quiet add" onClick={() => set('cache', s.cache.concat('/'))}>
+            + cache path
+          </button>
+        </div>
+      )}
       {s.group && (
         <div className="group row between">
           <span>

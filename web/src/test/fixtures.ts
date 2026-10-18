@@ -301,11 +301,11 @@ export const pipelineFile: PipelineFile = {
   pipeline: {
     version: 1,
     steps: [
-      { name: 'build', image: 'golang:1.27', commands: ['go build ./...'], needs: [], env: {}, secrets: [], artifacts: [], timeout: '10m', validator: false, external: false, retries: 0, allow_failure: false, paths: [] },
-      { name: 'test', image: 'golang:1.27', commands: ['go test ./...'], needs: ['build'], env: { GOFLAGS: '-mod=readonly' }, secrets: [], artifacts: ['coverage.out'], timeout: '15m', validator: false, external: false, retries: 1, allow_failure: false, paths: [], stage: 'checks' },
-      { name: 'contract', image: 'golang:1.27', commands: ['go run ./cmd/openapi-diff'], needs: ['build'], env: {}, secrets: ['API_TOKEN'], artifacts: [], validator: false, external: false, retries: 0, allow_failure: true, paths: ['api/**'], stage: 'checks' },
-      { name: 'deploy-check', image: 'alpine:3', commands: ['echo ok'], needs: ['test', 'contract'], env: {}, secrets: [], artifacts: [], validator: false, external: false, retries: 0, allow_failure: false, paths: [] },
-      { name: 'validate', image: 'plumbix-reference-validator:dev', commands: [], needs: ['test', 'contract', 'deploy-check'], env: {}, secrets: [], artifacts: [], validator: true, external: false, retries: 0, allow_failure: false, paths: [] },
+      { name: 'build', image: 'golang:1.27', commands: ['go build ./...'], needs: [], env: {}, secrets: [], artifacts: [], cache: ['/go/pkg/mod', '/root/.cache/go-build'], timeout: '10m', validator: false, external: false, retries: 0, allow_failure: false, paths: [] },
+      { name: 'test', image: 'golang:1.27', commands: ['go test ./...'], needs: ['build'], env: { GOFLAGS: '-mod=readonly' }, secrets: [], artifacts: ['coverage.out'], cache: [], timeout: '15m', validator: false, external: false, retries: 1, allow_failure: false, paths: [], stage: 'checks' },
+      { name: 'contract', image: 'golang:1.27', commands: ['go run ./cmd/openapi-diff'], needs: ['build'], env: {}, secrets: ['API_TOKEN'], artifacts: [], cache: [], validator: false, external: false, retries: 0, allow_failure: true, paths: ['api/**'], stage: 'checks' },
+      { name: 'deploy-check', image: 'alpine:3', commands: ['echo ok'], needs: ['test', 'contract'], env: {}, secrets: [], artifacts: [], cache: [], validator: false, external: false, retries: 0, allow_failure: false, paths: [] },
+      { name: 'validate', image: 'plumbix-reference-validator:dev', commands: [], needs: ['test', 'contract', 'deploy-check'], env: {}, secrets: [], artifacts: [], cache: [], validator: true, external: false, retries: 0, allow_failure: false, paths: [] },
     ],
     stages: [{ name: 'checks', steps: ['test', 'contract'] }],
   },
@@ -323,9 +323,9 @@ export const pipelineFiles: Record<string, PipelineFile> = {
     pipeline: {
       version: 1,
       steps: [
-        { name: 'test', image: 'node:24', commands: ['npm test'], needs: [], env: {}, secrets: [], artifacts: [], validator: false, external: false, retries: 0, allow_failure: false, paths: [] },
-        { name: 'ai-review', image: '', commands: [], needs: ['test'], env: {}, secrets: [], artifacts: [], validator: true, external: true, retries: 0, allow_failure: false, paths: [] },
-        { name: 'ai-grok', image: 'plumbix-ai-validator:dev', commands: [], needs: ['test'], env: {}, secrets: [], artifacts: [], validator: true, external: false, reviewer: 'grok-4', retries: 0, allow_failure: false, paths: [] },
+        { name: 'test', image: 'node:24', commands: ['npm test'], needs: [], env: {}, secrets: [], artifacts: [], cache: [], validator: false, external: false, retries: 0, allow_failure: false, paths: [] },
+        { name: 'ai-review', image: '', commands: [], needs: ['test'], env: {}, secrets: [], artifacts: [], cache: [], validator: true, external: true, retries: 0, allow_failure: false, paths: [] },
+        { name: 'ai-grok', image: 'plumbix-ai-validator:dev', commands: [], needs: ['test'], env: {}, secrets: [], artifacts: [], cache: [], validator: true, external: false, reviewer: 'grok-4', retries: 0, allow_failure: false, paths: [] },
       ],
       stages: [],
     },

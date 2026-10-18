@@ -1,0 +1,16 @@
+# Dependency caches kept between runs of this repository (WU-029).
+version: 1
+steps:
+  - name: build
+    image: golang:1.27
+    run: go build ./...
+    cache: [/go/pkg/mod, /root/.cache/go-build]
+  - name: web
+    image: node:24-alpine
+    run: cd web && npm ci && npm test
+    cache:
+      - /root/.npm
+  - name: validate
+    image: plumbix-reference-validator:dev
+    validator: true
+    needs: [build, web]

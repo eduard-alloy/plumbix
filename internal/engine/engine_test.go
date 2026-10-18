@@ -1358,3 +1358,50 @@ func TestAnExternalStepTakesToolsAndModelFromItsProfile(t *testing.T) {
 		t.Errorf("external step with an api profile: outcome %s, log:\n%s", done.Outcome, log)
 	}
 }
+
+// TestPlainStepsGetPerRepositoryCacheMounts (WU-029, A30): a plain step's
+// cache paths become read-write mounts of directories under the data
+// directory, one per repository and path, created on first use; a validator
+// and a step without cache get none.
+func TestPlainStepsGetPerRepositoryCacheMounts(t *testing.T) {
+	const yaml = `version: 1
+steps:
+  - {name: build, image: "golang:1.27", run: "go build ./...", cache: [/go/pkg/mod, /root/.cache/go-build]}
+  - {name: test, image: "golang:1.27", run: "go test ./...", needs: [build]}
+  - {name: validate, image: "plumbix-reference-validator:dev", validator: true, needs: [test]}
+`
+	h := newHarness(t, Config{})
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": yaml}, "caches")
+	h.repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
+	c := h.submit("feat")
+	h.validate(c.ID)
+	h.fake.mu.Lock()
+	defer h.fake.mu.Unlock()
+	cacheRoot := filepath.Join(h.data, "cache", h.repoID)
+	for _, j := range h.fake.jobs {
+		var caches []runner.Mount
+		for _, m := range j.Mounts {
+			if strings.HasPrefix(m.Source, cacheRoot) {
+				caches = append(caches, m)
+			}
+		}
+		switch j.Name {
+		case "build":
+			if len(caches) != 2 || caches[0].Target != "/go/pkg/mod" || caches[1].Target != "/root/.cache/go-build" || caches[0].ReadOnly || caches[1].ReadOnly {
+				t.Errorf("build cache mounts = %+v", caches)
+			}
+			for _, m := range caches {
+				if info, err := os.Stat(m.Source); err != nil || !info.IsDir() {
+					t.Errorf("cache directory %s was not created: %v", m.Source, err)
+				}
+			}
+			if len(caches) == 2 && caches[0].Source == caches[1].Source {
+				t.Error("two paths share one directory")
+			}
+		default:
+			if len(caches) != 0 {
+				t.Errorf("%s got cache mounts: %+v", j.Name, caches)
+			}
+		}
+	}
+}

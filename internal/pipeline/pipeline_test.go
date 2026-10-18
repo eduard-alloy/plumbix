@@ -264,6 +264,14 @@ func TestExtendedFieldErrors(t *testing.T) {
 		{"external with env", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, env: {A: b}}\n"), "steps[1].env", 4, "external"},
 		{"external with retries", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, retries: 1}\n"), "steps[1].retries", 4, "external"},
 		{"reviewer on plain step", wrap("  - {name: a, image: x, run: x, reviewer: grok}\n"), "steps[0].reviewer", 3, "validator"},
+		{"cache relative", wrap("  - {name: a, image: x, run: x, cache: [go/pkg/mod]}\n"), "steps[0].cache[0]", 3, "absolute"},
+		{"cache dotdot", wrap("  - {name: a, image: x, run: x, cache: [/root/../etc]}\n"), "steps[0].cache[0]", 3, ".."},
+		{"cache root", wrap("  - {name: a, image: x, run: x, cache: [/]}\n"), "steps[0].cache[0]", 3, "root"},
+		{"cache workspace", wrap("  - {name: a, image: x, run: x, cache: [/workspace/node_modules]}\n"), "steps[0].cache[0]", 3, "workspace"},
+		{"cache duplicate", wrap("  - {name: a, image: x, run: x, cache: [/go/pkg/mod, /go/pkg/mod/]}\n"), "steps[0].cache[1]", 3, "twice"},
+		{"cache on validator", wrap("  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true, cache: [/go/pkg/mod]}\n"), "steps[1].cache", 4, "validator"},
+		{"cache on external", wrap("  - {name: a, image: x, run: x}\n  - {name: v, validator: true, external: true, cache: [/go/pkg/mod]}\n"), "steps[1].cache", 4, "validator"},
+		{"cache too many", wrap("  - {name: a, image: x, run: x, cache: [/c1, /c2, /c3, /c4, /c5, /c6, /c7, /c8, /c9]}\n"), "steps[0].cache", 3, "at most 8"},
 		{"reviewer shape", wrap("  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true, reviewer: Grok 4}\n"), "steps[1].reviewer", 4, "lowercase"},
 		{"reviewer not text", wrap("  - {name: a, image: x, run: x}\n  - {name: v, image: x, validator: true, reviewer: [grok]}\n"), "steps[1].reviewer", 4, "string"},
 	}
@@ -334,5 +342,20 @@ func TestReviewerBindsAValidatorStepToAProfile(t *testing.T) {
 	}
 	if p.Steps[1].Reviewer != "grok-4" || p.Steps[2].Reviewer != "claude" || p.Steps[0].Reviewer != "" {
 		t.Errorf("reviewers = %q %q %q", p.Steps[0].Reviewer, p.Steps[1].Reviewer, p.Steps[2].Reviewer)
+	}
+}
+
+// TestCacheListsContainerPathsKeptBetweenRuns (WU-029): cache names absolute
+// container paths, cleaned, on plain steps.
+func TestCacheListsContainerPathsKeptBetweenRuns(t *testing.T) {
+	p, err := Parse([]byte(wrap("  - {name: a, image: x, run: x, cache: [/go/pkg/mod, \"/root/.cache/go-build/\"]}\n  - {name: b, image: x, run: x}\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Steps[0].Cache; len(got) != 2 || got[0] != "/go/pkg/mod" || got[1] != "/root/.cache/go-build" {
+		t.Errorf("cache = %q", got)
+	}
+	if p.Steps[1].Cache != nil {
+		t.Errorf("a step without cache has %q", p.Steps[1].Cache)
 	}
 }

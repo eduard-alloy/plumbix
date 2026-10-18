@@ -5,6 +5,8 @@ package engine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -461,7 +464,7 @@ func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([
 	opts.ChangedFiles, opts.ChangesKnown = prep.changed, prep.base != ""
 	opts.Setup = func(st pipeline.Step, finished []scheduler.StepResult) (scheduler.StepSetup, error) {
 		if !st.Validator {
-			return scheduler.StepSetup{}, nil
+			return e.setupPlain(r.RepoID, st)
 		}
 		return e.setupValidator(r, prep, work, st, finished)
 	}
@@ -804,4 +807,35 @@ func profileEnv(r settings.Reviewer, secrets map[string]string) map[string]strin
 		return nil
 	}
 	return env
+}
+
+// cacheDir is where a repository's step caches live under the data directory.
+const cacheDir = "cache"
+
+// setupPlain prepares a plain step: its cache paths become read-write
+// mounts of per-repository directories, created on first use (WU-029,
+// A30). Caches are never shared across repositories, and a validator
+// never gets one.
+func (e *Engine) setupPlain(repoID string, st pipeline.Step) (scheduler.StepSetup, error) {
+	var setup scheduler.StepSetup
+	for _, target := range st.Cache {
+		src := filepath.Join(e.cfg.DataDir, cacheDir, repoID, cacheSlug(target))
+		if err := os.MkdirAll(src, 0o700); err != nil {
+			return scheduler.StepSetup{}, fmt.Errorf("cache directory for %s: %w", target, err)
+		}
+		setup.Mounts = append(setup.Mounts, runner.Mount{Source: src, Target: target})
+	}
+	return setup, nil
+}
+
+// cacheSlug names a cache directory after its container path, readable
+// and unique: /go/pkg/mod becomes go-pkg-mod-<8 hex of the path>.
+func cacheSlug(target string) string {
+	sum := sha256.Sum256([]byte(target))
+	words := strings.FieldsFunc(target, func(r rune) bool { return r == '/' || r == '.' })
+	slug := strings.Join(words, "-")
+	if len(slug) > 40 {
+		slug = slug[:40]
+	}
+	return slug + "-" + hex.EncodeToString(sum[:4])
 }
