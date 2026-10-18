@@ -143,6 +143,12 @@ type (
 		Constraints        []string    `json:"constraints,omitempty"`
 		SubmittedBy        string      `json:"submitted_by,omitempty" jsonschema:"ignored: the session identity is used"`
 	}
+	registerRepoIn struct {
+		Host              string   `json:"host" jsonschema:"github, azuredevops or git (a plain git URL or path)"`
+		URL               string   `json:"url" jsonschema:"the clone URL; a private repository also needs a token, which a person sets in Settings"`
+		ProtectedBranches []string `json:"protected_branches,omitempty" jsonschema:"branches only Plumbix merges into; default main"`
+		MergeStrategy     string   `json:"merge_strategy,omitempty" jsonschema:"squash (default), merge or rebase"`
+	}
 	listChangesIn struct {
 		RepoID string `json:"repo_id,omitempty"`
 		State  string `json:"state,omitempty" jsonschema:"open, running, approved, fix_requested, rejected, needs_human, escalated, merged or closed"`
@@ -182,6 +188,7 @@ func (s *Server) register() {
 		return func(in changeID) string { return "/api/v1/changes/" + url.PathEscape(in.ChangeID) + suffix }
 	}
 	mcp.AddTool(srv, &mcp.Tool{Name: "list_repos", Description: "The repositories registered with Plumbix."}, simpleFor(s, http.MethodGet, func(empty) string { return "/api/v1/repos" }))
+	mcp.AddTool(srv, &mcp.Tool{Name: "register_repo", Description: "Register a repository with Plumbix: host, clone URL, protected branches and merge strategy. No token travels here; a private repository gets its token from a person in Settings."}, s.registerRepo)
 	mcp.AddTool(srv, &mcp.Tool{Name: "submit_change", Description: "Submit a pushed branch as a change with its intent and acceptance criteria; validation starts at once. Returns the change."}, s.submit)
 	mcp.AddTool(srv, &mcp.Tool{Name: "get_change", Description: "One change with its state, approval and merge record."}, simpleFor(s, http.MethodGet, changePath("")))
 	mcp.AddTool(srv, &mcp.Tool{Name: "list_changes", Description: "Changes, optionally filtered by repository and state."}, simpleFor(s, http.MethodGet, func(in listChangesIn) string {
@@ -229,6 +236,21 @@ func simpleFor[In any](s *Server, method string, path func(In) string) mcp.ToolH
 		}
 		return nil, out, nil
 	}
+}
+
+func (s *Server) registerRepo(ctx context.Context, _ *mcp.CallToolRequest, in registerRepoIn) (*mcp.CallToolResult, any, error) {
+	body := map[string]any{"host": in.Host, "url": in.URL}
+	if len(in.ProtectedBranches) > 0 {
+		body["protected_branches"] = in.ProtectedBranches
+	}
+	if in.MergeStrategy != "" {
+		body["merge_strategy"] = in.MergeStrategy
+	}
+	out, err := s.api(ctx, http.MethodPost, "/api/v1/repos", body)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, out, nil
 }
 
 func (s *Server) submit(ctx context.Context, _ *mcp.CallToolRequest, in submitIn) (*mcp.CallToolResult, any, error) {

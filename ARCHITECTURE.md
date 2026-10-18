@@ -35,7 +35,7 @@ Each package lives under `internal/` unless noted.
 | Component | Package | Responsibility |
 |-----------|---------|----------------|
 | CLI | `cmd/plumbix` | Entry point. `serve` starts the server. Other subcommands (`submit`, `change`, `review`, `mcp`) are thin HTTP clients of the public API. |
-| MCP server | `internal/mcpserver` | `plumbix mcp`: an MCP server over stdio (official Go SDK) whose tools wrap the API for an agent session: submit, follow, read verdicts, merge, refresh, and the reviewer loop (`next_review`, `post_verdict`); `approve_change` only with `--allow-approve`, since approval is a person's act (A23). Each process acts as `mcp:<name>:<id>`, used as `submitted_by` and as the reviewer name, so a session never reviews its own change (WU-024). |
+| MCP server | `internal/mcpserver` | `plumbix mcp`: an MCP server over stdio (official Go SDK) whose tools wrap the API for an agent session: register a repository (no token), submit, follow, read verdicts, merge, refresh, and the reviewer loop (`next_review`, `post_verdict`); `approve_change` only with `--allow-approve`, since approval is a person's act (A23). Each process acts as `mcp:<name>:<id>`, used as `submitted_by` and as the reviewer name, so a session never reviews its own change (WU-024). |
 | API | `api` | HTTP JSON handlers for `/api/v1`. Validates requests against the contracts. Serves the embedded web interface. |
 | Changes | `change` | Change lifecycle state machine, iterations, fix-round counting, escalation. |
 | Pipeline | `pipeline` | Parses and validates `.plumbix/pipeline.yaml` and builds the step graph (a DAG). |
