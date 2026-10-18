@@ -774,7 +774,7 @@ func (e *Engine) reviewerProfile(ctx context.Context, st pipeline.Step, family s
 	}
 	if ok && r.Family() != family {
 		if family == settings.FamilyExternal {
-			return settings.Reviewer{}, false, fmt.Errorf("reviewer profile %q is a %s profile, but step %s is external and is answered by Claude Code (plumbix review --watch): name a claude-code profile, or none for the external default", r.Name, settings.KindLabel(r.Kind), st.Name)
+			return settings.Reviewer{}, false, fmt.Errorf("reviewer profile %q is an API profile (%s), but step %s is external and is answered by Claude Code (plumbix review --watch): name a claude-code profile, or none for the external default", r.Name, settings.KindLabel(r.Kind), st.Name)
 		}
 		return settings.Reviewer{}, false, fmt.Errorf("reviewer profile %q is a Claude Code profile, which answers external steps only: make step %s external: true, or name an API profile", r.Name, st.Name)
 	}

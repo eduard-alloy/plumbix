@@ -1354,7 +1354,7 @@ func TestAnExternalStepTakesToolsAndModelFromItsProfile(t *testing.T) {
 	h.wait(r3.ID)
 	done, _ := h.db.GetRun(ctx, r3.ID)
 	log, _ := os.ReadFile(h.eng.LogPath(r3.ID, "ai-review"))
-	if done.Outcome == change.Approved || !strings.Contains(string(log), `reviewer profile "grok" is a OpenAI-compatible API profile, but step ai-review is external`) {
+	if done.Outcome == change.Approved || !strings.Contains(string(log), `reviewer profile "grok" is an API profile (OpenAI-compatible API), but step ai-review is external`) {
 		t.Errorf("external step with an api profile: outcome %s, log:\n%s", done.Outcome, log)
 	}
 }

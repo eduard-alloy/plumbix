@@ -183,6 +183,21 @@ func (s *Service) PutReviewer(ctx context.Context, r Reviewer) (Reviewer, error)
 	if len(problems) > 0 {
 		return Reviewer{}, &change.InvalidError{Problems: problems}
 	}
+	// A profile that moves to the other family cannot stay that family's
+	// default: the setting would point at a profile the family cannot use.
+	if old, err := s.db.GetReviewerProfile(ctx, r.Name); err == nil && fromRow(old).Family() != r.Family() {
+		d, err := s.Defaults(ctx)
+		if err != nil {
+			return Reviewer{}, err
+		}
+		if (fromRow(old).Family() == FamilyAPI && d.API == r.Name) || (fromRow(old).Family() == FamilyExternal && d.External == r.Name) {
+			if err := s.ClearDefaultReviewer(ctx, fromRow(old).Family()); err != nil {
+				return Reviewer{}, err
+			}
+		}
+	} else if err != nil && !errors.Is(err, change.ErrNotFound) {
+		return Reviewer{}, err
+	}
 	r.UpdatedAt = s.now().UTC()
 	if err := s.db.PutReviewerProfile(ctx, toRow(r)); err != nil {
 		return Reviewer{}, err
@@ -355,12 +370,23 @@ func (s *Service) splitClaudeCode(ctx context.Context) error {
 			}
 		}
 	}
-	if _, ok, err := s.Reviewer(ctx, code.Name, FamilyExternal); err != nil {
-		return err
-	} else if !ok {
-		if _, err := s.PutReviewer(ctx, code); err != nil {
+	// The name claude-code may be taken by an api profile an operator made
+	// under A28; then the new one is claude-code-2, and so on.
+	for i := 2; ; i++ {
+		existing, ok, err := s.Reviewer(ctx, code.Name, FamilyExternal)
+		if err != nil {
 			return err
 		}
+		if !ok {
+			if _, err := s.PutReviewer(ctx, code); err != nil {
+				return err
+			}
+			break
+		}
+		if existing.Kind == KindClaudeCode {
+			break // already there, keep it
+		}
+		code.Name = fmt.Sprintf("claude-code-%d", i)
 	}
 	if err := s.SetDefaultReviewer(ctx, code.Name); err != nil {
 		return err
