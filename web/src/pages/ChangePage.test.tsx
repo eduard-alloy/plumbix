@@ -29,6 +29,11 @@ describe('Change page', () => {
     const verdict = await open(approved.id)
     expect(screen.getByRole('heading', { level: 1, name: 'Retry failed artifact uploads' })).toBeTruthy()
     expect(screen.getByText(/Uploads to the evidence store fail/)).toBeTruthy()
+    // The intent is laid out: paragraphs, a bullet list, code spans.
+    const intent = document.querySelector('.intent')!
+    expect(intent.querySelectorAll('p').length).toBe(2)
+    expect(intent.querySelectorAll('ul li').length).toBe(2)
+    expect(intent.querySelector('code')?.textContent).toBe('PLUMBIX_UPLOAD_RETRIES')
     expect(screen.getByText('no new dependencies')).toBeTruthy()
     expect(screen.getByText('3 of 3 met')).toBeTruthy()
     const ac1 = screen.getByText('A transient upload error is retried up to three times').closest('.criterion')!

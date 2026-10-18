@@ -1,6 +1,7 @@
 // The change screen's view model: everything the page shows, computed from
 // the change, its runs and its repo. Pure, so it is tested without the DOM.
 import type { Change, ChangeState, CriterionStatus, Repo, Run, Severity, Step, ValidatorDecision, ValidatorOutcome } from '../model'
+import { prose, type Block } from './prose'
 import { ago, agoLong, clock, dateTime, duration, elapsedSeconds, minutesBetween, plural, shortSha } from '../format'
 import { latestJudged, latestRun, repoName } from './changes'
 
@@ -87,7 +88,7 @@ export interface ChangeView {
     submitted: string
     updated: string
   }
-  intent: string[]
+  intent: Block[]
   constraints: string[]
   critCount: string
   criteria: CriterionVM[]
@@ -251,7 +252,7 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       submitted: clock(c.created_at),
       updated: c.state === 'running' ? 'Live' : `Updated ${agoLong(minutesBetween(c.updated_at, now))}`,
     },
-    intent: c.intent.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean),
+    intent: prose(c.intent),
     constraints: c.constraints ?? [],
     critCount: judged ? `${met} of ${tot} met` : `${tot} pending`,
     criteria,

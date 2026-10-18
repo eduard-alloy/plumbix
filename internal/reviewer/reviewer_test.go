@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/client"
 	"github.com/eduard-alloy/plumbix/internal/gitops/gittest"
@@ -35,6 +36,7 @@ for a in "$@"; do
   prev="$a"
 done
 sed "s|WORKTREE|$(pwd)|g" "$PLUMBIX_TEST_REC/result.json"
+if [ -f "$PLUMBIX_TEST_REC/tail" ]; then cat "$PLUMBIX_TEST_REC/tail"; fi
 `
 	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
@@ -307,5 +309,29 @@ func TestStreamedToolUsesBecomeProgressLines(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "approve") {
 		t.Errorf("stdout = %q", out.String())
+	}
+}
+
+// TestOutputAfterTheResultIsDrained: a claude that keeps printing after its
+// result (more than a pipe holds) still exits, and the verdict is posted.
+func TestOutputAfterTheResultIsDrained(t *testing.T) {
+	repo := gittest.New(t)
+	base := repo.Commit("main", map[string]string{"README.md": "# base\n"}, "base")
+	head := repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	rec := fakeClaude(t, streamed)
+	if err := os.WriteFile(filepath.Join(rec, "tail"), bytes.Repeat([]byte("trailing output that is not JSON\n"), 20000), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fs := &fakeServer{brief: newBrief(repo.Remote, head, base)}
+	srv := httptest.NewServer(fs.handler())
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var out, errOut bytes.Buffer
+	if err := Run(ctx, Options{Client: client.New(strings.TrimPrefix(srv.URL, "http://"), "t"), Reviewer: "kai", Once: true, WorkDir: t.TempDir(), Stdout: &out, Stderr: &errOut, progressEvery: -1}); err != nil {
+		t.Fatalf("run: %v\nstderr: %s", err, errOut.String())
+	}
+	if fs.postedID != "rv_1" {
+		t.Fatalf("no verdict posted: %+v", fs.posted)
 	}
 }

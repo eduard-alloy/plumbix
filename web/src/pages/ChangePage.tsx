@@ -7,6 +7,7 @@ import { useRoute } from '../router'
 import { useNow, useStore } from '../store'
 import { StatePill, type PillStatus } from '../ui/StatePill'
 import { LogPanel, type LogTarget } from '../ui/LogPanel'
+import { Prose } from '../ui/Prose'
 import { DiffView, type Highlight } from '../ui/DiffView'
 import { stepVM, changeView, refusalNotice, type NoticeVM, type StepVM, refreshNotice } from '../vm/change'
 
@@ -419,11 +420,7 @@ export function ChangePage({ id }: { id: string }) {
           <div className="left">
             <section>
               <h2 className="label">Intent</h2>
-              <div className="intent">
-                {v.intent.map((p, i) => (
-                  <p key={i}>{p}</p>
-                ))}
-              </div>
+              <Prose className="intent" blocks={v.intent} />
               {v.constraints.length > 0 && (
                 <div className="constraints">
                   <span className="dim" style={{ fontSize: 12 }}>

@@ -125,6 +125,9 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 .label-row .label { margin: 0; }
 .intent { display: flex; flex-direction: column; gap: 8px; max-width: 74ch; font-size: 14px; line-height: 1.55; text-wrap: pretty; }
 .intent p { margin: 0; }
+.intent ul, .intent ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+.intent li { padding-left: 2px; }
+.intent code { font: 12.5px var(--mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 .constraints { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
 .chip { padding: 1px 7px; border: 1px solid var(--border); border-radius: var(--r-sm); font-size: 12px; color: var(--text-2); }
 

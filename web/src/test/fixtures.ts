@@ -27,7 +27,7 @@ export const approved: Change = {
   target_branch: 'main',
   title: 'Retry failed artifact uploads',
   intent:
-    'Uploads to the evidence store fail a few times a day on transient network errors and the whole run is marked errored.\n\nRetry an upload up to three times with exponential backoff before giving up, and record each attempt in the step log so the failure is visible when it does happen.',
+    'Uploads to the evidence store fail a few times a day on transient network errors and the whole run is marked errored.\n\nRetry an upload up to three times with exponential backoff before giving up, and record each attempt in the step log so the failure is visible when it does happen.\n\n- no retry on a 4xx answer\n- `PLUMBIX_UPLOAD_RETRIES` caps the count',
   acceptance_criteria: [
     { id: 'AC-1', text: 'A transient upload error is retried up to three times', check: { steps: ['test'] } },
     { id: 'AC-2', text: 'The retry attempts appear in the step log', check: { steps: ['test'] } },
