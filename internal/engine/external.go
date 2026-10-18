@@ -73,6 +73,7 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 	if err := e.store.CreateReview(ctx, review.Review{ID: b.ID, RunID: r.ID, RepoID: c.RepoID, ChangeID: c.ID, Step: st.Name, Brief: raw, CreatedAt: now, ExpiresAt: deadline}); err != nil {
 		return errored(err)
 	}
+	e.openReviewLog(b.ID)
 	defer e.forgetReviewLog(b.ID)
 	fmt.Fprintf(log, "waiting for an external reviewer: review %s, until %s. A reviewer takes it with plumbix review --watch or GET /api/v1/reviews/next.\n", b.ID, deadline.UTC().Format(time.RFC3339))
 	e.log.Info("external review published", "run", r.ID, "step", st.Name, "review", b.ID)
@@ -319,6 +320,18 @@ type reviewLogState struct {
 	last  time.Time
 }
 
+// openReviewLog registers a review's line counters for as long as its step
+// waits. AppendReviewLog never creates an entry, so a line that slips in
+// after the step ended cannot leave one behind.
+func (e *Engine) openReviewLog(id string) {
+	e.reviewLogMu.Lock()
+	if e.reviewLogs == nil {
+		e.reviewLogs = map[string]*reviewLogState{}
+	}
+	e.reviewLogs[id] = &reviewLogState{}
+	e.reviewLogMu.Unlock()
+}
+
 // forgetReviewLog drops a review's line counters once its step no longer
 // waits (answered, expired or cancelled), so the map does not grow with
 // every review the server ever published.
@@ -351,13 +364,11 @@ func (e *Engine) AppendReviewLog(ctx context.Context, id, token, line string) er
 	}
 	now := e.now()
 	e.reviewLogMu.Lock()
-	if e.reviewLogs == nil {
-		e.reviewLogs = map[string]*reviewLogState{}
-	}
 	st := e.reviewLogs[id]
 	if st == nil {
-		st = &reviewLogState{}
-		e.reviewLogs[id] = st
+		// The step stopped waiting between the claim check and here.
+		e.reviewLogMu.Unlock()
+		return fmt.Errorf("%w: review %s is no longer awaited", change.ErrConflict, id)
 	}
 	if st.count >= MaxReviewLogLines || (st.count > 0 && now.Sub(st.last) < ReviewLogMinInterval) {
 		e.reviewLogMu.Unlock()

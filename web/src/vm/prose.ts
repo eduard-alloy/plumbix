@@ -14,15 +14,14 @@ const bullet = /^[-*•]\s+/
 const numbered = /^(?:\d+[.)]|\(\d+\))\s+/
 const inlineEnum = /\s*\((\d+)\)\s+/g
 
-/** inlines splits text on backticks into plain and code runs. */
+/** inlines splits text on backticks into plain and code runs. An odd
+ * backtick count means they are not code marks: the text stays as typed. */
 export function inlines(text: string): Inline[] {
-  const out: Inline[] = []
   const parts = text.split('`')
+  if (parts.length % 2 === 0) return [{ text, code: false }]
+  const out: Inline[] = []
   parts.forEach((t, i) => {
-    if (t === '') return
-    // An unmatched trailing backtick stays plain text.
-    const code = i % 2 === 1 && i < parts.length - 1
-    out.push({ text: code ? t : t, code })
+    if (t !== '') out.push({ text: t, code: i % 2 === 1 })
   })
   return out
 }
