@@ -367,6 +367,10 @@ export interface ImageInfo {
   digest?: string
   /** One of the images Plumbix ships and can rebuild. */
   shipped: boolean
+  /** Defined by a Dockerfile on the Images page (WU-033). */
+  own: boolean
+  /** The own image's Dockerfile. */
+  dockerfile?: string
   purpose?: string
   /** For a shipped image, the server version that built it. */
   version?: string

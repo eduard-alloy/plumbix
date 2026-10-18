@@ -126,7 +126,7 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		Sessions: auth.NewSessions(db), Origin: "http://" + ln.Addr().String(),
 		Web:      web.Handler(web.Dist()),
 		Settings: prefs, Secrets: secretStore, Hosts: hosts,
-		Images: images.New(docker.Client(), version, filepath.Join(cfg.DataDir, "images", "builds")),
+		Images: images.New(docker.Client(), version, filepath.Join(cfg.DataDir, "images")),
 	}
 	if err := api.Run(ctx, ln, api.NewHandler(deps), logger, config.DefaultShutdownTimeout); err != nil {
 		logger.Error("server stopped with error", "err", err)

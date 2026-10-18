@@ -35,7 +35,7 @@ Each package lives under `internal/` unless noted.
 | Component | Package | Responsibility |
 |-----------|---------|----------------|
 | CLI | `cmd/plumbix` | Entry point. `serve` starts the server. Other subcommands (`submit`, `change`, `review`, `mcp`) are thin HTTP clients of the public API. |
-| Images | `internal/images` | What the server knows about the images its pipelines run (WU-032, A32): inspects each referenced image through the Docker client, knows the two Plumbix ships (`plumbix-reference-validator`, `plumbix-ai-validator`) with the version label their build carries, and rebuilds them from the build context embedded at the module root (`embed.go`: `go.mod`, `go.sum`, `internal/`, `validators/`), one build at a time, logs under `images/builds/`. Own images with a Dockerfile editor follow (WU-033). |
+| Images | `internal/images` | What the server knows about the images its pipelines run (WU-032, A32): inspects each referenced image through the Docker client, knows the two Plumbix ships (`plumbix-reference-validator`, `plumbix-ai-validator`) with the version label their build carries, and rebuilds them from the build context embedded at the module root (`embed.go`: `go.mod`, `go.sum`, `internal/`, `validators/`), one build at a time, logs under `images/builds/`. Own images (WU-033): a Dockerfile written on the page is stored under `images/own/<name>/`, which is the build context, built as `<name>:latest` with labels naming the image and the Dockerfile's hash, so the page can say when the file changed since the last build. |
 | MCP server | `internal/mcpserver` | `plumbix mcp`: an MCP server over stdio (official Go SDK) whose tools wrap the API for an agent session: register a repository (no token), submit, follow, read verdicts, merge, refresh, and the reviewer loop (`next_review`, `post_verdict`); `approve_change` only with `--allow-approve`, since approval is a person's act (A23). Each process acts as `mcp:<name>:<id>`, used as `submitted_by` and as the reviewer name, so a session never reviews its own change (WU-024). |
 | API | `api` | HTTP JSON handlers for `/api/v1`. Validates requests against the contracts. Serves the embedded web interface. |
 | Changes | `change` | Change lifecycle state machine, iterations, fix-round counting, escalation. |
@@ -142,6 +142,7 @@ The base address comes from config `server.listen`, default `127.0.0.1:6400`. Ev
 | GET | `/api/v1/images` | Every image the registered pipelines run plus the shipped two: presence, created, size, digest, users, and for shipped images the version label against the server (WU-032). |
 | POST | `/api/v1/images/{name}/build` | Build a shipped image from the embedded sources; 202 with a build to follow, 409 while one runs. A person's act: not offered by the MCP server. |
 | GET | `/api/v1/images/builds/{id}` | A build's status and log so far. |
+| PUT, DELETE | `/api/v1/images/own/{name}` | Create or replace an own image's Dockerfile, or remove the definition (WU-033). A person's act; not offered by the MCP server. |
 | GET, PUT | `/api/v1/settings` | Reviewer profiles with whether each key is set, the default profile, global review guidance, and which secrets are set (never their values); PUT takes `guidance` and `default_reviewer`. |
 | PUT, DELETE | `/api/v1/settings/reviewers/{name}` | Create or replace a reviewer profile (kind `anthropic`, `openai` or `claude-code`, base URL, model, tools, key secret name), or remove one (WU-028, A28, A29). The key of an API profile is set through the secrets endpoint under the profile's `key_secret`; a `claude-code` profile has none. |
 | PUT, DELETE | `/api/v1/settings/secrets/{key}` | Set or remove a secret in the server's secrets file; used from the next fetch on. |
@@ -327,6 +328,7 @@ Everything lives under the data directory, config key `data_dir`, default `~/.pl
 | `work/<run-id>/` | Temporary worktrees, deleted after the run. |
 | `evidence/<run-id>/<step>/` | Logs, status and artifacts. Kept until a configurable retention limit. |
 | `images/builds/<id>.log` | The output of an image build started from the Images page. |
+| `images/own/<name>/Dockerfile` | An own image's Dockerfile; the directory is its build context. |
 | `cache/<repo-id>/<step>/<slug>/` | A step cache (`steps[].cache`), one directory per repository, step and container path, named after the path plus a short hash. Nothing prunes it; deleting a directory resets that cache. |
 
 Key config entries, with defaults:

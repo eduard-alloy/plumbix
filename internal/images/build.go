@@ -7,15 +7,18 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	plumbix "github.com/eduard-alloy/plumbix"
+	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/moby/moby/client"
 )
 
@@ -48,15 +51,45 @@ type builds struct {
 
 func newBuilds(dir string) *builds { return &builds{dir: dir, byID: map[string]*Build{}} }
 
-// Build starts building a shipped image and returns at once; the build
-// runs in the background and its log is read with GetBuild. One build at
-// a time: a second request while one runs is ErrBusy.
-func (s *Service) Build(ctx context.Context, name string) (Build, error) {
-	sh, ok := IsShipped(name)
-	if !ok {
-		return Build{}, fmt.Errorf("%w: %s", ErrNotShipped, name)
+// bytesReader is the build context type ContextTar returns.
+type bytesReader = bytes.Reader
+
+// buildable describes one build: where the context comes from, the
+// Dockerfile path inside it, the tag and the labels.
+type buildable struct {
+	ref, dockerfile, source string
+	labels                  map[string]string
+	context                 func() (*bytes.Reader, error)
+}
+
+// resolve finds what name means: a shipped image or an own one.
+func (s *Service) resolve(name string) (buildable, error) {
+	if sh, ok := IsShipped(name); ok {
+		return buildable{ref: ShippedRef(sh.Name), dockerfile: sh.Dockerfile, source: sh.Dockerfile,
+			labels:  map[string]string{LabelVersion: s.version, LabelShipped: sh.Name},
+			context: func() (*bytes.Reader, error) { return ContextTar(plumbix.BuildContext) }}, nil
 	}
-	ref := ShippedRef(sh.Name)
+	own, err := s.GetOwn(strings.TrimSuffix(name, ":"+OwnTag))
+	if err != nil {
+		if errors.Is(err, change.ErrNotFound) {
+			return buildable{}, fmt.Errorf("%w: %s", ErrNotShipped, name)
+		}
+		return buildable{}, err
+	}
+	return buildable{ref: OwnRef(own.Name), dockerfile: "Dockerfile", source: "the Dockerfile written on the Images page",
+		labels:  map[string]string{LabelVersion: s.version, LabelOwn: own.Name, LabelDockerfile: dockerfileHash(own.Dockerfile)},
+		context: func() (*bytes.Reader, error) { return s.ownContextTar(own.Name) }}, nil
+}
+
+// Build starts building a shipped or own image and returns at once; the
+// build runs in the background and its log is read with GetBuild. One
+// build at a time: a second request while one runs is ErrBusy.
+func (s *Service) Build(ctx context.Context, name string) (Build, error) {
+	what, err := s.resolve(name)
+	if err != nil {
+		return Build{}, err
+	}
+	ref := what.ref
 	b := s.builds
 	b.mu.Lock()
 	if b.running {
@@ -79,7 +112,7 @@ func (s *Service) Build(ctx context.Context, name string) (Build, error) {
 	// The build outlives the request: it runs under its own context and
 	// reports through the record.
 	go func() {
-		err := s.runBuild(context.Background(), sh, ref, b.logPath(id))
+		err := s.runBuild(context.Background(), what, b.logPath(id))
 		b.finish(rec, err)
 	}()
 	return b.snapshot(rec), nil
@@ -126,22 +159,23 @@ func (s *Service) GetBuild(id string) (Build, bool) {
 // output into the log file. The Docker API answers with a JSON message
 // stream; stream text goes to the log as it arrives and an error message
 // ends the build.
-func (s *Service) runBuild(ctx context.Context, sh Shipped, ref, logPath string) (err error) {
+func (s *Service) runBuild(ctx context.Context, what buildable, logPath string) (err error) {
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return err
 	}
 	defer logFile.Close()
-	fmt.Fprintf(logFile, "plumbix: building %s from %s (server %s)\n", ref, sh.Dockerfile, s.version)
-	tarball, err := ContextTar(plumbix.BuildContext)
+	ref := what.ref
+	fmt.Fprintf(logFile, "plumbix: building %s from %s (server %s)\n", ref, what.source, s.version)
+	tarball, err := what.context()
 	if err != nil {
 		fmt.Fprintf(logFile, "plumbix: %v\n", err)
 		return err
 	}
 	res, err := s.docker.ImageBuild(ctx, tarball, client.ImageBuildOptions{
 		Tags:       []string{ref},
-		Dockerfile: sh.Dockerfile,
-		Labels:     map[string]string{LabelVersion: s.version, LabelShipped: sh.Name},
+		Dockerfile: what.dockerfile,
+		Labels:     what.labels,
 		Remove:     true,
 	})
 	if err != nil {

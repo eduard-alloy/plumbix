@@ -85,10 +85,10 @@ export function freshDB(): FakeDB {
     secretUpdated: {},
     secretChecks: {},
     images: [
-      { ref: 'plumbix-ai-validator:dev', present: true, created: '2026-10-16T21:20:49Z', size_bytes: 20_600_000, digest: 'sha256:1111111111111111', shipped: true, purpose: 'The AI validator run inside the pipeline.', status: 'unlabelled', used_by: [{ repo_id: 'r_ledgerapi001', repo: 'ledger-api', step: 'ai-grok', validator: true }] },
-      { ref: 'plumbix-reference-validator:dev', present: true, created: '2026-10-18T10:00:00Z', size_bytes: 12_100_000, digest: 'sha256:2222222222222222', shipped: true, purpose: 'The deterministic validator.', version: '9ffe6c6', status: 'current', used_by: [{ repo_id: 'r_plumbix00001', repo: 'plumbix', step: 'validate', validator: true }] },
-      { ref: 'golang:1.27', present: true, created: '2026-10-01T10:00:00Z', size_bytes: 820_000_000, digest: 'sha256:3333333333333333', shipped: false, status: 'present', used_by: [{ repo_id: 'r_plumbix00001', repo: 'plumbix', step: 'build', validator: false }, { repo_id: 'r_plumbix00001', repo: 'plumbix', step: 'test', validator: false }] },
-      { ref: 'node:24-alpine', present: false, shipped: false, status: 'missing', used_by: [{ repo_id: 'r_ledgerapi001', repo: 'ledger-api', step: 'test', validator: false }] },
+      { ref: 'plumbix-ai-validator:dev', present: true, created: '2026-10-16T21:20:49Z', size_bytes: 20_600_000, digest: 'sha256:1111111111111111', shipped: true, own: false, purpose: 'The AI validator run inside the pipeline.', status: 'unlabelled', used_by: [{ repo_id: 'r_ledgerapi001', repo: 'ledger-api', step: 'ai-grok', validator: true }] },
+      { ref: 'plumbix-reference-validator:dev', present: true, created: '2026-10-18T10:00:00Z', size_bytes: 12_100_000, digest: 'sha256:2222222222222222', shipped: true, own: false, purpose: 'The deterministic validator.', version: '9ffe6c6', status: 'current', used_by: [{ repo_id: 'r_plumbix00001', repo: 'plumbix', step: 'validate', validator: true }] },
+      { ref: 'golang:1.27', present: true, created: '2026-10-01T10:00:00Z', size_bytes: 820_000_000, digest: 'sha256:3333333333333333', shipped: false, own: false, status: 'present', used_by: [{ repo_id: 'r_plumbix00001', repo: 'plumbix', step: 'build', validator: false }, { repo_id: 'r_plumbix00001', repo: 'plumbix', step: 'test', validator: false }] },
+      { ref: 'node:24-alpine', present: false, shipped: false, own: false, status: 'missing', used_by: [{ repo_id: 'r_ledgerapi001', repo: 'ledger-api', step: 'test', validator: false }] },
     ],
     imageBuilds: [],
     settings: { guidance: '', defaults: { api: 'claude-api', external: 'claude-code' } },
@@ -185,12 +185,37 @@ export function fakeFetch(db: FakeDB): typeof fetch {
     const imageBuild = path.match(/^\/api\/v1\/images\/([^/]+)\/build$/)
     if (imageBuild && method === 'POST') {
       const name = decodeURIComponent(imageBuild[1])
-      const im = db.images.find((i) => i.ref === `${name}:dev` || i.ref === name)
-      if (!im?.shipped) return error(400, 'invalid_request', `not an image Plumbix ships: ${name}: only the images Plumbix ships can be built here`)
+      const im = db.images.find((i) => i.ref === `${name}:dev` || i.ref === `${name}:latest` || i.ref === name)
+      if (!im?.shipped && !im?.own) return error(400, 'invalid_request', `not an image Plumbix ships: ${name}: only the images Plumbix ships, or own images defined on the Images page, can be built here`)
       if (db.imageBuilds.some((b) => b.status === 'running')) return error(409, 'busy', 'a build is already running')
       const b: ImageBuild = { id: `ib_${db.imageBuilds.length + 1}`, image: im.ref, status: 'running', started_at: new Date().toISOString(), log: `plumbix: building ${im.ref}\n` }
       db.imageBuilds.push(b)
       return json(202, b)
+    }
+    const ownImage = path.match(/^\/api\/v1\/images\/own\/([^/]+)$/)
+    if (ownImage && method === 'PUT') {
+      const name = decodeURIComponent(ownImage[1])
+      const body = JSON.parse(String(init?.body)) as { dockerfile: string }
+      const bad: { field: string; message: string }[] = []
+      if (!/^[a-z0-9][a-z0-9._-]{0,62}$/.test(name)) bad.push({ field: 'name', message: 'must be lowercase letters, digits, dots, dashes and underscores, starting with a letter or digit, at most 63 characters, no slash' })
+      if (!body.dockerfile.trim()) bad.push({ field: 'dockerfile', message: 'is empty' })
+      else if (!/^\s*FROM /im.test(body.dockerfile)) bad.push({ field: 'dockerfile', message: 'has no FROM instruction' })
+      if (bad.length) return problems(bad)
+      const ref = `${name}:latest`
+      const existing = db.images.find((i) => i.ref === ref)
+      const dockerfile = body.dockerfile.endsWith('\n') ? body.dockerfile : body.dockerfile + '\n'
+      if (existing) {
+        existing.dockerfile = dockerfile
+        if (existing.present) existing.status = 'stale'
+      } else db.images.push({ ref, present: false, shipped: false, own: true, dockerfile, status: 'missing', used_by: [] })
+      return json(200, { images: db.images, version: '9ffe6c6' })
+    }
+    if (ownImage && method === 'DELETE') {
+      const ref = `${decodeURIComponent(ownImage[1])}:latest`
+      const i = db.images.findIndex((x) => x.ref === ref && x.own)
+      if (i < 0) return error(404, 'not_found', 'no such own image')
+      db.images.splice(i, 1)
+      return new Response(null, { status: 204 })
     }
     const oneBuild = path.match(/^\/api\/v1\/images\/builds\/([^/]+)$/)
     if (oneBuild && method === 'GET') {

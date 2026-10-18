@@ -10,8 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
@@ -65,28 +65,31 @@ const (
 
 // Info is one image as the page shows it.
 type Info struct {
-	Ref       string    `json:"ref"` // name:tag as the pipeline writes it
-	Present   bool      `json:"present"`
-	Created   time.Time `json:"created,omitempty"`
-	SizeBytes int64     `json:"size_bytes,omitempty"`
-	Digest    string    `json:"digest,omitempty"`
-	Shipped   bool      `json:"shipped"`
-	Purpose   string    `json:"purpose,omitempty"`
-	Version   string    `json:"version,omitempty"` // the org.plumbix.version label, shipped images
-	Status    string    `json:"status"`
-	UsedBy    []Use     `json:"used_by"`
+	Ref        string    `json:"ref"` // name:tag as the pipeline writes it
+	Present    bool      `json:"present"`
+	Created    time.Time `json:"created,omitempty"`
+	SizeBytes  int64     `json:"size_bytes,omitempty"`
+	Digest     string    `json:"digest,omitempty"`
+	Shipped    bool      `json:"shipped"`
+	Own        bool      `json:"own"`                  // defined by a Dockerfile on the Images page (WU-033)
+	Dockerfile string    `json:"dockerfile,omitempty"` // the own image's Dockerfile
+	Purpose    string    `json:"purpose,omitempty"`
+	Version    string    `json:"version,omitempty"` // the org.plumbix.version label, shipped images
+	Status     string    `json:"status"`
+	UsedBy     []Use     `json:"used_by"`
 }
 
 // Service inspects and builds images.
 type Service struct {
 	docker  Docker
 	version string // the running server's version, compared with the label
+	dir     string // <data_dir>/images: builds/ for logs, own/ for own images
 	builds  *builds
 }
 
-// New returns a Service over docker, writing build logs under dir.
+// New returns a Service over docker, keeping build logs and own images under dir.
 func New(docker Docker, version, dir string) *Service {
-	return &Service{docker: docker, version: version, builds: newBuilds(dir)}
+	return &Service{docker: docker, version: version, dir: dir, builds: newBuilds(filepath.Join(dir, "builds"))}
 }
 
 // Version is the server version shipped images are compared with.
@@ -105,23 +108,37 @@ func IsShipped(ref string) (Shipped, bool) {
 	return Shipped{}, false
 }
 
-// List describes every image in uses plus the shipped ones, sorted with
-// shipped images first and then by reference.
+// List describes every image in uses plus the shipped and own ones, sorted
+// with shipped images first, own images next, then by reference.
 func (s *Service) List(ctx context.Context, uses map[string][]Use) ([]Info, error) {
+	byRef := map[string][]Use{}
+	for ref, u := range uses {
+		c := canonical(ref)
+		byRef[c] = append(byRef[c], u...)
+	}
 	refs := map[string]bool{}
-	for ref := range uses {
+	for ref := range byRef {
 		refs[ref] = true
 	}
 	for _, sh := range ShippedImages {
 		refs[ShippedRef(sh.Name)] = true
 	}
+	owns, err := s.ListOwn()
+	if err != nil {
+		return nil, err
+	}
+	ownByRef := map[string]Own{}
+	for _, o := range owns {
+		refs[OwnRef(o.Name)] = true
+		ownByRef[OwnRef(o.Name)] = o
+	}
 	var out []Info
 	for ref := range refs {
-		info, err := s.inspect(ctx, ref)
+		info, err := s.inspect(ctx, ref, ownByRef)
 		if err != nil {
 			return nil, err
 		}
-		info.UsedBy = uses[ref]
+		info.UsedBy = byRef[ref]
 		if info.UsedBy == nil {
 			info.UsedBy = []Use{}
 		}
@@ -131,9 +148,18 @@ func (s *Service) List(ctx context.Context, uses map[string][]Use) ([]Info, erro
 		})
 		out = append(out, info)
 	}
+	rank := func(in Info) int {
+		switch {
+		case in.Shipped:
+			return 0
+		case in.Own:
+			return 1
+		}
+		return 2
+	}
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].Shipped != out[j].Shipped {
-			return out[i].Shipped
+		if rank(out[i]) != rank(out[j]) {
+			return rank(out[i]) < rank(out[j])
 		}
 		return out[i].Ref < out[j].Ref
 	})
@@ -141,10 +167,14 @@ func (s *Service) List(ctx context.Context, uses map[string][]Use) ([]Info, erro
 }
 
 // inspect asks Docker about one reference.
-func (s *Service) inspect(ctx context.Context, ref string) (Info, error) {
+func (s *Service) inspect(ctx context.Context, ref string, owns map[string]Own) (Info, error) {
 	info := Info{Ref: ref, Status: StatusPresent}
 	if sh, ok := IsShipped(ref); ok {
 		info.Shipped, info.Purpose = true, sh.Purpose
+	}
+	own, isOwn := owns[ref]
+	if isOwn {
+		info.Own, info.Dockerfile = true, own.Dockerfile
 	}
 	res, err := s.docker.ImageInspect(ctx, ref)
 	if err != nil {
@@ -160,16 +190,28 @@ func (s *Service) inspect(ctx context.Context, ref string) (Info, error) {
 	if t, err := time.Parse(time.RFC3339Nano, res.Created); err == nil {
 		info.Created = t
 	}
-	if info.Shipped {
-		labels := map[string]string{}
-		if res.Config != nil {
-			labels = res.Config.Labels
-		}
+	labels := map[string]string{}
+	if res.Config != nil {
+		labels = res.Config.Labels
+	}
+	switch {
+	case info.Shipped:
 		info.Version = labels[LabelVersion]
 		switch {
 		case info.Version == "":
 			info.Status = StatusUnlabelled
 		case info.Version == s.version:
+			info.Status = StatusCurrent
+		default:
+			info.Status = StatusStale
+		}
+	case isOwn:
+		// Current means built from the Dockerfile as it is stored now.
+		info.Version = labels[LabelVersion]
+		switch built := labels[LabelDockerfile]; {
+		case built == "":
+			info.Status = StatusUnlabelled
+		case built == dockerfileHash(own.Dockerfile):
 			info.Status = StatusCurrent
 		default:
 			info.Status = StatusStale
@@ -184,11 +226,3 @@ var ErrNotShipped = errors.New("not an image Plumbix ships")
 
 // ErrBusy is returned when a build is already running.
 var ErrBusy = errors.New("a build is already running")
-
-// nameOf strips the tag from a reference.
-func nameOf(ref string) string {
-	if i := strings.LastIndex(ref, ":"); i > 0 && !strings.Contains(ref[i:], "/") {
-		return ref[:i]
-	}
-	return ref
-}
