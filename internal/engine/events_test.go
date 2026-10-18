@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -194,25 +195,38 @@ func TestStepsAreRecordedAsTheyFinish(t *testing.T) {
 	}
 }
 
-// fakeSettings stands in for the operator's settings.
+// fakeSettings stands in for the operator's settings: guidance and the
+// reviewer profiles (WU-028), with def naming the default profile.
 type fakeSettings struct {
-	global, repo, model, provider, baseURL string
+	global, repo string
+	reviewers    map[string]settings.Reviewer
+	def          string
 }
 
 func (f fakeSettings) Guidance(context.Context, string) (settings.Guidance, error) {
 	return settings.Guidance{Global: f.global, Repository: f.repo}, nil
 }
-func (f fakeSettings) AIModel(context.Context) (string, error)    { return f.model, nil }
-func (f fakeSettings) AITools(context.Context) (string, error)    { return review.ToolsReadOnly, nil }
-func (f fakeSettings) AIProvider(context.Context) (string, error) { return f.provider, nil }
-func (f fakeSettings) AIBaseURL(context.Context) (string, error)  { return f.baseURL, nil }
+
+func (f fakeSettings) Reviewer(_ context.Context, name string) (settings.Reviewer, bool, error) {
+	if name == "" {
+		name = f.def
+	}
+	r, ok := f.reviewers[name]
+	return r, ok, nil
+}
+
+// claudeProfile is an anthropic profile with a model; the base URL is set
+// although meaningless, to show it never reaches an anthropic step.
+var claudeProfile = settings.Reviewer{Name: "claude", Kind: settings.KindAnthropic, Model: "claude-sonnet-5-5", BaseURL: "https://api.openai.com/v1", Tools: review.ToolsFull, KeySecret: "ANTHROPIC_API_KEY"}
+
+var grokProfile = settings.Reviewer{Name: "grok", Kind: settings.KindOpenAI, BaseURL: "https://api.x.ai/v1", Model: "grok-4", Tools: review.ToolsReadOnly, KeySecret: "PLUMBIX_REVIEWER_GROK_KEY"}
 
 // TestValidatorsGetGuidanceAndModel: validator steps see the operator's
-// guidance in change.json and the model as PLUMBIX_AI_MODEL, unless the
-// pipeline step sets its own; normal steps see neither.
+// guidance in change.json and the default profile's model as
+// PLUMBIX_AI_MODEL and its key as ANTHROPIC_API_KEY, unless the pipeline
+// step sets its own; normal steps see neither.
 func TestValidatorsGetGuidanceAndModel(t *testing.T) {
-	// A base URL left over from an openai spell stays out of an anthropic step's env.
-	h := newHarness(t, Config{Settings: fakeSettings{global: "Prefer small diffs.", repo: "Go needs tests.", model: "claude-sonnet-5-5", baseURL: "https://api.openai.com/v1"}})
+	h := newHarness(t, Config{Settings: fakeSettings{global: "Prefer small diffs.", repo: "Go needs tests.", reviewers: map[string]settings.Reviewer{"claude": claudeProfile}, def: "claude"}, Secrets: map[string]string{"ANTHROPIC_API_KEY": "sk-ant-test"}})
 	h.repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
 	c := h.submit("feat")
 	h.wait(h.validate(c.ID).ID)
@@ -227,11 +241,11 @@ func TestValidatorsGetGuidanceAndModel(t *testing.T) {
 	}
 	for _, j := range h.fake.jobs {
 		got := j.Env["PLUMBIX_AI_MODEL"]
-		if j.Name == "validate" && got != "claude-sonnet-5-5" {
+		if j.Name == "validate" && (got != "claude-sonnet-5-5" || j.Env["ANTHROPIC_API_KEY"] != "sk-ant-test") {
 			t.Errorf("validator env = %v", j.Env)
 		}
-		if j.Name == "test" && got != "" {
-			t.Errorf("normal step got the model: %v", j.Env)
+		if j.Name == "test" && (got != "" || j.Env["ANTHROPIC_API_KEY"] != "") {
+			t.Errorf("normal step got the model or the key: %v", j.Env)
 		}
 		if _, ok := j.Env["PLUMBIX_AI_PROVIDER"]; ok {
 			t.Errorf("%s got a provider although anthropic is the default: %v", j.Name, j.Env)
@@ -242,20 +256,82 @@ func TestValidatorsGetGuidanceAndModel(t *testing.T) {
 	}
 }
 
+// TestValidatorsGetTheOpenAIProviderAndBaseURL: an openai default profile
+// reaches the validator as provider, base URL, model and PLUMBIX_AI_API_KEY.
 func TestValidatorsGetTheOpenAIProviderAndBaseURL(t *testing.T) {
-	h := newHarness(t, Config{Settings: fakeSettings{provider: "openai", baseURL: "https://api.openai.com/v1", model: "gpt-5.5"}})
+	h := newHarness(t, Config{Settings: fakeSettings{reviewers: map[string]settings.Reviewer{"grok": grokProfile}, def: "grok"}, Secrets: map[string]string{"PLUMBIX_REVIEWER_GROK_KEY": "xai-test"}})
 	h.repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
 	c := h.submit("feat")
 	h.wait(h.validate(c.ID).ID)
 	h.fake.mu.Lock()
 	defer h.fake.mu.Unlock()
 	for _, j := range h.fake.jobs {
-		if j.Name == "validate" && (j.Env["PLUMBIX_AI_PROVIDER"] != "openai" || j.Env["PLUMBIX_AI_BASE_URL"] != "https://api.openai.com/v1" || j.Env["PLUMBIX_AI_MODEL"] != "gpt-5.5") {
+		if j.Name == "validate" && (j.Env["PLUMBIX_AI_PROVIDER"] != "openai" || j.Env["PLUMBIX_AI_BASE_URL"] != "https://api.x.ai/v1" || j.Env["PLUMBIX_AI_MODEL"] != "grok-4" || j.Env["PLUMBIX_AI_API_KEY"] != "xai-test") {
 			t.Errorf("validator env = %v", j.Env)
 		}
-		if j.Name == "test" && (j.Env["PLUMBIX_AI_PROVIDER"] != "" || j.Env["PLUMBIX_AI_BASE_URL"] != "") {
+		if j.Name == "test" && (j.Env["PLUMBIX_AI_PROVIDER"] != "" || j.Env["PLUMBIX_AI_BASE_URL"] != "" || j.Env["PLUMBIX_AI_API_KEY"] != "") {
 			t.Errorf("normal step got provider settings: %v", j.Env)
 		}
+	}
+}
+
+// TestAStepNamesItsReviewerProfile: reviewer: on a validator step picks
+// that profile over the default; a name nobody defined fails the step,
+// and the run, instead of judging with another model.
+func TestAStepNamesItsReviewerProfile(t *testing.T) {
+	const yaml = `version: 1
+steps:
+  - {name: test, image: "golang:1.27", run: "go test ./..."}
+  - {name: validate, image: "plumbix-reference-validator:dev", validator: true, needs: [test]}
+  - {name: ai-grok, image: "plumbix-ai-validator:dev", validator: true, reviewer: grok, needs: [test]}
+  - {name: ai-own, image: "plumbix-ai-validator:dev", validator: true, reviewer: claude2, needs: [test], secrets: [ANTHROPIC_API_KEY]}
+`
+	claude2 := claudeProfile
+	claude2.Name, claude2.KeySecret = "claude2", "CLAUDE2_KEY"
+	h := newHarness(t, Config{Settings: fakeSettings{reviewers: map[string]settings.Reviewer{"claude": claudeProfile, "claude2": claude2, "grok": grokProfile}, def: "claude"}, Secrets: map[string]string{"PLUMBIX_REVIEWER_GROK_KEY": "xai-test", "ANTHROPIC_API_KEY": "sk-ant-test", "CLAUDE2_KEY": "sk-other"}})
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": yaml}, "two profiles")
+	h.repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
+	c := h.submit("feat")
+	h.wait(h.validate(c.ID).ID)
+	h.fake.mu.Lock()
+	for _, j := range h.fake.jobs {
+		switch j.Name {
+		case "ai-grok":
+			if j.Env["PLUMBIX_AI_PROVIDER"] != "openai" || j.Env["PLUMBIX_AI_MODEL"] != "grok-4" || j.Env["PLUMBIX_AI_API_KEY"] != "xai-test" || j.Env["ANTHROPIC_API_KEY"] != "" {
+				t.Errorf("ai-grok env = %v", j.Env)
+			}
+		case "validate":
+			if j.Env["PLUMBIX_AI_MODEL"] != "claude-sonnet-5-5" || j.Env["ANTHROPIC_API_KEY"] != "sk-ant-test" || j.Env["PLUMBIX_AI_API_KEY"] != "" {
+				t.Errorf("validate env = %v", j.Env)
+			}
+		case "ai-own":
+			// A secret the step lists itself wins over the profile's key;
+			// PLUMBIX_ names are reserved, so model, provider and URL always
+			// come from the profile.
+			if j.Env["ANTHROPIC_API_KEY"] != "sk-ant-test" || j.Env["PLUMBIX_AI_MODEL"] != "claude-sonnet-5-5" || j.Env["PLUMBIX_AI_API_KEY"] != "" {
+				t.Errorf("ai-own env = %v", j.Env)
+			}
+		}
+	}
+	h.fake.mu.Unlock()
+
+	// A profile that does not exist (the pipeline is read at the branch
+	// head): the step errors and says why.
+	h.repo.Commit("feat", map[string]string{".plumbix/pipeline.yaml": strings.Replace(yaml, "reviewer: grok", "reviewer: gone", 1), "b.go": "package a\n"}, "missing profile")
+	r := h.validate(c.ID)
+	h.wait(r.ID)
+	done, _ := h.db.GetRun(ctx, r.ID)
+	var errored *run.Step
+	for i := range done.Steps {
+		if done.Steps[i].Name == "ai-grok" {
+			errored = &done.Steps[i]
+		}
+	}
+	if errored == nil || errored.Status != "errored" || !strings.Contains(errored.Error, `reviewer profile "gone" is not defined`) {
+		t.Errorf("step with a missing profile = %+v; run %s error %q", errored, done.Status, done.Error)
+	}
+	if done.Outcome == change.Approved {
+		t.Errorf("run with a missing profile was approved: %+v", done.Result)
 	}
 }
 

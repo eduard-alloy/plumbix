@@ -50,8 +50,9 @@ type Brief struct {
 	Base      string         `json:"base"`
 	Token     string         `json:"token,omitempty"`
 	ExpiresAt time.Time      `json:"expires_at"`
-	Tools     string         `json:"tools"`           // read-only or full, the operator's setting
-	Model     string         `json:"model,omitempty"` // the operator's model, if set
+	Tools     string         `json:"tools"`              // read-only or full, from the reviewer profile
+	Model     string         `json:"model,omitempty"`    // the profile's model, if set
+	Reviewer  string         `json:"reviewer,omitempty"` // the reviewer profile's name, if one applies (WU-028)
 	Prompt    Prompt         `json:"prompt"`
 	Schema    map[string]any `json:"schema"`
 	Criteria  []string       `json:"criteria"` // the criterion ids a verdict may name

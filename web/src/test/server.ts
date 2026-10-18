@@ -1,7 +1,7 @@
 // A fake server for page tests: fetch answers from fixtures, EventSource is
 // a hand-driven stub. Tests mutate `db` and call `emit` to simulate change.
 import { vi } from 'vitest'
-import type { Alert, Change, Diff, PipelineFile, PlumbixEvent, Repo, Run, Reviewer } from '../model'
+import type { Alert, Change, Diff, PipelineFile, PlumbixEvent, Repo, Run, Reviewer, ReviewerProfile, ReviewerInput, SettingsView, SecretStatus } from '../model'
 import * as fx from './fixtures'
 
 export interface FakeDB {
@@ -21,7 +21,9 @@ export interface FakeDB {
   liveLog: string[]
   secretUpdated: Record<string, string>
   secretChecks: Record<string, { ok: boolean; expires_at?: string; message: string }>
-  settings: { ai_model: string; ai_provider: 'anthropic' | 'openai'; ai_base_url: string; ai_tools: 'read-only' | 'full'; guidance: string }
+  settings: { guidance: string; default_reviewer: string }
+  /** profiles are the reviewer profiles, as the server stores them (no key). */
+  profiles: Omit<ReviewerProfile, 'key_set' | 'default'>[]
   repoGuidance: Record<string, string>
   repoTokens: Record<string, string>
   repoChecks: Record<string, { ok: boolean; message: string }>
@@ -35,21 +37,32 @@ const KNOWN_SECRETS = [
   { key: 'PLUMBIX_GITHUB_TOKEN', purpose: 'Default token for every GitHub repository: contents read and write; fetches, pushes merges, checks expiry. A fine-grained token covers only the repositories chosen for it; a repository can carry its own token on the Repositories page', host: 'github' },
   { key: 'PLUMBIX_AZURE_DEVOPS_TOKEN', purpose: 'Default personal access token for every Azure DevOps repository, code read and write; a repository can carry its own token on the Repositories page', host: 'azuredevops' },
   { key: 'PLUMBIX_AZURE_DEVOPS_TOKEN_EXPIRES', purpose: 'Expiry date of the Azure DevOps token, YYYY-MM-DD, for the warning a week before' },
-  { key: 'ANTHROPIC_API_KEY', purpose: 'Used by the AI validator step through the pipeline secrets list, with the anthropic provider' },
-  { key: 'OPENAI_API_KEY', purpose: 'Used by the AI validator step with the openai provider: the key of whichever OpenAI-compatible vendor the base URL points at' },
+  { key: 'ANTHROPIC_API_KEY', purpose: 'The Anthropic key an anthropic reviewer profile may name as its key secret; also read by a pipeline step that lists it' },
+  { key: 'OPENAI_API_KEY', purpose: 'The key of an OpenAI-compatible vendor an openai reviewer profile may name as its key secret; also read by a pipeline step that lists it' },
 ]
 
-function settingsView(db: FakeDB) {
+const reviewerNameRe = /^[a-z0-9][a-z0-9-]{0,31}$/
+const modelRe = /^[a-z0-9][a-z0-9.-]{0,80}$/
+
+function problems(list: { field: string; message: string }[]): Response {
+  return json(400, { error: { code: 'invalid_request', message: `the request has ${list.length} problem(s)`, details: { problems: list } } })
+}
+
+function settingsView(db: FakeDB): SettingsView {
+  const keyOf: Record<string, string[]> = {}
+  for (const p of db.profiles) (keyOf[p.key_secret] ??= []).push(p.name)
+  const purposeOf = (key: string, base: string) => (keyOf[key] ? `API key of reviewer profile ${keyOf[key].join(', ')}. ${base}` : base)
   const listed = new Set<string>()
-  const secrets = KNOWN_SECRETS.map((k) => {
+  const secrets: SecretStatus[] = KNOWN_SECRETS.map((k) => {
     listed.add(k.key)
     const set = k.key in db.secrets
-    return { key: k.key, set, known: true, purpose: k.purpose, host: k.host, updated_at: set ? db.secretUpdated[k.key] : undefined }
+    return { key: k.key, set, known: true, purpose: purposeOf(k.key, k.purpose), host: k.host, updated_at: set ? db.secretUpdated[k.key] : undefined }
   })
-  for (const key of Object.keys(db.secrets).sort()) {
-    if (!listed.has(key)) secrets.push({ key, set: true, known: false, purpose: 'Named by a pipeline step\'s secrets list', host: undefined, updated_at: db.secretUpdated[key] })
+  for (const key of [...new Set([...Object.keys(db.secrets), ...Object.keys(keyOf)])].sort()) {
+    if (!listed.has(key)) secrets.push({ key, set: key in db.secrets, known: false, purpose: purposeOf(key, keyOf[key] ? '' : 'Named by a pipeline step\'s secrets list'), host: undefined, updated_at: db.secretUpdated[key] })
   }
-  return { ai_model: db.settings.ai_model, ai_provider: db.settings.ai_provider, ai_base_url: db.settings.ai_base_url, ai_tools: db.settings.ai_tools, guidance: db.settings.guidance, secrets }
+  const reviewers: ReviewerProfile[] = [...db.profiles].sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ ...p, key_set: p.key_secret in db.secrets, default: p.name === db.settings.default_reviewer }))
+  return { guidance: db.settings.guidance, default_reviewer: db.settings.default_reviewer, reviewers, secrets }
 }
 
 export function freshDB(): FakeDB {
@@ -67,7 +80,8 @@ export function freshDB(): FakeDB {
     liveLog: ['$ go test ./... -count=1'],
     secretUpdated: {},
     secretChecks: {},
-    settings: { ai_model: '', ai_provider: 'anthropic', ai_base_url: '', ai_tools: 'read-only', guidance: '' },
+    settings: { guidance: '', default_reviewer: 'claude' },
+    profiles: [{ name: 'claude', kind: 'anthropic', base_url: '', model: '', tools: 'read-only', key_secret: 'ANTHROPIC_API_KEY', updated_at: '2026-10-18T08:00:00Z' }],
     repoGuidance: {},
     repoTokens: {},
     repoChecks: {},
@@ -155,25 +169,44 @@ export function fakeFetch(db: FakeDB): typeof fetch {
     if (path === '/api/v1/repos') return json(200, { repos: db.repos })
     if (path === '/api/v1/settings' && method === 'GET') return json(200, settingsView(db))
     if (path === '/api/v1/settings' && method === 'PUT') {
-      const body = JSON.parse(String(init?.body)) as { ai_model?: string; ai_provider?: 'anthropic' | 'openai'; ai_base_url?: string; ai_tools?: 'read-only' | 'full'; guidance?: string }
-      if (body.ai_provider !== undefined) {
-        if (body.ai_provider !== 'anthropic' && body.ai_provider !== 'openai') return error(400, 'invalid_request', `provider "${body.ai_provider}": must be anthropic or openai`)
-        db.settings.ai_provider = body.ai_provider
-      }
-      if (body.ai_base_url !== undefined) {
-        if (body.ai_base_url !== '' && !/^https?:\/\/\S+$/.test(body.ai_base_url)) return error(400, 'invalid_request', `base URL "${body.ai_base_url}": must be an http(s) URL such as https://api.openai.com/v1`)
-        db.settings.ai_base_url = body.ai_base_url
-      }
-      if (body.ai_tools !== undefined) {
-        if (body.ai_tools !== 'read-only' && body.ai_tools !== 'full') return error(400, 'invalid_request', `tools "${body.ai_tools}": must be read-only or full`)
-        db.settings.ai_tools = body.ai_tools
-      }
-      if (body.ai_model !== undefined) {
-        if (body.ai_model && !/^[a-z0-9][a-z0-9.-]{0,80}$/.test(body.ai_model)) return error(400, 'invalid_request', `model name "${body.ai_model}": lowercase letters, digits, dots and dashes only`)
-        db.settings.ai_model = body.ai_model
+      const body = JSON.parse(String(init?.body)) as { guidance?: string; default_reviewer?: string }
+      if (body.default_reviewer !== undefined) {
+        if (body.default_reviewer !== '' && !db.profiles.some((p) => p.name === body.default_reviewer)) return problems([{ field: 'default_reviewer', message: `there is no reviewer profile called "${body.default_reviewer}"` }])
+        db.settings.default_reviewer = body.default_reviewer
       }
       if (body.guidance !== undefined) db.settings.guidance = body.guidance.trim()
       return json(200, settingsView(db))
+    }
+    const profile = path.match(/^\/api\/v1\/settings\/reviewers\/([^/]+)$/)
+    if (profile && method === 'PUT') {
+      const name = decodeURIComponent(profile[1])
+      const body = JSON.parse(String(init?.body)) as ReviewerInput
+      const bad: { field: string; message: string }[] = []
+      if (!reviewerNameRe.test(name)) bad.push({ field: 'name', message: 'must be lowercase letters, digits and dashes, start with a letter or digit, at most 32 characters' })
+      if (body.kind !== 'anthropic' && body.kind !== 'openai') bad.push({ field: 'kind', message: 'must be anthropic or openai' })
+      const baseURL = body.kind === 'openai' ? (body.base_url ?? '').trim() : ''
+      if (body.kind === 'openai' && !baseURL) bad.push({ field: 'base_url', message: 'is required for an OpenAI-compatible reviewer: the chat-completions base such as https://api.openai.com/v1' })
+      else if (baseURL && !/^https?:\/\/\S+$/.test(baseURL)) bad.push({ field: 'base_url', message: `"${baseURL}" must be an http(s) URL such as https://api.openai.com/v1` })
+      const model = (body.model ?? '').trim()
+      if (model && !modelRe.test(model)) bad.push({ field: 'model', message: 'lowercase letters, digits, dots and dashes only' })
+      const tools = body.tools ?? 'read-only'
+      if (tools !== 'read-only' && tools !== 'full') bad.push({ field: 'tools', message: 'must be read-only or full' })
+      const keySecret = (body.key_secret ?? '').trim() || `PLUMBIX_REVIEWER_${name.toUpperCase().replace(/-/g, '_')}_KEY`
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(keySecret)) bad.push({ field: 'key_secret', message: 'must be a secret name: letters, digits and underscores, not starting with a digit' })
+      if (bad.length) return problems(bad)
+      const stored = { name, kind: body.kind, base_url: baseURL, model, tools, key_secret: keySecret, updated_at: new Date().toISOString() }
+      const i = db.profiles.findIndex((p) => p.name === name)
+      if (i >= 0) db.profiles[i] = stored
+      else db.profiles.push(stored)
+      return json(200, settingsView(db))
+    }
+    if (profile && method === 'DELETE') {
+      const name = decodeURIComponent(profile[1])
+      const i = db.profiles.findIndex((p) => p.name === name)
+      if (i < 0) return error(404, 'not_found', `reviewer profile ${name}`)
+      db.profiles.splice(i, 1)
+      if (db.settings.default_reviewer === name) db.settings.default_reviewer = ''
+      return new Response(null, { status: 204 })
     }
     const secret = path.match(/^\/api\/v1\/settings\/secrets\/([A-Za-z_][A-Za-z0-9_]*)(\/check)?$/)
     if (secret) {

@@ -1,0 +1,10 @@
+# reviewer must be a profile name.
+version: 1
+steps:
+  - name: test
+    image: golang:1.27
+    run: go test ./...
+  - name: ai
+    image: plumbix-ai-validator:dev
+    validator: true
+    reviewer: Grok 4

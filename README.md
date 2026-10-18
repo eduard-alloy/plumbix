@@ -45,9 +45,9 @@ git init --bare ~/git/myapp.git           # or point at an existing bare repo
 # then open http://127.0.0.1:6400: changes that need you first, verdict and evidence on each, merge with one click
 ```
 
-An AI review can run outside the pipeline too: a validator step with `external: true` waits for a verdict, and `plumbix review --watch` on any machine with Claude Code installed pulls the review brief, reads the change in a checkout, and posts the verdict, using whatever Claude login that machine already has. Settings decide whether such a reviewer may also run commands.
+An AI review can run outside the pipeline too: a validator step with `external: true` waits for a verdict, and `plumbix review --watch` on any machine with Claude Code installed pulls the review brief, reads the change in a checkout, and posts the verdict, using whatever Claude login that machine already has.
 
-The AI validator image asks Claude by default; set the provider to an OpenAI-compatible endpoint in Settings (base URL and model) to use OpenAI, Gemini, Grok, Kimi, DeepSeek, Groq or a local server, with the vendor's key as a step secret.
+Which model judges is a reviewer profile, defined under AI reviewers in Settings: Anthropic or any OpenAI-compatible endpoint (OpenAI, Gemini, Grok, Kimi, DeepSeek, Groq, a local server), with its base URL, model, key and whether a reviewer with tools may run commands. A validator step names its profile with `reviewer: <name>`; steps that name none get the default. Two validator steps with two profiles run side by side, so models can be compared on the same change.
 
 Plumbix also accepts `file://` paths and SSH remotes (`ssh://host/path` or `user@host:path`), which use your own SSH keys. Your repository needs a `.plumbix/pipeline.yaml`; see [ARCHITECTURE.md](ARCHITECTURE.md) section 4.2.
 

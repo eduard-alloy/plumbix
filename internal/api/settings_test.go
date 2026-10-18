@@ -37,10 +37,23 @@ func newSettingsAPI(t *testing.T) *settingsAPI {
 	return &settingsAPI{testAPI: &testAPI{t: t, h: h}, secretsPath: path}
 }
 
+type reviewerBody struct {
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	BaseURL   string `json:"base_url"`
+	Model     string `json:"model"`
+	Tools     string `json:"tools"`
+	KeySecret string `json:"key_secret"`
+	KeySet    bool   `json:"key_set"`
+	Default   bool   `json:"default"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 type settingsBody struct {
-	AIModel  string `json:"ai_model"`
-	Guidance string `json:"guidance"`
-	Secrets  []struct {
+	Guidance        string         `json:"guidance"`
+	DefaultReviewer string         `json:"default_reviewer"`
+	Reviewers       []reviewerBody `json:"reviewers"`
+	Secrets         []struct {
 		Key       string `json:"key"`
 		Set       bool   `json:"set"`
 		Known     bool   `json:"known"`
@@ -68,43 +81,114 @@ func TestSettingsEndpoints(t *testing.T) {
 	rec := a.do(http.MethodGet, "/api/v1/settings", "")
 	o.check("Settings", rec)
 	s := decode[settingsBody](t, rec)
-	if s.AIModel != "" || s.Guidance != "" || len(s.Secrets) < 4 {
+	if s.Guidance != "" || len(s.Reviewers) != 0 || s.DefaultReviewer != "" || len(s.Secrets) < 4 {
 		t.Fatalf("initial settings = %+v", s)
 	}
 	if s.Secrets[0].Key != "PLUMBIX_GITHUB_TOKEN" || s.Secrets[0].Set || !s.Secrets[0].Known || s.Secrets[0].Purpose == "" || s.Secrets[0].Host != "github" {
 		t.Errorf("first secret = %+v", s.Secrets[0])
 	}
 
-	rec = a.do(http.MethodPut, "/api/v1/settings", `{"ai_model": "claude-sonnet-5-5", "guidance": " Prefer small diffs. "}`)
+	rec = a.do(http.MethodPut, "/api/v1/settings", `{"guidance": " Prefer small diffs. "}`)
 	o.check("Settings", rec)
-	if s = decode[settingsBody](t, rec); rec.Code != http.StatusOK || s.AIModel != "claude-sonnet-5-5" || s.Guidance != "Prefer small diffs." {
+	if s = decode[settingsBody](t, rec); rec.Code != http.StatusOK || s.Guidance != "Prefer small diffs." {
 		t.Errorf("after PUT: %d %+v", rec.Code, s)
 	}
 	rec = a.do(http.MethodPut, "/api/v1/settings", `{"guidance": ""}`)
-	if s = decode[settingsBody](t, rec); s.Guidance != "" || s.AIModel != "claude-sonnet-5-5" {
-		t.Errorf("empty clears only the given field: %+v", s)
+	if s = decode[settingsBody](t, rec); s.Guidance != "" {
+		t.Errorf("empty clears the field: %+v", s)
 	}
-	rec = a.do(http.MethodPut, "/api/v1/settings", `{"ai_model": "not a model!"}`)
-	o.check("Error", rec)
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("bad model: %d", rec.Code)
+	// The WU-025 fields are gone: unknown fields are refused.
+	for _, body := range []string{`{"unknown": 1}`, `{"ai_model": "x"}`, `{"ai_provider": "openai"}`} {
+		if rec := a.do(http.MethodPut, "/api/v1/settings", body); rec.Code != http.StatusBadRequest {
+			t.Errorf("PUT %s: %d, want 400", body, rec.Code)
+		}
 	}
-	rec = a.do(http.MethodPut, "/api/v1/settings", `{"ai_provider": "openai", "ai_base_url": "https://api.x.ai/v1"}`)
+}
+
+// TestReviewerProfileEndpoints (WU-028): profiles are created and replaced
+// by name, listed in the settings with whether their key is set, made the
+// default, and removed; keys travel only through the secrets endpoint.
+func TestReviewerProfileEndpoints(t *testing.T) {
+	o := loadOpenAPI(t)
+	a := newSettingsAPI(t)
+
+	rec := a.do(http.MethodPut, "/api/v1/settings/reviewers/grok-4", `{"kind": "openai", "base_url": "https://api.x.ai/v1", "model": "grok-4"}`)
 	o.check("Settings", rec)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ai_provider":"openai"`) || !strings.Contains(rec.Body.String(), `"ai_base_url":"https://api.x.ai/v1"`) {
-		t.Errorf("provider settings: %d %s", rec.Code, rec.Body.String())
+	s := decode[settingsBody](t, rec)
+	if rec.Code != http.StatusOK || len(s.Reviewers) != 1 {
+		t.Fatalf("after creating a profile: %d %+v", rec.Code, s)
 	}
-	if rec := a.do(http.MethodPut, "/api/v1/settings", `{"ai_provider": "bedrock"}`); rec.Code != http.StatusBadRequest {
-		t.Errorf("bad provider: %d", rec.Code)
+	got := s.Reviewers[0]
+	want := reviewerBody{Name: "grok-4", Kind: "openai", BaseURL: "https://api.x.ai/v1", Model: "grok-4", Tools: "read-only", KeySecret: "PLUMBIX_REVIEWER_GROK_4_KEY", UpdatedAt: got.UpdatedAt}
+	if got != want || got.UpdatedAt == "" {
+		t.Errorf("profile = %+v\nwant %+v", got, want)
 	}
-	if rec := a.do(http.MethodPut, "/api/v1/settings", `{"ai_base_url": "api.x.ai/v1"}`); rec.Code != http.StatusBadRequest {
-		t.Errorf("bad base URL: %d", rec.Code)
+
+	// The key goes in as a secret under the profile's key_secret; the
+	// profile then shows key_set, and the secret is listed as the profile's.
+	if rec := a.do(http.MethodPut, "/api/v1/settings/secrets/PLUMBIX_REVIEWER_GROK_4_KEY", `{"value": "xai-secret-1"}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("set key: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := a.do(http.MethodPut, "/api/v1/settings", `{"ai_provider": "anthropic", "ai_base_url": ""}`); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ai_provider":"anthropic"`) || !strings.Contains(rec.Body.String(), `"ai_base_url":""`) {
-		t.Errorf("reset provider: %d %s", rec.Code, rec.Body.String())
+	rec = a.do(http.MethodGet, "/api/v1/settings", "")
+	s = decode[settingsBody](t, rec)
+	if !s.Reviewers[0].KeySet || strings.Contains(rec.Body.String(), "xai-secret-1") {
+		t.Errorf("after setting the key: key_set %v, body leaks the value %v", s.Reviewers[0].KeySet, strings.Contains(rec.Body.String(), "xai-secret-1"))
 	}
-	if rec := a.do(http.MethodPut, "/api/v1/settings", `{"unknown": 1}`); rec.Code != http.StatusBadRequest {
-		t.Errorf("unknown field: %d", rec.Code)
+	var keyPurpose string
+	for _, x := range s.Secrets {
+		if x.Key == "PLUMBIX_REVIEWER_GROK_4_KEY" {
+			keyPurpose = x.Purpose
+		}
+	}
+	if !strings.Contains(keyPurpose, "grok-4") {
+		t.Errorf("the key secret's purpose = %q, want it to name the profile", keyPurpose)
+	}
+
+	// A second profile sharing the known Anthropic key; a put replaces.
+	a.do(http.MethodPut, "/api/v1/settings/reviewers/claude", `{"kind": "anthropic", "model": "claude-sonnet-5-5", "tools": "full", "key_secret": "ANTHROPIC_API_KEY"}`)
+	rec = a.do(http.MethodPut, "/api/v1/settings/reviewers/claude", `{"kind": "anthropic", "model": "claude-haiku-5-5", "tools": "full", "key_secret": "ANTHROPIC_API_KEY"}`)
+	s = decode[settingsBody](t, rec)
+	if len(s.Reviewers) != 2 || s.Reviewers[0].Name != "claude" || s.Reviewers[0].Model != "claude-haiku-5-5" || s.Reviewers[0].KeySet {
+		t.Errorf("after the second profile: %+v", s.Reviewers)
+	}
+
+	// The default.
+	rec = a.do(http.MethodPut, "/api/v1/settings", `{"default_reviewer": "grok-4"}`)
+	o.check("Settings", rec)
+	if s = decode[settingsBody](t, rec); rec.Code != http.StatusOK || s.DefaultReviewer != "grok-4" || !s.Reviewers[1].Default || s.Reviewers[0].Default {
+		t.Errorf("default: %d %+v", rec.Code, s)
+	}
+	rec = a.do(http.MethodPut, "/api/v1/settings", `{"default_reviewer": "nobody"}`)
+	o.check("Error", rec)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "default_reviewer") {
+		t.Errorf("unknown default: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Refusals name the field.
+	for _, c := range []struct{ path, body, field string }{
+		{"/api/v1/settings/reviewers/grok-4", `{"kind": "bedrock"}`, "kind"},
+		{"/api/v1/settings/reviewers/grok-4", `{"kind": "openai"}`, "base_url"},
+		{"/api/v1/settings/reviewers/grok-4", `{"kind": "anthropic", "model": "Not A Model"}`, "model"},
+		{"/api/v1/settings/reviewers/Grok", `{"kind": "anthropic"}`, "name"},
+		{"/api/v1/settings/reviewers/grok-4", `{"kind": "anthropic", "nope": 1}`, ""},
+	} {
+		rec := a.do(http.MethodPut, c.path, c.body)
+		o.check("Error", rec)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), c.field) {
+			t.Errorf("PUT %s %s: %d %s, want 400 naming %q", c.path, c.body, rec.Code, rec.Body.String(), c.field)
+		}
+	}
+
+	// Removal clears the default; a second removal is 404.
+	if rec := a.do(http.MethodDelete, "/api/v1/settings/reviewers/grok-4", ""); rec.Code != http.StatusNoContent {
+		t.Errorf("delete: %d %s", rec.Code, rec.Body.String())
+	}
+	s = decode[settingsBody](t, a.do(http.MethodGet, "/api/v1/settings", ""))
+	if len(s.Reviewers) != 1 || s.DefaultReviewer != "" {
+		t.Errorf("after delete: %+v", s)
+	}
+	if rec := a.do(http.MethodDelete, "/api/v1/settings/reviewers/grok-4", ""); rec.Code != http.StatusNotFound {
+		t.Errorf("second delete: %d", rec.Code)
 	}
 }
 

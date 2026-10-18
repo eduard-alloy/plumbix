@@ -218,15 +218,39 @@ export interface SecretStatus {
   updated_at?: string
 }
 
+export type ReviewerKind = 'anthropic' | 'openai'
+export type ReviewerTools = 'read-only' | 'full'
+
+/** ReviewerProfile is a named model configuration a validator step is bound to with reviewer: <name> (WU-028). */
+export interface ReviewerProfile {
+  name: string
+  kind: ReviewerKind
+  /** For openai: the chat-completions base, such as https://api.openai.com/v1. */
+  base_url: string
+  /** Empty means the kind's default. */
+  model: string
+  /** Whether a reviewer with tools (Claude Code) may run commands. */
+  tools: ReviewerTools
+  /** The secret holding the key; set through the secrets endpoint, never shown. */
+  key_secret: string
+  updated_at: string
+  key_set: boolean
+  default: boolean
+}
+
+export interface ReviewerInput {
+  kind: ReviewerKind
+  base_url?: string
+  model?: string
+  tools?: ReviewerTools
+  key_secret?: string
+}
+
 export interface SettingsView {
-  ai_model: string
-  /** What the container AI validator asks: Claude through Anthropic, or any OpenAI-compatible endpoint. */
-  ai_provider: 'anthropic' | 'openai'
-  /** The openai provider's chat-completions base, such as https://api.openai.com/v1. */
-  ai_base_url: string
-  /** Whether external reviewers may run commands: 'read-only' or 'full'. */
-  ai_tools: 'read-only' | 'full'
   guidance: string
+  /** The profile judging validator steps that name none; empty for no default. */
+  default_reviewer: string
+  reviewers: ReviewerProfile[]
   secrets: SecretStatus[]
 }
 
@@ -283,6 +307,10 @@ export interface PipelineStep {
   artifacts: string[]
   timeout?: string
   validator: boolean
+  /** The validator waits for a reviewer outside the pipeline. */
+  external: boolean
+  /** The reviewer profile the validator step names; absent for the default. */
+  reviewer?: string
   retries: number
   allow_failure: boolean
   paths: string[]
