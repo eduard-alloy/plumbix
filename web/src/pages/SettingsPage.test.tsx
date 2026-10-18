@@ -72,47 +72,51 @@ describe('Settings page', () => {
     expect(row('MY_DEPLOY_KEY').textContent).toContain('Named by a pipeline step')
   })
 
-  it('lists the reviewer profiles with their key, which steps they judge, and lets the operator change tools and model', async () => {
+  it('lists both families: the API profile with its key, the Claude Code profile with tools and the steps it answers', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'Settings' })
-    const card = await screen.findByLabelText('Reviewer claude')
-    expect(card.textContent).toContain('default')
-    expect(card.textContent).toContain('Anthropic')
-    // The default judges the steps naming no reviewer: ledger-api's external ai-review.
-    await waitFor(() => expect(card.textContent).toContain('Judges ledger-api: ai-review'))
-    expect(card.textContent).not.toContain('ai-grok')
+    const apiCard = await screen.findByLabelText('Reviewer claude-api')
+    expect(apiCard.textContent).toContain('default for pipeline validators')
+    expect(apiCard.textContent).toContain('Anthropic API')
+    expect(apiCard.textContent).toContain('billed per token')
+    expect(within(apiCard).queryByLabelText('Read only')).toBeNull()
     // Its key is the known Anthropic key, set from the card and never shown.
-    expect(within(card).getByText('ANTHROPIC_API_KEY', { selector: '.secret .key' })).toBeTruthy()
-    expect(within(card).getByText('ANTHROPIC_API_KEY', { selector: '.secret .key' }).closest('.secret')!.textContent).toContain('Not set')
-    const anthropicRow = within(card).getByText('ANTHROPIC_API_KEY', { selector: '.secret .key' }).closest('.secret') as HTMLElement
+    const anthropicRow = within(apiCard).getByText('ANTHROPIC_API_KEY', { selector: '.secret .key' }).closest('.secret') as HTMLElement
+    expect(anthropicRow.textContent).toContain('Not set')
     fireEvent.click(within(anthropicRow).getByRole('button', { name: 'Set' }))
     fireEvent.change(within(anthropicRow).getByLabelText('ANTHROPIC_API_KEY value'), { target: { value: 'sk-ant-secret' } })
     fireEvent.click(within(anthropicRow).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(db.secrets.ANTHROPIC_API_KEY).toBe('sk-ant-secret'))
     expect(document.body.textContent).not.toContain('sk-ant-secret')
-    // The Anthropic key is not repeated under Other secrets.
     expect(screen.getAllByText('ANTHROPIC_API_KEY', { selector: '.secret .key' })).toHaveLength(1)
 
-    // Tools and model.
-    const full = within(card).getByLabelText('Full, including commands') as HTMLInputElement
-    expect((within(card).getByLabelText('Read only') as HTMLInputElement).checked).toBe(true)
+    // The Claude Code profile: subscription, no key row, tools, and the external steps naming none.
+    const codeCard = screen.getByLabelText('Reviewer claude-code')
+    expect(codeCard.textContent).toContain('default for external reviews')
+    expect(codeCard.textContent).toContain('subscription quota')
+    expect(codeCard.querySelector('.secret')).toBeNull()
+    expect(within(codeCard).queryByLabelText('Key secret')).toBeNull()
+    await waitFor(() => expect(screen.getByLabelText('Reviewer claude-code').textContent).toContain('Judges ledger-api: ai-review'))
+    expect(screen.getByLabelText('Reviewer claude-code').textContent).not.toContain('ai-grok')
+    const full = within(codeCard).getByLabelText('Full, including commands') as HTMLInputElement
+    expect((within(codeCard).getByLabelText('Read only') as HTMLInputElement).checked).toBe(true)
     fireEvent.click(full)
-    fireEvent.change(within(card).getByLabelText('Model'), { target: { value: 'claude-sonnet-5-5' } })
-    fireEvent.click(within(card).getByRole('button', { name: 'Save reviewer' }))
-    await waitFor(() => expect(db.profiles.find((p) => p.name === 'claude')?.tools).toBe('full'))
-    expect(db.profiles.find((p) => p.name === 'claude')?.model).toBe('claude-sonnet-5-5')
-    await waitFor(() => expect(screen.getByLabelText('Reviewer claude').textContent).toContain('Saved'))
+    fireEvent.change(within(codeCard).getByLabelText('Model'), { target: { value: 'claude-sonnet-5-5' } })
+    fireEvent.click(within(codeCard).getByRole('button', { name: 'Save reviewer' }))
+    await waitFor(() => expect(db.profiles.find((p) => p.name === 'claude-code')?.tools).toBe('full'))
+    expect(db.profiles.find((p) => p.name === 'claude-code')?.model).toBe('claude-sonnet-5-5')
+    await waitFor(() => expect(screen.getByLabelText('Reviewer claude-code').textContent).toContain('Saved'))
 
     // A refusal is shown inline, naming the field.
-    fireEvent.change(within(screen.getByLabelText('Reviewer claude')).getByLabelText('Model'), { target: { value: 'Not A Model' } })
-    fireEvent.click(within(screen.getByLabelText('Reviewer claude')).getByRole('button', { name: 'Save reviewer' }))
+    fireEvent.change(within(screen.getByLabelText('Reviewer claude-api')).getByLabelText('Model'), { target: { value: 'Not A Model' } })
+    fireEvent.click(within(screen.getByLabelText('Reviewer claude-api')).getByRole('button', { name: 'Save reviewer' }))
     await screen.findByText(/model lowercase letters, digits, dots and dashes only/)
   })
 
   it('adds an OpenAI-compatible reviewer with its own key, makes it the default, and removes it', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'Settings' })
-    await screen.findByLabelText('Reviewer claude')
+    await screen.findByLabelText('Reviewer claude-api')
     const add = within(screen.getByLabelText('Add a reviewer'))
     fireEvent.change(add.getByLabelText('Name'), { target: { value: 'grok-4' } })
     expect((add.getByLabelText('Kind') as HTMLSelectElement).value).toBe('openai')
@@ -122,7 +126,8 @@ describe('Settings page', () => {
     fireEvent.click(add.getByRole('button', { name: 'Add reviewer' }))
     const card = await screen.findByLabelText('Reviewer grok-4')
     expect(db.profiles.find((p) => p.name === 'grok-4')).toMatchObject({ kind: 'openai', base_url: 'https://api.x.ai/v1', model: 'grok-4', tools: 'read-only', key_secret: 'PLUMBIX_REVIEWER_GROK_4_KEY' })
-    expect(card.textContent).toContain('OpenAI-compatible')
+    expect(card.textContent).toContain('OpenAI-compatible API')
+    expect(card.textContent).toContain('billed by its vendor')
     // ledger-api's ai-grok step names it.
     await waitFor(() => expect(screen.getByLabelText('Reviewer grok-4').textContent).toContain('Judges ledger-api: ai-grok'))
     // Its key.
@@ -134,21 +139,24 @@ describe('Settings page', () => {
     await waitFor(() => expect(db.secrets.PLUMBIX_REVIEWER_GROK_4_KEY).toBe('xai-secret'))
     expect(document.body.textContent).not.toContain('xai-secret')
     await waitFor(() => expect(within(screen.getByLabelText('Reviewer grok-4')).getByText('PLUMBIX_REVIEWER_GROK_4_KEY', { selector: '.secret .key' }).closest('.secret')!.textContent).toContain('Set'))
-    // Default moves.
+    // The api default moves; the external one stays.
     fireEvent.click(within(screen.getByLabelText('Reviewer grok-4')).getByRole('button', { name: 'Make default' }))
-    await waitFor(() => expect(db.settings.default_reviewer).toBe('grok-4'))
-    await waitFor(() => expect(screen.getByLabelText('Reviewer grok-4').textContent).toContain('default'))
-    expect(within(screen.getByLabelText('Reviewer claude')).queryByText('default', { selector: '.default-tag' })).toBeNull()
-    // Removal clears the default.
+    await waitFor(() => expect(db.settings.defaults.api).toBe('grok-4'))
+    expect(db.settings.defaults.external).toBe('claude-code')
+    await waitFor(() => expect(screen.getByLabelText('Reviewer grok-4').textContent).toContain('default for pipeline validators'))
+    expect(screen.getByLabelText('Reviewer claude-api').querySelector('.default-tag')).toBeNull()
+    expect(screen.getByLabelText('Reviewer claude-code').textContent).toContain('default for external reviews')
+    // Removal clears its family's default.
     fireEvent.click(within(screen.getByLabelText('Reviewer grok-4')).getByRole('button', { name: 'Delete' }))
     await waitFor(() => expect(screen.queryByLabelText('Reviewer grok-4')).toBeNull())
-    expect(db.settings.default_reviewer).toBe('')
+    expect(db.settings.defaults.api).toBe('')
+    expect(db.settings.defaults.external).toBe('claude-code')
   })
 
   it('refuses a profile the server rejects, naming the field', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'Settings' })
-    await screen.findByLabelText('Reviewer claude')
+    await screen.findByLabelText('Reviewer claude-api')
     const add = within(screen.getByLabelText('Add a reviewer'))
     fireEvent.change(add.getByLabelText('Name'), { target: { value: 'local' } })
     fireEvent.change(add.getByLabelText('Base URL'), { target: { value: 'localhost:11434' } })
@@ -159,7 +167,7 @@ describe('Settings page', () => {
   it('shows which external reviewers the server has heard from, or how to start one', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'Settings' })
-    expect(document.body.textContent).toContain('answered by plumbix review --watch running Claude Code')
+    expect(document.body.textContent).toContain('answered outside the pipeline by plumbix review --watch')
     const section = (await screen.findByRole('heading', { name: 'External reviewers' })).parentElement!
     await waitFor(() => expect(section.textContent).toContain('No reviewer has polled since the server started'))
     expect(section.textContent).toContain('plumbix review install')

@@ -21,9 +21,9 @@ export interface FakeDB {
   liveLog: string[]
   secretUpdated: Record<string, string>
   secretChecks: Record<string, { ok: boolean; expires_at?: string; message: string }>
-  settings: { guidance: string; default_reviewer: string }
+  settings: { guidance: string; defaults: { api: string; external: string } }
   /** profiles are the reviewer profiles, as the server stores them (no key). */
-  profiles: Omit<ReviewerProfile, 'key_set' | 'default'>[]
+  profiles: Omit<ReviewerProfile, 'key_set' | 'default' | 'family'>[]
   repoGuidance: Record<string, string>
   repoTokens: Record<string, string>
   repoChecks: Record<string, { ok: boolean; message: string }>
@@ -43,6 +43,7 @@ const KNOWN_SECRETS = [
 
 const reviewerNameRe = /^[a-z0-9][a-z0-9-]{0,31}$/
 const modelRe = /^[a-z0-9][a-z0-9.-]{0,80}$/
+const familyOf = (kind: string): 'api' | 'external' => (kind === 'claude-code' ? 'external' : 'api')
 
 function problems(list: { field: string; message: string }[]): Response {
   return json(400, { error: { code: 'invalid_request', message: `the request has ${list.length} problem(s)`, details: { problems: list } } })
@@ -61,8 +62,8 @@ function settingsView(db: FakeDB): SettingsView {
   for (const key of [...new Set([...Object.keys(db.secrets), ...Object.keys(keyOf)])].sort()) {
     if (!listed.has(key)) secrets.push({ key, set: key in db.secrets, known: false, purpose: purposeOf(key, keyOf[key] ? '' : 'Named by a pipeline step\'s secrets list'), host: undefined, updated_at: db.secretUpdated[key] })
   }
-  const reviewers: ReviewerProfile[] = [...db.profiles].sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ ...p, key_set: p.key_secret in db.secrets, default: p.name === db.settings.default_reviewer }))
-  return { guidance: db.settings.guidance, default_reviewer: db.settings.default_reviewer, reviewers, secrets }
+  const reviewers: ReviewerProfile[] = [...db.profiles].sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ ...p, family: familyOf(p.kind), key_set: p.key_secret !== '' && p.key_secret in db.secrets, default: p.name === db.settings.defaults[familyOf(p.kind)] }))
+  return { guidance: db.settings.guidance, defaults: { ...db.settings.defaults }, reviewers, secrets }
 }
 
 export function freshDB(): FakeDB {
@@ -80,8 +81,11 @@ export function freshDB(): FakeDB {
     liveLog: ['$ go test ./... -count=1'],
     secretUpdated: {},
     secretChecks: {},
-    settings: { guidance: '', default_reviewer: 'claude' },
-    profiles: [{ name: 'claude', kind: 'anthropic', base_url: '', model: '', tools: 'read-only', key_secret: 'ANTHROPIC_API_KEY', updated_at: '2026-10-18T08:00:00Z' }],
+    settings: { guidance: '', defaults: { api: 'claude-api', external: 'claude-code' } },
+    profiles: [
+      { name: 'claude-api', kind: 'anthropic', base_url: '', model: '', tools: 'read-only', key_secret: 'ANTHROPIC_API_KEY', updated_at: '2026-10-18T08:00:00Z' },
+      { name: 'claude-code', kind: 'claude-code', base_url: '', model: '', tools: 'read-only', key_secret: '', updated_at: '2026-10-18T08:00:00Z' },
+    ],
     repoGuidance: {},
     repoTokens: {},
     repoChecks: {},
@@ -171,8 +175,9 @@ export function fakeFetch(db: FakeDB): typeof fetch {
     if (path === '/api/v1/settings' && method === 'PUT') {
       const body = JSON.parse(String(init?.body)) as { guidance?: string; default_reviewer?: string }
       if (body.default_reviewer !== undefined) {
-        if (body.default_reviewer !== '' && !db.profiles.some((p) => p.name === body.default_reviewer)) return problems([{ field: 'default_reviewer', message: `there is no reviewer profile called "${body.default_reviewer}"` }])
-        db.settings.default_reviewer = body.default_reviewer
+        const p = db.profiles.find((x) => x.name === body.default_reviewer)
+        if (!p) return problems([{ field: 'default_reviewer', message: `there is no reviewer profile called "${body.default_reviewer}"` }])
+        db.settings.defaults[familyOf(p.kind)] = p.name
       }
       if (body.guidance !== undefined) db.settings.guidance = body.guidance.trim()
       return json(200, settingsView(db))
@@ -183,7 +188,9 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       const body = JSON.parse(String(init?.body)) as ReviewerInput
       const bad: { field: string; message: string }[] = []
       if (!reviewerNameRe.test(name)) bad.push({ field: 'name', message: 'must be lowercase letters, digits and dashes, start with a letter or digit, at most 32 characters' })
-      if (body.kind !== 'anthropic' && body.kind !== 'openai') bad.push({ field: 'kind', message: 'must be anthropic or openai' })
+      if (body.kind !== 'anthropic' && body.kind !== 'openai' && body.kind !== 'claude-code') bad.push({ field: 'kind', message: 'must be anthropic, openai or claude-code' })
+      if (body.kind === 'claude-code' && body.key_secret) bad.push({ field: 'key_secret', message: 'is not for Claude Code: it uses the subscription of the machine running plumbix review, no key' })
+      if (body.kind === 'claude-code' && body.base_url) bad.push({ field: 'base_url', message: 'is not for Claude Code' })
       const baseURL = body.kind === 'openai' ? (body.base_url ?? '').trim() : ''
       if (body.kind === 'openai' && !baseURL) bad.push({ field: 'base_url', message: 'is required for an OpenAI-compatible reviewer: the chat-completions base such as https://api.openai.com/v1' })
       else if (baseURL && !/^https?:\/\/\S+$/.test(baseURL)) bad.push({ field: 'base_url', message: `"${baseURL}" must be an http(s) URL such as https://api.openai.com/v1` })
@@ -191,8 +198,8 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       if (model && !modelRe.test(model)) bad.push({ field: 'model', message: 'lowercase letters, digits, dots and dashes only' })
       const tools = body.tools ?? 'read-only'
       if (tools !== 'read-only' && tools !== 'full') bad.push({ field: 'tools', message: 'must be read-only or full' })
-      const keySecret = (body.key_secret ?? '').trim() || `PLUMBIX_REVIEWER_${name.toUpperCase().replace(/-/g, '_')}_KEY`
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(keySecret)) bad.push({ field: 'key_secret', message: 'must be a secret name: letters, digits and underscores, not starting with a digit' })
+      const keySecret = body.kind === 'claude-code' ? '' : (body.key_secret ?? '').trim() || `PLUMBIX_REVIEWER_${name.toUpperCase().replace(/-/g, '_')}_KEY`
+      if (keySecret && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(keySecret)) bad.push({ field: 'key_secret', message: 'must be a secret name: letters, digits and underscores, not starting with a digit' })
       if (bad.length) return problems(bad)
       const stored = { name, kind: body.kind, base_url: baseURL, model, tools, key_secret: keySecret, updated_at: new Date().toISOString() }
       const i = db.profiles.findIndex((p) => p.name === name)
@@ -204,8 +211,8 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       const name = decodeURIComponent(profile[1])
       const i = db.profiles.findIndex((p) => p.name === name)
       if (i < 0) return error(404, 'not_found', `reviewer profile ${name}`)
-      db.profiles.splice(i, 1)
-      if (db.settings.default_reviewer === name) db.settings.default_reviewer = ''
+      const [gone] = db.profiles.splice(i, 1)
+      if (db.settings.defaults[familyOf(gone.kind)] === name) db.settings.defaults[familyOf(gone.kind)] = ''
       return new Response(null, { status: 204 })
     }
     const secret = path.match(/^\/api\/v1\/settings\/secrets\/([A-Za-z_][A-Za-z0-9_]*)(\/check)?$/)

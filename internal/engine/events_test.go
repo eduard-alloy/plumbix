@@ -196,20 +196,23 @@ func TestStepsAreRecordedAsTheyFinish(t *testing.T) {
 }
 
 // fakeSettings stands in for the operator's settings: guidance and the
-// reviewer profiles (WU-028), with def naming the default profile.
+// reviewer profiles (WU-028), with def and defExternal naming each
+// family's default (A29).
 type fakeSettings struct {
-	global, repo string
-	reviewers    map[string]settings.Reviewer
-	def          string
+	global, repo     string
+	reviewers        map[string]settings.Reviewer
+	def, defExternal string
 }
 
 func (f fakeSettings) Guidance(context.Context, string) (settings.Guidance, error) {
 	return settings.Guidance{Global: f.global, Repository: f.repo}, nil
 }
 
-func (f fakeSettings) Reviewer(_ context.Context, name string) (settings.Reviewer, bool, error) {
+func (f fakeSettings) Reviewer(_ context.Context, name string, family settings.Family) (settings.Reviewer, bool, error) {
 	if name == "" {
-		name = f.def
+		if name = f.def; family == settings.FamilyExternal {
+			name = f.defExternal
+		}
 	}
 	r, ok := f.reviewers[name]
 	return r, ok, nil
@@ -220,6 +223,9 @@ func (f fakeSettings) Reviewer(_ context.Context, name string) (settings.Reviewe
 var claudeProfile = settings.Reviewer{Name: "claude", Kind: settings.KindAnthropic, Model: "claude-sonnet-5-5", BaseURL: "https://api.openai.com/v1", Tools: review.ToolsFull, KeySecret: "ANTHROPIC_API_KEY"}
 
 var grokProfile = settings.Reviewer{Name: "grok", Kind: settings.KindOpenAI, BaseURL: "https://api.x.ai/v1", Model: "grok-4", Tools: review.ToolsReadOnly, KeySecret: "PLUMBIX_REVIEWER_GROK_KEY"}
+
+// macProfile is a claude-code profile: the loop on a person's machine.
+var macProfile = settings.Reviewer{Name: "mac", Kind: settings.KindClaudeCode, Model: "claude-sonnet-5-5", Tools: review.ToolsFull}
 
 // TestValidatorsGetGuidanceAndModel: validator steps see the operator's
 // guidance in change.json and the default profile's model as
@@ -288,7 +294,7 @@ steps:
 `
 	claude2 := claudeProfile
 	claude2.Name, claude2.KeySecret = "claude2", "CLAUDE2_KEY"
-	h := newHarness(t, Config{Settings: fakeSettings{reviewers: map[string]settings.Reviewer{"claude": claudeProfile, "claude2": claude2, "grok": grokProfile}, def: "claude"}, Secrets: map[string]string{"PLUMBIX_REVIEWER_GROK_KEY": "xai-test", "ANTHROPIC_API_KEY": "sk-ant-test", "CLAUDE2_KEY": "sk-other"}})
+	h := newHarness(t, Config{Settings: fakeSettings{reviewers: map[string]settings.Reviewer{"claude": claudeProfile, "claude2": claude2, "grok": grokProfile, "mac": macProfile}, def: "claude"}, Secrets: map[string]string{"PLUMBIX_REVIEWER_GROK_KEY": "xai-test", "ANTHROPIC_API_KEY": "sk-ant-test", "CLAUDE2_KEY": "sk-other"}})
 	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": yaml}, "two profiles")
 	h.repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
 	c := h.submit("feat")
@@ -332,6 +338,20 @@ steps:
 	}
 	if done.Outcome == change.Approved {
 		t.Errorf("run with a missing profile was approved: %+v", done.Result)
+	}
+
+	// A claude-code profile on a container step: the wrong family (A29).
+	h.repo.Commit("feat", map[string]string{".plumbix/pipeline.yaml": strings.Replace(yaml, "reviewer: grok", "reviewer: mac", 1), "c.go": "package a\n"}, "wrong family")
+	r = h.validate(c.ID)
+	done, _ = h.db.GetRun(ctx, r.ID)
+	var wrong string
+	for _, st := range done.Steps {
+		if st.Name == "ai-grok" {
+			wrong = st.Error
+		}
+	}
+	if !strings.Contains(wrong, "Claude Code profile, which answers external steps only") || done.Outcome == change.Approved {
+		t.Errorf("container step with a claude-code profile: error %q outcome %s", wrong, done.Outcome)
 	}
 }
 

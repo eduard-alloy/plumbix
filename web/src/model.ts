@@ -218,13 +218,17 @@ export interface SecretStatus {
   updated_at?: string
 }
 
-export type ReviewerKind = 'anthropic' | 'openai'
+/** anthropic and openai are API kinds (the container validator, billed per token); claude-code is the external loop on a person's machine, on its subscription. */
+export type ReviewerKind = 'anthropic' | 'openai' | 'claude-code'
 export type ReviewerTools = 'read-only' | 'full'
+/** Where a profile runs: api profiles judge from the container validator, the external one answers external steps. */
+export type ReviewerFamily = 'api' | 'external'
 
-/** ReviewerProfile is a named model configuration a validator step is bound to with reviewer: <name> (WU-028). */
+/** ReviewerProfile is a named model configuration a validator step is bound to with reviewer: <name> (WU-028, A29). */
 export interface ReviewerProfile {
   name: string
   kind: ReviewerKind
+  family: ReviewerFamily
   /** For openai: the chat-completions base, such as https://api.openai.com/v1. */
   base_url: string
   /** Empty means the kind's default. */
@@ -235,6 +239,7 @@ export interface ReviewerProfile {
   key_secret: string
   updated_at: string
   key_set: boolean
+  /** Whether this is its family's default. */
   default: boolean
 }
 
@@ -248,8 +253,8 @@ export interface ReviewerInput {
 
 export interface SettingsView {
   guidance: string
-  /** The profile judging validator steps that name none; empty for no default. */
-  default_reviewer: string
+  /** Each family's default profile name; empty for none. */
+  defaults: { api: string; external: string }
   reviewers: ReviewerProfile[]
   secrets: SecretStatus[]
 }

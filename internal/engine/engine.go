@@ -76,9 +76,9 @@ type Config struct {
 // Settings is what the engine reads from the operator's settings.
 type Settings interface {
 	Guidance(ctx context.Context, repoID string) (settings.Guidance, error)
-	// Reviewer returns the reviewer profile called name, or the default
-	// profile for an empty name; ok is false when there is none (WU-028).
-	Reviewer(ctx context.Context, name string) (r settings.Reviewer, ok bool, err error)
+	// Reviewer returns the reviewer profile called name, or family's
+	// default for an empty name; ok is false when there is none (WU-028, A29).
+	Reviewer(ctx context.Context, name string, family settings.Family) (r settings.Reviewer, ok bool, err error)
 }
 
 // Engine runs validations in the background.
@@ -594,12 +594,16 @@ func (e *Engine) setupValidator(r run.Run, p prepared, work string, st pipeline.
 		// The reviewer profile the step is bound to, or the default: it
 		// reaches the container as the AI validator's environment, the key
 		// included; a secret the step lists under the same name wins.
-		prof, ok, err := e.reviewerProfile(context.Background(), st)
-		if err != nil {
-			return scheduler.StepSetup{}, err
-		}
-		if ok {
-			setup.Env = profileEnv(prof, e.secrets())
+		// An external step has no container; waitExternal resolves its own
+		// (claude-code) profile into the brief.
+		if !st.External {
+			prof, ok, err := e.reviewerProfile(context.Background(), st, settings.FamilyAPI)
+			if err != nil {
+				return scheduler.StepSetup{}, err
+			}
+			if ok {
+				setup.Env = profileEnv(prof, e.secrets())
+			}
 		}
 	}
 	if err := validation.PrepareInputs(in, input, evidence); err != nil {
@@ -753,18 +757,26 @@ func short(sha string) string {
 }
 
 // reviewerProfile resolves the profile a validator step judges with: the
-// one it names, else the default. A named profile that does not exist is
-// an error that fails the step, so a typo never judges with another model.
-func (e *Engine) reviewerProfile(ctx context.Context, st pipeline.Step) (settings.Reviewer, bool, error) {
+// one it names, else family's default. A named profile that does not
+// exist, or one of the other family, is an error that fails the step, so
+// a typo never judges with another model and an API profile is never
+// asked to answer an external step or the reverse (A29).
+func (e *Engine) reviewerProfile(ctx context.Context, st pipeline.Step, family settings.Family) (settings.Reviewer, bool, error) {
 	if e.cfg.Settings == nil {
 		return settings.Reviewer{}, false, nil
 	}
-	r, ok, err := e.cfg.Settings.Reviewer(ctx, st.Reviewer)
+	r, ok, err := e.cfg.Settings.Reviewer(ctx, st.Reviewer, family)
 	if err != nil {
 		return settings.Reviewer{}, false, fmt.Errorf("read reviewer profile: %w", err)
 	}
 	if st.Reviewer != "" && !ok {
 		return settings.Reviewer{}, false, fmt.Errorf("reviewer profile %q is not defined: add it under AI reviewers in Settings, or remove reviewer from step %s", st.Reviewer, st.Name)
+	}
+	if ok && r.Family() != family {
+		if family == settings.FamilyExternal {
+			return settings.Reviewer{}, false, fmt.Errorf("reviewer profile %q is a %s profile, but step %s is external and is answered by Claude Code (plumbix review --watch): name a claude-code profile, or none for the external default", r.Name, settings.KindLabel(r.Kind), st.Name)
+		}
+		return settings.Reviewer{}, false, fmt.Errorf("reviewer profile %q is a Claude Code profile, which answers external steps only: make step %s external: true, or name an API profile", r.Name, st.Name)
 	}
 	return r, ok, nil
 }

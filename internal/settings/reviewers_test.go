@@ -15,13 +15,15 @@ func TestReviewerProfilesAreStoredValidatedAndDefaulted(t *testing.T) {
 	ctx := context.Background()
 	s := newService(t)
 
-	// Nothing yet: no profiles, no default.
+	// Nothing yet: no profiles, no defaults.
 	list, err := s.Reviewers(ctx)
 	if err != nil || len(list) != 0 {
 		t.Fatalf("reviewers = %v %v, want none", list, err)
 	}
-	if _, ok, err := s.Reviewer(ctx, ""); err != nil || ok {
-		t.Fatalf("default reviewer = ok %v %v, want none", ok, err)
+	for _, family := range []Family{FamilyAPI, FamilyExternal} {
+		if _, ok, err := s.Reviewer(ctx, "", family); err != nil || ok {
+			t.Fatalf("default %s reviewer = ok %v %v, want none", family, ok, err)
+		}
 	}
 
 	// An openai profile with a base URL; the key secret defaults from the name.
@@ -45,20 +47,37 @@ func TestReviewerProfilesAreStoredValidatedAndDefaulted(t *testing.T) {
 		t.Errorf("reviewers = %+v, want claude then grok-4 by name", list)
 	}
 
-	// The default: set, read by empty name, cleared when its profile goes.
+	// A claude-code profile: the external family, no key.
+	code, err := s.PutReviewer(ctx, Reviewer{Name: "mac", Kind: KindClaudeCode, Model: "claude-sonnet-5-5", Tools: review.ToolsFull})
+	if err != nil || code.KeySecret != "" || code.Family() != FamilyExternal {
+		t.Fatalf("claude-code profile = %+v %v, want no key secret and the external family", code, err)
+	}
+	if grok.Family() != FamilyAPI || claude.Family() != FamilyAPI {
+		t.Errorf("api profiles report family %s %s", grok.Family(), claude.Family())
+	}
+
+	// Defaults: one per family, set, read by empty name, cleared when the
+	// profile goes; a profile of the other family is refused.
 	if err := s.SetDefaultReviewer(ctx, "grok-4"); err != nil {
 		t.Fatal(err)
 	}
-	if name, _ := s.DefaultReviewer(ctx); name != "grok-4" {
-		t.Errorf("default = %q", name)
+	if err := s.SetDefaultReviewer(ctx, "mac"); err != nil {
+		t.Fatal(err)
 	}
-	if r, ok, err := s.Reviewer(ctx, ""); err != nil || !ok || r.Name != "grok-4" {
-		t.Errorf("Reviewer(\"\") = %+v %v %v", r, ok, err)
+	if d, _ := s.Defaults(ctx); d.API != "grok-4" || d.External != "mac" {
+		t.Errorf("defaults = %+v", d)
 	}
-	if r, ok, err := s.Reviewer(ctx, "claude"); err != nil || !ok || r.Model != "claude-haiku-5-5" {
+	if r, ok, err := s.Reviewer(ctx, "", FamilyAPI); err != nil || !ok || r.Name != "grok-4" {
+		t.Errorf("Reviewer(\"\", api) = %+v %v %v", r, ok, err)
+	}
+	if r, ok, err := s.Reviewer(ctx, "", FamilyExternal); err != nil || !ok || r.Name != "mac" {
+		t.Errorf("Reviewer(\"\", external) = %+v %v %v", r, ok, err)
+	}
+	// A name is returned whatever family is asked; the caller judges the fit.
+	if r, ok, err := s.Reviewer(ctx, "claude", FamilyExternal); err != nil || !ok || r.Model != "claude-haiku-5-5" {
 		t.Errorf("Reviewer(claude) = %+v %v %v", r, ok, err)
 	}
-	if _, ok, err := s.Reviewer(ctx, "nobody"); err != nil || ok {
+	if _, ok, err := s.Reviewer(ctx, "nobody", FamilyAPI); err != nil || ok {
 		t.Errorf("Reviewer(nobody) = ok %v %v, want not found without error", ok, err)
 	}
 	if err := s.SetDefaultReviewer(ctx, "nobody"); err == nil {
@@ -67,14 +86,17 @@ func TestReviewerProfilesAreStoredValidatedAndDefaulted(t *testing.T) {
 	if err := s.DeleteReviewer(ctx, "grok-4"); err != nil {
 		t.Fatal(err)
 	}
-	if name, _ := s.DefaultReviewer(ctx); name != "" {
-		t.Errorf("default after deleting it = %q, want cleared", name)
+	if d, _ := s.Defaults(ctx); d.API != "" || d.External != "mac" {
+		t.Errorf("defaults after deleting the api default = %+v, want only the external one", d)
 	}
 	if err := s.DeleteReviewer(ctx, "grok-4"); !errors.Is(err, change.ErrNotFound) {
 		t.Errorf("deleting twice: %v", err)
 	}
-	if err := s.SetDefaultReviewer(ctx, ""); err != nil {
-		t.Errorf("clearing the default: %v", err)
+	if err := s.ClearDefaultReviewer(ctx, FamilyExternal); err != nil {
+		t.Errorf("clearing the external default: %v", err)
+	}
+	if d, _ := s.Defaults(ctx); d.External != "" {
+		t.Errorf("external default not cleared: %+v", d)
 	}
 
 	// Validation: each refusal names the field.
@@ -90,6 +112,8 @@ func TestReviewerProfilesAreStoredValidatedAndDefaulted(t *testing.T) {
 		{Reviewer{Name: "x", Kind: KindAnthropic, Model: "Not A Model"}, "model"},
 		{Reviewer{Name: "x", Kind: KindAnthropic, Tools: "some"}, "tools"},
 		{Reviewer{Name: "x", Kind: KindAnthropic, KeySecret: "lower case"}, "key_secret"},
+		{Reviewer{Name: "x", Kind: KindClaudeCode, KeySecret: "SOME_KEY"}, "key_secret"},
+		{Reviewer{Name: "x", Kind: KindClaudeCode, BaseURL: "https://x"}, "base_url"},
 	} {
 		_, err := s.PutReviewer(ctx, bad.r)
 		var inv *change.InvalidError
@@ -99,10 +123,11 @@ func TestReviewerProfilesAreStoredValidatedAndDefaulted(t *testing.T) {
 	}
 }
 
-func TestLegacyAISettingsBecomeTheDefaultProfileOnce(t *testing.T) {
+func TestLegacyAISettingsBecomeTheDefaultProfilesOnce(t *testing.T) {
 	ctx := context.Background()
 	s := newService(t)
-	// The WU-025 settings as an upgraded server finds them.
+	// The WU-025 settings as an upgraded server finds them: the model and
+	// tools were used by the loop, the provider and URL by the container.
 	for k, v := range map[string]string{keyProvider: "openai", keyBaseURL: "https://api.groq.com/openai/v1", keyModel: "llama-4", keyTools: review.ToolsFull} {
 		if err := s.db.SetSetting(ctx, k, v, s.now()); err != nil {
 			t.Fatal(err)
@@ -111,14 +136,20 @@ func TestLegacyAISettingsBecomeTheDefaultProfileOnce(t *testing.T) {
 	if err := s.EnsureReviewers(ctx); err != nil {
 		t.Fatal(err)
 	}
-	r, ok, err := s.Reviewer(ctx, "")
+	r, ok, err := s.Reviewer(ctx, "", FamilyAPI)
 	if err != nil || !ok {
-		t.Fatalf("default after migration: %+v %v %v", r, ok, err)
+		t.Fatalf("api default after migration: %+v %v %v", r, ok, err)
 	}
-	want := Reviewer{Name: "default", Kind: KindOpenAI, BaseURL: "https://api.groq.com/openai/v1", Model: "llama-4", Tools: review.ToolsFull, KeySecret: "OPENAI_API_KEY"}
+	want := Reviewer{Name: "openai-api", Kind: KindOpenAI, BaseURL: "https://api.groq.com/openai/v1", Model: "llama-4", Tools: review.ToolsFull, KeySecret: "OPENAI_API_KEY"}
 	r.UpdatedAt = time.Time{}
 	if r != want {
-		t.Errorf("migrated profile = %+v\nwant %+v", r, want)
+		t.Errorf("migrated api profile = %+v\nwant %+v", r, want)
+	}
+	// The external family gets a claude-code profile with the loop's tools,
+	// no model (llama-4 is not Claude Code's) and no key.
+	c, ok, err := s.Reviewer(ctx, "", FamilyExternal)
+	if err != nil || !ok || c.Name != "claude-code" || c.Kind != KindClaudeCode || c.Tools != review.ToolsFull || c.Model != "" || c.KeySecret != "" {
+		t.Errorf("migrated claude-code profile = %+v %v %v", c, ok, err)
 	}
 	for _, k := range []string{keyProvider, keyBaseURL, keyModel, keyTools} {
 		if _, _, set, _ := s.db.GetSetting(ctx, k); set {
@@ -126,8 +157,10 @@ func TestLegacyAISettingsBecomeTheDefaultProfileOnce(t *testing.T) {
 		}
 	}
 	// Running again, after the operator removed every profile, creates nothing.
-	if err := s.DeleteReviewer(ctx, "default"); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"openai-api", "claude-code"} {
+		if err := s.DeleteReviewer(ctx, name); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := s.EnsureReviewers(ctx); err != nil {
 		t.Fatal(err)
@@ -136,14 +169,61 @@ func TestLegacyAISettingsBecomeTheDefaultProfileOnce(t *testing.T) {
 		t.Errorf("profiles recreated on the second start: %+v", list)
 	}
 
-	// A fresh install gets the built-in default: anthropic, read-only, the known key.
+	// A fresh install gets both built-in defaults.
 	fresh := newService(t)
 	if err := fresh.EnsureReviewers(ctx); err != nil {
 		t.Fatal(err)
 	}
-	r, ok, _ = fresh.Reviewer(ctx, "")
-	if !ok || r.Name != "default" || r.Kind != KindAnthropic || r.Tools != review.ToolsReadOnly || r.KeySecret != "ANTHROPIC_API_KEY" || r.Model != "" {
-		t.Errorf("fresh default = %+v %v", r, ok)
+	r, ok, _ = fresh.Reviewer(ctx, "", FamilyAPI)
+	if !ok || r.Name != "claude-api" || r.Kind != KindAnthropic || r.Tools != review.ToolsReadOnly || r.KeySecret != "ANTHROPIC_API_KEY" || r.Model != "" {
+		t.Errorf("fresh api default = %+v %v", r, ok)
+	}
+	c, ok, _ = fresh.Reviewer(ctx, "", FamilyExternal)
+	if !ok || c.Name != "claude-code" || c.Kind != KindClaudeCode || c.Tools != review.ToolsReadOnly || c.KeySecret != "" {
+		t.Errorf("fresh external default = %+v %v", c, ok)
+	}
+}
+
+// TestAServerUpgradedFromWU028GetsAClaudeCodeProfile: an installation whose
+// first migration already produced an anthropic "default" (used by the
+// loop too) gains a claude-code profile with that default's model and
+// tools, as the external default; the api profile is renamed claude-api.
+func TestAServerUpgradedFromWU028GetsAClaudeCodeProfile(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+	if _, err := s.PutReviewer(ctx, Reviewer{Name: "default", Kind: KindAnthropic, Model: "claude-opus-5-5", Tools: review.ToolsFull, KeySecret: "ANTHROPIC_API_KEY"}); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range map[string]string{keyReviewersMigrated: "1", "reviewers.default": "default"} {
+		if err := s.db.SetSetting(ctx, k, v, s.now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.EnsureReviewers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// The api profile the first migration called "default" is renamed,
+	// since there are two defaults now.
+	d, _ := s.Defaults(ctx)
+	if d.API != "claude-api" || d.External != "claude-code" {
+		t.Errorf("defaults = %+v", d)
+	}
+	if _, ok, _ := s.Reviewer(ctx, "default", FamilyAPI); ok {
+		t.Error("the profile called default is still there")
+	}
+	c, ok, _ := s.Reviewer(ctx, "", FamilyExternal)
+	if !ok || c.Kind != KindClaudeCode || c.Model != "claude-opus-5-5" || c.Tools != review.ToolsFull || c.KeySecret != "" {
+		t.Errorf("claude-code profile = %+v %v", c, ok)
+	}
+	// A third start changes nothing, even with claude-code removed.
+	if err := s.DeleteReviewer(ctx, "claude-code"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureReviewers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := s.Reviewers(ctx); len(list) != 1 {
+		t.Errorf("profiles after the third start = %+v", list)
 	}
 }
 

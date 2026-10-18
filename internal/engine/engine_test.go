@@ -1308,14 +1308,15 @@ func TestAReviewerAppendsBoundedProgressLines(t *testing.T) {
 	}
 }
 
-// TestAnExternalStepTakesToolsAndModelFromItsProfile (WU-028): the brief
-// carries the named anthropic profile's tool policy, model and name; an
-// openai profile named on an external step fails it, since the loop runs
+// TestAnExternalStepTakesToolsAndModelFromItsProfile (WU-028, A29): the
+// brief carries the named claude-code profile's tool policy, model and
+// name; with none named the external default applies, never the api one;
+// an API profile named on an external step fails it, since the loop runs
 // Claude Code.
 func TestAnExternalStepTakesToolsAndModelFromItsProfile(t *testing.T) {
-	settingsFake := fakeSettings{reviewers: map[string]settings.Reviewer{"claude": claudeProfile, "grok": grokProfile}, def: "grok"}
+	settingsFake := fakeSettings{reviewers: map[string]settings.Reviewer{"claude": claudeProfile, "grok": grokProfile, "mac": macProfile}, def: "grok"}
 	h := newHarness(t, Config{Settings: settingsFake})
-	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": strings.Replace(externalYAML, "external: true,", "external: true, reviewer: claude,", 1)}, "external review")
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": strings.Replace(externalYAML, "external: true,", "external: true, reviewer: mac,", 1)}, "external review")
 	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
 	c := h.submit("feat")
 	r, err := h.eng.Validate(ctx, c.ID)
@@ -1323,15 +1324,16 @@ func TestAnExternalStepTakesToolsAndModelFromItsProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := h.claimSoon("kai")
-	if b.Tools != review.ToolsFull || b.Model != "claude-sonnet-5-5" || b.Reviewer != "claude" {
-		t.Errorf("brief tools %q model %q reviewer %q, want the claude profile's", b.Tools, b.Model, b.Reviewer)
+	if b.Tools != review.ToolsFull || b.Model != "claude-sonnet-5-5" || b.Reviewer != "mac" {
+		t.Errorf("brief tools %q model %q reviewer %q, want the mac profile's", b.Tools, b.Model, b.Reviewer)
 	}
 	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, []byte(approvingVerdict)); err != nil {
 		t.Fatal(err)
 	}
 	h.wait(r.ID)
 
-	// No reviewer named and an openai default: the built-in values apply.
+	// No reviewer named and no external default (the api default is grok):
+	// the built-in values apply.
 	h.repo.Commit("feat", map[string]string{".plumbix/pipeline.yaml": externalYAML, "b.go": "package app\n"}, "no profile named")
 	r2, err := h.eng.Validate(ctx, c.ID)
 	if err != nil {
@@ -1339,20 +1341,20 @@ func TestAnExternalStepTakesToolsAndModelFromItsProfile(t *testing.T) {
 	}
 	b2 := h.claimSoon("kai")
 	if b2.Tools != review.ToolsReadOnly || b2.Model != "" || b2.Reviewer != "" {
-		t.Errorf("brief with an openai default: tools %q model %q reviewer %q, want the built-in values", b2.Tools, b2.Model, b2.Reviewer)
+		t.Errorf("brief with no external default: tools %q model %q reviewer %q, want the built-in values", b2.Tools, b2.Model, b2.Reviewer)
 	}
 	if err := h.eng.PostReviewVerdict(ctx, b2.ID, b2.Token, []byte(approvingVerdict)); err != nil {
 		t.Fatal(err)
 	}
 	h.wait(r2.ID)
 
-	// An openai profile named on the external step: the step errors and says why.
+	// An API profile named on the external step: the step errors and says why.
 	h.repo.Commit("feat", map[string]string{".plumbix/pipeline.yaml": strings.Replace(externalYAML, "external: true,", "external: true, reviewer: grok,", 1), "c.go": "package app\n"}, "wrong kind")
 	r3 := h.validate(c.ID)
 	h.wait(r3.ID)
 	done, _ := h.db.GetRun(ctx, r3.ID)
 	log, _ := os.ReadFile(h.eng.LogPath(r3.ID, "ai-review"))
-	if done.Outcome == change.Approved || !strings.Contains(string(log), `reviewer profile "grok" asks an OpenAI-compatible endpoint`) {
-		t.Errorf("external step with an openai profile: outcome %s, log:\n%s", done.Outcome, log)
+	if done.Outcome == change.Approved || !strings.Contains(string(log), `reviewer profile "grok" is a OpenAI-compatible API profile, but step ai-review is external`) {
+		t.Errorf("external step with an api profile: outcome %s, log:\n%s", done.Outcome, log)
 	}
 }
