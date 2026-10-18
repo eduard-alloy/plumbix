@@ -56,8 +56,6 @@ describe('Settings page', () => {
     expect(db.secrets.PLUMBIX_AZURE_DEVOPS_TOKEN).toBeUndefined()
   })
 
-
-
   it('edits the global guidance and adds a custom secret', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'Settings' })
@@ -172,8 +170,6 @@ describe('Settings page', () => {
     expect(section.textContent).toContain('plumbix only')
     expect(section.textContent).toContain('just now')
   })
-
-
 
   it('edits per-repository guidance from the repositories page', async () => {
     window.history.replaceState(null, '', '/repos')

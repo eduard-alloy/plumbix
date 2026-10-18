@@ -284,8 +284,11 @@ steps:
   - {name: test, image: "golang:1.27", run: "go test ./..."}
   - {name: validate, image: "plumbix-reference-validator:dev", validator: true, needs: [test]}
   - {name: ai-grok, image: "plumbix-ai-validator:dev", validator: true, reviewer: grok, needs: [test]}
+  - {name: ai-own, image: "plumbix-ai-validator:dev", validator: true, reviewer: claude2, needs: [test], secrets: [ANTHROPIC_API_KEY]}
 `
-	h := newHarness(t, Config{Settings: fakeSettings{reviewers: map[string]settings.Reviewer{"claude": claudeProfile, "grok": grokProfile}, def: "claude"}, Secrets: map[string]string{"PLUMBIX_REVIEWER_GROK_KEY": "xai-test", "ANTHROPIC_API_KEY": "sk-ant-test"}})
+	claude2 := claudeProfile
+	claude2.Name, claude2.KeySecret = "claude2", "CLAUDE2_KEY"
+	h := newHarness(t, Config{Settings: fakeSettings{reviewers: map[string]settings.Reviewer{"claude": claudeProfile, "claude2": claude2, "grok": grokProfile}, def: "claude"}, Secrets: map[string]string{"PLUMBIX_REVIEWER_GROK_KEY": "xai-test", "ANTHROPIC_API_KEY": "sk-ant-test", "CLAUDE2_KEY": "sk-other"}})
 	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": yaml}, "two profiles")
 	h.repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
 	c := h.submit("feat")
@@ -300,6 +303,13 @@ steps:
 		case "validate":
 			if j.Env["PLUMBIX_AI_MODEL"] != "claude-sonnet-5-5" || j.Env["ANTHROPIC_API_KEY"] != "sk-ant-test" || j.Env["PLUMBIX_AI_API_KEY"] != "" {
 				t.Errorf("validate env = %v", j.Env)
+			}
+		case "ai-own":
+			// A secret the step lists itself wins over the profile's key;
+			// PLUMBIX_ names are reserved, so model, provider and URL always
+			// come from the profile.
+			if j.Env["ANTHROPIC_API_KEY"] != "sk-ant-test" || j.Env["PLUMBIX_AI_MODEL"] != "claude-sonnet-5-5" || j.Env["PLUMBIX_AI_API_KEY"] != "" {
+				t.Errorf("ai-own env = %v", j.Env)
 			}
 		}
 	}
@@ -318,7 +328,7 @@ steps:
 		}
 	}
 	if errored == nil || errored.Status != "errored" || !strings.Contains(errored.Error, `reviewer profile "gone" is not defined`) {
-		t.Errorf("step with a missing profile = %+v", errored)
+		t.Errorf("step with a missing profile = %+v; run %s error %q", errored, done.Status, done.Error)
 	}
 	if done.Outcome == change.Approved {
 		t.Errorf("run with a missing profile was approved: %+v", done.Result)

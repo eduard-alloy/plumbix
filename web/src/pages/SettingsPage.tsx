@@ -23,11 +23,13 @@ interface Usage {
   steps: string[]
 }
 
-/** usageOf lists the steps naming the profile, plus, for the default, the steps naming none. */
+/** usageOf lists the validator steps naming the profile and, for the
+ * default, the external steps naming none (those certainly use it; a
+ * container validator's image does not say whether it is an AI one). */
 function usageOf(profile: ReviewerProfile, pipelines: { repo: Repo; steps: PipelineStep[] }[]): Usage[] {
   const out: Usage[] = []
   for (const p of pipelines) {
-    const steps = p.steps.filter((s) => s.validator && (s.reviewer === profile.name || (profile.default && !s.reviewer && (s.external || s.image.includes('ai'))))).map((s) => s.name)
+    const steps = p.steps.filter((s) => s.validator && (s.reviewer === profile.name || (profile.default && !s.reviewer && s.external))).map((s) => s.name)
     if (steps.length) out.push({ repo: repoName(p.repo), steps })
   }
   return out
@@ -71,7 +73,7 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
         {profile.default && <span className="default-tag">default</span>}
       </div>
       <p className="usage">
-        {usage.length ? `Judges ${usage.map((u) => `${u.repo}: ${u.steps.join(', ')}`).join(' · ')}` : profile.default ? 'Judges every validator step that names no reviewer; no registered pipeline has one yet.' : `No pipeline step names it. Add reviewer: ${profile.name} to a validator step.`}
+        {usage.length ? `Judges ${usage.map((u) => `${u.repo}: ${u.steps.join(', ')}`).join(' · ')}${profile.default ? ', and every AI validator step that names no reviewer.' : '.'}` : profile.default ? 'Judges every AI validator step that names no reviewer.' : `No pipeline step names it. Add reviewer: ${profile.name} to a validator step.`}
       </p>
       <form
         onSubmit={(e) => {

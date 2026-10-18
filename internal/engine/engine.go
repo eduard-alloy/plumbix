@@ -593,7 +593,7 @@ func (e *Engine) setupValidator(r run.Run, p prepared, work string, st pipeline.
 		}
 		// The reviewer profile the step is bound to, or the default: it
 		// reaches the container as the AI validator's environment, the key
-		// included, unless the step's own env or secrets set a variable.
+		// included; a secret the step lists under the same name wins.
 		prof, ok, err := e.reviewerProfile(context.Background(), st)
 		if err != nil {
 			return scheduler.StepSetup{}, err
