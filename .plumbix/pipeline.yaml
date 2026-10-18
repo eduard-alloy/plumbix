@@ -4,20 +4,27 @@
 # validator must approve; the AI review alone is never enough (A12).
 # The AI review is an external step (A26): a reviewer loop on the
 # owner's machine, plumbix review --watch, answers it with Claude Code.
+# The Go and npm steps keep their module, build and package caches between
+# runs (WU-029, A30), per repository and step, under the server's data
+# directory.
 version: 1
 steps:
   - name: build
     image: golang:1.27
     run: go build ./...
+    cache: [/go/pkg/mod, /root/.cache/go-build]
   - name: test
     image: golang:1.27
     run: go test ./...
+    cache: [/go/pkg/mod, /root/.cache/go-build]
   - name: lint
     image: golang:1.27
     run: go vet ./... && test -z "$(gofmt -l .)"
+    cache: [/go/pkg/mod, /root/.cache/go-build]
   - name: web
     image: node:24-alpine
     run: cd web && npm ci --no-audit --no-fund && npm test -- --reporter=dot && npm run build
+    cache: [/root/.npm]
   - name: validate
     image: plumbix-reference-validator:dev
     validator: true
