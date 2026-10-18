@@ -191,7 +191,7 @@ stages:
 |-------|----------|---------|
 | `version` | yes | Must be `1`. |
 | `steps[].name` | yes | Unique, lowercase letters, digits and dashes. |
-| `steps[].image` | yes | Container image. |
+| `steps[].image` | yes | Container image. For a plain step it is where `run` executes; for a validator it *is* the validator: its entrypoint runs with no `run`. Plumbix ships `plumbix-reference-validator` and `plumbix-ai-validator`, built from `validators/` in this repository (`docker build -f validators/ai/Dockerfile -t plumbix-ai-validator:dev .`); any image honouring 4.3 can be a validator. |
 | `steps[].run` | yes, except validators | Shell script, run with `sh -c`; or a list of commands, run in order as one script that stops at the first failure. |
 | `steps[].needs` | no | Steps that must succeed first. Steps without unmet needs run in parallel. |
 | `steps[].env` | no | Plain environment variables. |
@@ -199,7 +199,7 @@ stages:
 | `steps[].artifacts` | no | Workspace paths to keep as evidence after the step. |
 | `steps[].cache` | no | Absolute container paths kept between runs of the repository (WU-029, A30), such as `/go/pkg/mod`, `/root/.cache/go-build` or `/root/.npm`: each is a directory under the data directory, kept per repository and step, mounted read-write. Plain steps only, at most 8; not the root, the workspace or inside it. Steps run in parallel, so two steps never share a writable cache even for the same path. A cache is never shared across repositories; a change can leave anything in its own repository's caches for later runs, which is the trust the branch already has. |
 | `steps[].timeout` | no | Duration such as `10m`. Default comes from config. |
-| `steps[].validator` | no | Marks the step as a validator. It gets validator inputs and must write a verdict. |
+| `steps[].validator` | no | Marks the step as a validator: the image's entrypoint runs with the change's inputs mounted read-only at `/plumbix/in` and the workspace at `/workspace`, and must write `/plumbix/out/verdict.json` (4.3). Which model an AI validator asks comes from its reviewer profile (`reviewer:`), not from the file. |
 | `steps[].advisory` | no | On a validator only (WU-030, A31): its verdict is recorded in the run in full, tagged `advisory`, and counted for nothing: it cannot approve, reject, request fixes, judge a criterion or call for a person, and the target branch does not require it. For judging every change with a second model (`reviewer: grok-4, advisory: true`) beside the one that decides. |
 | `steps[].external` | no | On a validator only: the verdict comes from a reviewer outside the pipeline (WU-023, A26). No `image`, `run`, `env`, `secrets` or `retries`; `timeout` bounds the wait, one hour by default. Plumbix publishes a review brief and a reviewer posts the verdict through the API, typically `plumbix review --watch` on a machine with Claude Code. |
 | `steps[].retries` | no | 0 to 5. A failed or timed-out step runs again up to this many more times; only the last attempt counts. The log gets a separator per attempt and the step record says how many attempts there were. |

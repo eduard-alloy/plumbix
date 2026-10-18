@@ -1,6 +1,7 @@
 package aivalidator
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -23,6 +24,7 @@ const goodOutput = `{"outcome": "fix", "summary": "README not updated",
 
 // fakeAPI serves one canned Messages API response and records the request.
 type fakeAPI struct {
+	progress   bytes.Buffer
 	status     int
 	stopReason string
 	text       string
@@ -61,7 +63,7 @@ func runFake(t *testing.T, f *fakeAPI) (validation.Verdict, error) {
 	t.Helper()
 	fx := newFixture(t, nil, []validation.StepEvidence{{Step: "test", Status: "succeeded"}})
 	srv := f.server(t)
-	cfg := Config{APIKey: "sk-test", Model: DefaultModel, Effort: DefaultEffort}
+	cfg := Config{APIKey: "sk-test", Model: DefaultModel, Effort: DefaultEffort, Progress: &f.progress}
 	return Validate(context.Background(), cfg, fx.in, fx.ws, option.WithBaseURL(srv.URL), option.WithMaxRetries(0))
 }
 
@@ -98,6 +100,10 @@ func TestRequestShape(t *testing.T) {
 	}
 	if _, set := b["thinking"]; set {
 		t.Error("thinking should be left unset on Opus 5.5 (always adaptive)")
+	}
+	// The progress line names the model and effort and the prompt size, never the key (WU-031).
+	if p := f.progress.String(); !strings.Contains(p, "ai validator: asking claude-opus-5-5 through the Anthropic API (effort high): ") || !strings.Contains(p, " characters of prompt") || strings.Contains(p, "sk-test") {
+		t.Errorf("progress = %q", p)
 	}
 }
 

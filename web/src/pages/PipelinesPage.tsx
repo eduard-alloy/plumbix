@@ -465,7 +465,9 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName }:
         <span className="dim">One per line, run in order; the step stops at the first failure.</span>
       </label>
       {s.validator ? (
-        <p className="fixed">Validators run after every step, in file order, and judge the change from the evidence. They cannot be conditional or allowed to fail.</p>
+        <p className="fixed">
+          A validator has no commands: its image's entrypoint is the validator. It starts with the change's inputs mounted read-only at /plumbix/in and the workspace at /workspace, and must write /plumbix/out/verdict.json. Plumbix ships plumbix-reference-validator (deterministic checks) and plumbix-ai-validator (asks the reviewer profile's model); any image honouring the validator contract works. Validators run after every step, in file order, and cannot be conditional or allowed to fail.
+        </p>
       ) : (
         <>
           <div className="group">
@@ -545,7 +547,7 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName }:
       {!s.validator && (
         <Switch on={s.allowFail} label="Allowed to fail" sub={s.allowFail ? 'A failure is recorded as evidence but does not stop the steps that need this one.' : 'A failure stops the steps that need this one.'} toggle={() => set('allowFail', !s.allowFail)} />
       )}
-      <Switch on={s.validator} label="Validator" sub={s.validator ? 'Judges the change from evidence. Runs in the final phase.' : 'Turn on to move this step into the final validator phase.'} toggle={() => mutate((p) => toggleValidator(p, id))} />
+      <Switch on={s.validator} label="Validator" sub={s.validator ? 'Judges the change from evidence: the image is the validator, no commands. Runs in the final phase.' : 'Turn on to make this step a validator: its image\'s entrypoint judges the change in the final phase, no commands.'} toggle={() => mutate((p) => toggleValidator(p, id))} />
       {s.validator && <Switch on={s.advisory} label="Advisory" sub={s.advisory ? 'Its verdict is recorded and shown, but never counted: it cannot approve, reject or call for a person. For comparing a second model.' : 'Its verdict counts like any validator. Turn on to record it without counting it.'} toggle={() => set('advisory', !s.advisory)} />}
       <div className="group">
         <span className="label">Environment and secrets</span>

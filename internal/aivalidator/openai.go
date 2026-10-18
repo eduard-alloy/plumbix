@@ -56,7 +56,8 @@ func validateOpenAI(ctx context.Context, cfg Config, inDir, workspace string) (v
 		nil,
 	}
 	var lastErr error
-	for _, rf := range formats {
+	host := endpointHost(cfg.BaseURL)
+	for i, rf := range formats {
 		body := map[string]any{
 			"model":    cfg.Model,
 			"messages": []map[string]string{{"role": "system", "content": prompt.System}, {"role": "user", "content": user}},
@@ -64,11 +65,13 @@ func validateOpenAI(ctx context.Context, cfg Config, inDir, workspace string) (v
 		if rf != nil {
 			body["response_format"] = rf
 		}
+		cfg.note("asking %s at %s (OpenAI-compatible): %d characters of prompt, response_format %s", cfg.Model, host, len(prompt.System)+len(user), formatName(rf))
 		text, usage, status, err := chatCompletion(ctx, cfg, body)
 		if err != nil {
 			// A vendor that does not know this response_format says so with a
 			// 400; the next, looser format is tried.
-			if status == http.StatusBadRequest && rf != nil && mentionsFormat(err.Error()) {
+			if status == http.StatusBadRequest && rf != nil && mentionsFormat(err.Error()) && i+1 < len(formats) {
+				cfg.note("%s refused response_format %s; retrying with %s", host, formatName(rf), formatName(formats[i+1]))
 				lastErr = err
 				continue
 			}
@@ -185,4 +188,15 @@ func unfence(s string) string {
 	}
 	t = strings.TrimSuffix(strings.TrimSpace(t), "```")
 	return strings.TrimSpace(t)
+}
+
+// formatName names a response_format for a log line.
+func formatName(rf map[string]any) string {
+	if rf == nil {
+		return "none"
+	}
+	if t, ok := rf["type"].(string); ok {
+		return t
+	}
+	return "custom"
 }

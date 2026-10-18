@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"net/url"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -38,6 +40,10 @@ type Config struct {
 	APIKey   string
 	Model    string
 	Effort   string // anthropic only
+	// Progress, when set, receives one line when a request goes out and
+	// when a format is refused, so a slow model never looks hung (WU-031).
+	// Model, host, sizes and effort only; never a key.
+	Progress io.Writer
 }
 
 // Validate reviews the change described by inDir and returns a checked
@@ -68,6 +74,7 @@ func validateAnthropic(ctx context.Context, cfg Config, inDir, workspace string,
 	if err != nil {
 		return validation.Verdict{}, err
 	}
+	cfg.note("asking %s through the Anthropic API (effort %s): %d characters of prompt", cfg.Model, cfg.Effort, len(prompt.System)+len(prompt.User))
 
 	client := anthropic.NewClient(append([]option.RequestOption{option.WithAPIKey(cfg.APIKey)}, opts...)...)
 	resp, err := client.Beta.Messages.New(ctx, anthropic.BetaMessageNewParams{
@@ -100,4 +107,20 @@ func validateAnthropic(ctx context.Context, cfg Config, inDir, workspace string,
 	}
 	usage := validation.Usage{Model: string(resp.Model), InputTokens: int(resp.Usage.InputTokens), OutputTokens: int(resp.Usage.OutputTokens)}
 	return review.ToVerdict([]byte(text.String()), in.Change.AcceptanceCriteria, usage)
+}
+
+// note writes one progress line, when a Progress writer is set.
+func (c Config) note(format string, args ...any) {
+	if c.Progress != nil {
+		fmt.Fprintf(c.Progress, "ai validator: "+format+"\n", args...)
+	}
+}
+
+// endpointHost names an OpenAI-compatible endpoint for a log line: its host,
+// never its path or any credential.
+func endpointHost(baseURL string) string {
+	if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return "the endpoint"
 }

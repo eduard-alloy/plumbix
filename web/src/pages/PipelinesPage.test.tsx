@@ -79,6 +79,15 @@ describe('Pipelines page', () => {
     expect(yaml.textContent).toContain('Read-only here.')
   })
 
+  it('says what a validator step runs: the image is the validator, no commands', async () => {
+    await open()
+    fireEvent.click(card('validate'))
+    const panel = await screen.findByRole('complementary')
+    expect(panel.textContent).toContain("its image's entrypoint is the validator")
+    expect(panel.textContent).toContain('/plumbix/out/verdict.json')
+    expect(panel.textContent).toContain('plumbix-ai-validator')
+  })
+
   it('renames a step and rewires its dependents; Escape clears the selection', async () => {
     await open()
     fireEvent.click(card('build'))
