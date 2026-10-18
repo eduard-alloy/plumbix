@@ -44,6 +44,11 @@ func (f *fakeAPI) handler() http.Handler {
 		record(r)
 		_, _ = w.Write([]byte(`{"repos":[{"id":"r_1","host":"github","url":"https://github.com/a/b","protected_branches":["main"],"merge_strategy":"squash","created_at":"2026-10-18T00:00:00Z"}]}`))
 	})
+	mux.HandleFunc("POST /api/v1/repos", func(w http.ResponseWriter, r *http.Request) {
+		record(r)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"r_2","host":"github","url":"https://github.com/a/c","protected_branches":["main"],"merge_strategy":"squash","created_at":"2026-10-18T00:00:00Z"}`))
+	})
 	mux.HandleFunc("POST /api/v1/changes", func(w http.ResponseWriter, r *http.Request) {
 		record(r)
 		w.WriteHeader(http.StatusCreated)
@@ -137,7 +142,7 @@ func TestToolsWrapTheAPIUnderTheSessionIdentity(t *testing.T) {
 	for _, tl := range tools.Tools {
 		have[tl.Name] = true
 	}
-	for _, want := range []string{"list_repos", "submit_change", "get_change", "list_changes", "get_runs", "get_step_log", "wait_for_verdict", "merge_change", "refresh_change", "close_change", "validate_change", "next_review", "post_verdict", "list_alerts", "resolve_alert"} {
+	for _, want := range []string{"list_repos", "register_repo", "submit_change", "get_change", "list_changes", "get_runs", "get_step_log", "wait_for_verdict", "merge_change", "refresh_change", "close_change", "validate_change", "next_review", "post_verdict", "list_alerts", "resolve_alert"} {
 		if !have[want] {
 			t.Errorf("tool %s is missing", want)
 		}
@@ -185,6 +190,19 @@ func TestToolsWrapTheAPIUnderTheSessionIdentity(t *testing.T) {
 	}
 	if res := call(t, cs, "list_repos", map[string]any{}); res.IsError || !strings.Contains(text(res), "r_1") {
 		t.Errorf("list_repos = %v %s", res.IsError, text(res))
+	}
+	// Registration carries no token: a repository Plumbix can already reach, or a public one.
+	res = call(t, cs, "register_repo", map[string]any{"host": "github", "url": "https://github.com/a/c", "protected_branches": []string{"main", "release"}})
+	if res.IsError || !strings.Contains(text(res), `"r_2"`) {
+		t.Errorf("register_repo = %v %s", res.IsError, text(res))
+	}
+	var repoBody map[string]any
+	_ = json.Unmarshal([]byte(api.bodies["POST /api/v1/repos"]), &repoBody)
+	if repoBody["host"] != "github" || repoBody["url"] != "https://github.com/a/c" || fmt.Sprint(repoBody["protected_branches"]) != "[main release]" || repoBody["merge_strategy"] != nil {
+		t.Errorf("registration body = %v", repoBody)
+	}
+	if _, has := repoBody["token"]; has {
+		t.Error("a token field was sent")
 	}
 }
 
