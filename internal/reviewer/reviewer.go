@@ -31,6 +31,10 @@ const (
 	DefaultWait     = 50 // seconds a claim waits for a brief
 	DefaultMaxTurns = 40
 	retryAfterError = 5 * time.Second
+	// defaultProgressEvery keeps progress posts under the server's rate.
+	defaultProgressEvery = 600 * time.Millisecond
+	// maxProgressArg bounds what a progress line shows of a command or pattern.
+	maxProgressArg = 120
 	// task is the short prompt; the brief's user prompt arrives on stdin,
 	// which has no size limit, where a command-line argument has.
 	task = "Review the change described on standard input, following your instructions, and return the verdict in the required shape."
@@ -52,6 +56,10 @@ type Options struct {
 	Wait         int // long-poll seconds per claim
 	Stdout       io.Writer
 	Stderr       io.Writer
+	// progressEvery is the least time between two progress lines posted
+	// to the server; zero means the default, a negative value no limit
+	// (tests).
+	progressEvery time.Duration
 }
 
 // Run claims reviews and answers them until ctx ends, or after one review
@@ -75,6 +83,9 @@ func Run(ctx context.Context, o Options) error {
 	}
 	if o.Stderr == nil {
 		o.Stderr = io.Discard
+	}
+	if o.progressEvery == 0 {
+		o.progressEvery = defaultProgressEvery
 	}
 	for {
 		b, ok, err := next(ctx, o)
@@ -142,7 +153,20 @@ func reviewOne(ctx context.Context, o Options, b review.Brief) error {
 	defer cleanup()
 	fmt.Fprintf(o.Stdout, "review %s: %s %s, iteration %d, head %s\n", b.ID, b.ChangeID, b.Step, b.Iteration, short(b.Head))
 
-	res, err := runClaude(ctx, o, b, wt)
+	// Progress lines go to the step log while Claude works, so the change
+	// page shows what is being read and run.
+	var lastPost time.Time
+	progress := func(line string) {
+		if o.progressEvery > 0 && time.Since(lastPost) < o.progressEvery {
+			return
+		}
+		lastPost = time.Now()
+		body, _ := json.Marshal(map[string]string{"token": b.Token, "line": line})
+		if resp, err := o.Client.Do(ctx, http.MethodPost, "/api/v1/reviews/"+url.PathEscape(b.ID)+"/log", bytes.NewReader(body)); err == nil && !resp.OK() && resp.Status != http.StatusTooManyRequests {
+			fmt.Fprintf(o.Stderr, "plumbix review: %s: progress line refused: %v\n", b.ID, resp.Error())
+		}
+	}
+	res, err := runClaude(ctx, o, b, wt, progress)
 	if err != nil {
 		return err
 	}
@@ -254,8 +278,10 @@ func (r result) model() string {
 }
 
 // runClaude runs claude -p in the worktree with the brief's prompt and
-// schema, under the operator's tool policy and the review's expiry.
-func runClaude(ctx context.Context, o Options, b review.Brief, worktree string) (result, error) {
+// schema, under the operator's tool policy and the review's expiry. It
+// reads the stream-json output as it arrives: each tool use becomes a
+// progress line, the final result object is returned.
+func runClaude(ctx context.Context, o Options, b review.Brief, worktree string, progress func(string)) (result, error) {
 	tmp, err := os.MkdirTemp("", "plumbix-review-")
 	if err != nil {
 		return result{}, err
@@ -269,7 +295,7 @@ func runClaude(ctx context.Context, o Options, b review.Brief, worktree string) 
 	if err != nil {
 		return result{}, err
 	}
-	args := []string{"-p", "--output-format", "json", "--json-schema", string(schema), "--system-prompt-file", sysFile,
+	args := []string{"-p", "--output-format", "stream-json", "--verbose", "--json-schema", string(schema), "--system-prompt-file", sysFile,
 		"--no-session-persistence", "--permission-prompts", "none", "--max-turns", strconv.Itoa(o.MaxTurns)}
 	tools := b.Tools
 	if o.Tools != "" {
@@ -302,15 +328,22 @@ func runClaude(ctx context.Context, o Options, b review.Brief, worktree string) 
 	cmd := exec.CommandContext(runCtx, o.Claude, args...)
 	cmd.Dir = worktree
 	cmd.Stdin = strings.NewReader(b.Prompt.User)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	runErr := cmd.Run()
-	var res result
-	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &res); err != nil {
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return result{}, err
+	}
+	if err := cmd.Start(); err != nil {
+		return result{}, fmt.Errorf("claude: %w", err)
+	}
+	res, found, raw := readStream(stdout, worktree, progress)
+	runErr := cmd.Wait()
+	if !found {
 		if runErr != nil {
 			return result{}, fmt.Errorf("claude: %w: %s", runErr, strings.TrimSpace(stderr.String()))
 		}
-		return result{}, fmt.Errorf("claude printed no JSON result: %s", excerpt(stdout.String()))
+		return result{}, fmt.Errorf("claude printed no JSON result: %s", excerpt(raw))
 	}
 	if res.IsError || runErr != nil {
 		msg := res.Result
@@ -345,4 +378,125 @@ func excerpt(s string) string {
 		return s[:300] + "…"
 	}
 	return s
+}
+
+// streamEvent is one object of claude's stream-json output.
+type streamEvent struct {
+	Type    string `json:"type"`
+	Message struct {
+		Content []struct {
+			Type  string          `json:"type"`
+			Name  string          `json:"name"`
+			Input json.RawMessage `json:"input"`
+		} `json:"content"`
+	} `json:"message"`
+}
+
+// readStream decodes JSON objects from claude's stdout as they arrive. Tool
+// uses in assistant messages are reported through progress with the turn
+// they belong to; the object of type result is returned. A plain JSON
+// result with no stream around it is accepted too. raw holds what was read
+// when no result was found, for the error message.
+func readStream(r io.Reader, worktree string, progress func(string)) (result, bool, string) {
+	var seen bytes.Buffer
+	dec := json.NewDecoder(io.TeeReader(r, &seen))
+	turn := 0
+	var res result
+	found := false
+	for {
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			break
+		}
+		var ev streamEvent
+		if json.Unmarshal(raw, &ev) != nil {
+			continue
+		}
+		switch ev.Type {
+		case "assistant":
+			turn++
+			for _, c := range ev.Message.Content {
+				if c.Type == "tool_use" && progress != nil {
+					progress(fmt.Sprintf("turn %d: %s", turn, describeTool(c.Name, c.Input, worktree)))
+				}
+			}
+		case "result":
+			if json.Unmarshal(raw, &res) == nil {
+				found = true
+			}
+		default:
+			// A bare result object has no type when a wrapper prints it alone.
+			if ev.Type == "" {
+				var maybe result
+				if json.Unmarshal(raw, &maybe) == nil && (len(maybe.StructuredOutput) > 0 || maybe.IsError || maybe.Result != "") {
+					res, found = maybe, true
+				}
+			}
+		}
+	}
+	if found {
+		return res, true, ""
+	}
+	return result{}, false, seen.String()
+}
+
+// describeTool renders a tool use for the step log: the tool and what it
+// touched, paths relative to the worktree, long commands cut short.
+func describeTool(name string, input json.RawMessage, worktree string) string {
+	var in map[string]any
+	_ = json.Unmarshal(input, &in)
+	str := func(k string) string {
+		v, _ := in[k].(string)
+		return v
+	}
+	rel := func(p string) string {
+		for _, root := range worktreeRoots(worktree) {
+			if strings.HasPrefix(p, root+"/") {
+				return strings.TrimPrefix(p, root+"/")
+			}
+			if p == root {
+				return "."
+			}
+		}
+		return p
+	}
+	var arg string
+	switch name {
+	case "Read", "Edit", "Write":
+		arg = rel(str("file_path"))
+	case "Grep":
+		arg = str("pattern")
+		if p := str("path"); p != "" && rel(p) != "." {
+			arg += " in " + rel(p)
+		}
+	case "Glob":
+		arg = str("pattern")
+	case "Bash":
+		arg = str("command")
+	default:
+		for _, k := range []string{"path", "file_path", "pattern", "query", "command", "url"} {
+			if v := str(k); v != "" {
+				arg = v
+				break
+			}
+		}
+	}
+	arg = strings.Join(strings.Fields(arg), " ")
+	if r := []rune(arg); len(r) > maxProgressArg {
+		arg = string(r[:maxProgressArg]) + "…"
+	}
+	if arg == "" {
+		return name
+	}
+	return name + " " + arg
+}
+
+// worktreeRoots lists the worktree path and its resolved form, since tools
+// report the path they ran in, symlinks resolved.
+func worktreeRoots(worktree string) []string {
+	roots := []string{worktree}
+	if resolved, err := filepath.EvalSymlinks(worktree); err == nil && resolved != worktree {
+		roots = append(roots, resolved)
+	}
+	return roots
 }

@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { App } from '../App'
-import { approved, NOW } from '../test/fixtures'
-import { install } from '../test/server'
+import { approved, NOW, running } from '../test/fixtures'
+import { emit, install, streamOpen, type FakeDB } from '../test/server'
+import { logFollow } from './LogPanel'
+
+let db: FakeDB
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(NOW)
-  install()
+  db = install()
   window.history.replaceState(null, '', `/changes/${approved.id}`)
 })
 
@@ -90,5 +93,32 @@ describe('Log panel', () => {
     fireEvent.click(within(verdict).getByRole('button', { name: /validate/ }))
     panel = await screen.findByRole('region', { name: 'Step log' })
     await waitFor(() => expect(within(panel).getByText('validate', { selector: '.log-step' })).toBeTruthy())
+  })
+
+  it('follows a running step, refetching the log, until the step ends', async () => {
+    window.history.replaceState(null, '', `/changes/${running.id}`)
+    logFollow.every = 20
+    try {
+      render(<App />)
+      await screen.findByRole('complementary', { name: 'Verdict' })
+      fireEvent.click(screen.getByText('test', { selector: '.step .name' }).closest('button')!)
+      const panel = await screen.findByRole('region', { name: 'Step log' })
+      await within(panel).findByText(/go test/)
+      expect(panel.textContent).toContain('Step running. The log follows until the step ends.')
+      expect(within(panel).getByText('Running')).toBeTruthy()
+
+      db.liveLog.push('reviewer: turn 1: Read app.go')
+      await within(panel).findByText(/turn 1: Read app.go/)
+      expect(panel.textContent).toContain('2 lines')
+
+      const run = db.runs[running.id][0]
+      run.steps[1] = { name: 'test', validator: false, status: 'succeeded', exit_code: 0, duration_ms: 70000 }
+      await streamOpen()
+      emit({ type: 'step.finished', change_id: running.id, run_id: run.id, repo_id: running.repo_id, payload: { step: 'test', status: 'succeeded' } })
+      await waitFor(() => expect(panel.textContent).toContain('Step succeeded. Full log, fetched on open.'))
+      expect(panel.textContent).toContain('6 lines') // the finished step's full log, fetched once more
+    } finally {
+      logFollow.every = 2000
+    }
   })
 })

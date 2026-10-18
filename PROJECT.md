@@ -105,6 +105,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-026 | Reviewer presence, the `no_reviewer` alert, and `plumbix review install|uninstall|status` | F-003, F-004 | ✅ |
 | WU-024 | Plumbix MCP server: `plumbix mcp` with the change, verdict, action and reviewer tools for agent sessions | F-001, F-003, F-004 | ✅ |
 | WU-025 | Any model for the container AI validator: an OpenAI-compatible provider with base URL and model in Settings | F-003 | ✅ |
+| WU-027 | Live steps and external review progress: running steps in the run, `step.started`, reviewer progress lines in the step log, a log panel that follows | F-003, F-004 | ✅ |
 
 ## Milestone 2 candidates
 

@@ -645,3 +645,39 @@ func TestWaitingExternalStepHoldsNoContainerSlot(t *testing.T) {
 		t.Errorf("a started %s after the run began; the waiting external step held the only slot", started.Sub(begin))
 	}
 }
+
+func TestStartedHookSeesEveryStepThatRuns(t *testing.T) {
+	p := mustParse(t, "  - {name: a, image: x, run: x}\n  - {name: b, image: x, run: x, needs: [a]}\n  - {name: v, validator: true, external: true, needs: [b], timeout: 2s}\n")
+	fake := newFake(ok)
+	o := opts(2)
+	var mu sync.Mutex
+	var started []string
+	o.Started = func(index int, st pipeline.Step) {
+		mu.Lock()
+		started = append(started, fmt.Sprintf("%d:%s", index, st.Name))
+		mu.Unlock()
+	}
+	o.External = func(ctx context.Context, st pipeline.Step, setup StepSetup, log io.Writer) StepResult {
+		return StepResult{Name: st.Name, Status: Succeeded}
+	}
+	if res := Execute(context.Background(), p, fake, o); !res.Succeeded() {
+		t.Fatalf("run failed: %+v", res.Steps)
+	}
+	mu.Lock()
+	got := strings.Join(started, ",")
+	started = nil
+	mu.Unlock()
+	if got != "0:a,1:b,2:v" {
+		t.Errorf("started = %v; want each step once, in order, external included", got)
+	}
+	// A step skipped for an unmet need never starts.
+	p = mustParse(t, "  - {name: a, image: x, run: x}\n  - {name: b, image: x, run: x, needs: [a]}\n")
+	res := Execute(context.Background(), p, newFake(func(ctx context.Context, job runner.Job) (runner.Result, error) {
+		return runner.Result{ExitCode: 1}, nil
+	}), o)
+	mu.Lock()
+	defer mu.Unlock()
+	if s := statusOf(t, res); s["b"] != Skipped || strings.Join(started, ",") != "0:a" {
+		t.Errorf("status = %v, started = %v", s, started)
+	}
+}

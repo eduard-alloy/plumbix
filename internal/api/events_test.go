@@ -103,7 +103,7 @@ func TestEventStreamReplaysThenFollows(t *testing.T) {
 
 	// Replay: everything recorded so far, in order, valid against the contract.
 	got := s.collect("/api/v1/events", 0, stateChangedTo(change.Approved))
-	want := []events.Type{events.ChangeSubmitted, events.RunStarted, events.StateChanged, events.StepFinished, events.StepFinished, events.RunFinished, events.VerdictIssued, events.StateChanged}
+	want := []events.Type{events.ChangeSubmitted, events.RunStarted, events.StateChanged, events.StepStarted, events.StepFinished, events.StepStarted, events.StepFinished, events.RunFinished, events.VerdictIssued, events.StateChanged}
 	if len(got) != len(want) {
 		t.Fatalf("replayed %d events %v, want %v", len(got), typesOf(got), want)
 	}

@@ -86,12 +86,14 @@ type Settings interface {
 
 // Engine runs validations in the background.
 type Engine struct {
-	presence presence
-	store    Store
-	runner   runner.Runner
-	cfg      Config
-	log      *slog.Logger
-	now      func() time.Time
+	presence    presence
+	reviewLogMu sync.Mutex
+	reviewLogs  map[string]*reviewLogState // progress-line counters per review
+	store       Store
+	runner      runner.Runner
+	cfg         Config
+	log         *slog.Logger
+	now         func() time.Time
 
 	base       context.Context
 	stopAll    context.CancelCauseFunc
@@ -341,6 +343,20 @@ func (e *Engine) secrets() map[string]string {
 // event, in that order, so a client reacting to the event finds the step.
 // It uses its own context so a cancelled run still records how its steps
 // ended.
+// recordStarted lists a step as running from the moment it begins; the
+// final record replaces it when the step ends.
+func (e *Engine) recordStarted(r run.Run, position int, st pipeline.Step) {
+	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+	defer cancel()
+	if err := e.store.RecordStep(ctx, r.ID, position, run.Step{Name: st.Name, Validator: st.Validator, Status: "running", Stage: st.Stage}); err != nil {
+		e.log.Error("record running step", "run", r.ID, "step", st.Name, "err", err)
+	}
+	if _, err := e.store.AppendEvent(ctx, events.Event{Type: events.StepStarted, Time: e.now().UTC(), RepoID: r.RepoID, ChangeID: r.ChangeID, RunID: r.ID,
+		Payload: events.StepStartedPayload{Step: st.Name, Validator: st.Validator, Stage: st.Stage}}); err != nil {
+		e.log.Error("append step.started", "run", r.ID, "step", st.Name, "err", err)
+	}
+}
+
 func (e *Engine) recordStep(r run.Run, position int, st pipeline.Step, res scheduler.StepResult) {
 	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 	defer cancel()
@@ -455,6 +471,7 @@ func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([
 	opts.External = func(ctx context.Context, st pipeline.Step, _ scheduler.StepSetup, log io.Writer) scheduler.StepResult {
 		return e.waitExternal(ctx, r, c, prep, work, st, log)
 	}
+	opts.Started = func(i int, st pipeline.Step) { e.recordStarted(r, i, st) }
 	res := scheduler.Execute(ctx, prep.pipeline, e.runner, opts)
 
 	steps := toSteps(prep.pipeline, res)

@@ -61,7 +61,8 @@ func (h *harness) waitState(id string, want change.State) {
 }
 
 // TestChangeRunEmitsEventsInOrder checks the whole sequence one validation
-// produces, including a step.finished per step, which only the engine knows.
+// produces, including a step.started and step.finished per step, which
+// only the engine knows.
 func TestChangeRunEmitsEventsInOrder(t *testing.T) {
 	h := newHarness(t, Config{})
 	h.repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
@@ -74,7 +75,7 @@ func TestChangeRunEmitsEventsInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []events.Type{events.ChangeSubmitted, events.RunStarted, events.StateChanged, events.StepFinished, events.StepFinished, events.RunFinished, events.VerdictIssued, events.StateChanged}
+	want := []events.Type{events.ChangeSubmitted, events.RunStarted, events.StateChanged, events.StepStarted, events.StepFinished, events.StepStarted, events.StepFinished, events.RunFinished, events.VerdictIssued, events.StateChanged}
 	if got := typesOf(evs); !sameTypes(got, want) {
 		t.Fatalf("events = %v\nwant     %v", got, want)
 	}
@@ -86,7 +87,7 @@ func TestChangeRunEmitsEventsInOrder(t *testing.T) {
 			t.Errorf("event %s has run %q, want %s", e.Type, e.RunID, r.ID)
 		}
 	}
-	test, validate := stepPayload(t, evs[3]), stepPayload(t, evs[4])
+	test, validate := stepPayload(t, evs[4]), stepPayload(t, evs[6])
 	if test.Step != "test" || test.Status != "succeeded" || test.Validator {
 		t.Errorf("first step event = %+v", test)
 	}
@@ -171,12 +172,13 @@ func TestStepsAreRecordedAsTheyFinish(t *testing.T) {
 		if got, err = h.db.GetRun(ctx, r.ID); err != nil {
 			t.Fatal(err)
 		}
-		if len(got.Steps) > 0 {
+		if len(got.Steps) > 1 {
 			break
 		}
 	}
-	if got.Status != run.Running || len(got.Steps) != 1 || got.Steps[0].Name != "test" || got.Steps[0].Status != "succeeded" {
-		t.Fatalf("mid-run = %+v; want the finished test step while validate still runs", got)
+	// The finished step and, since WU-027, the one still running.
+	if got.Status != run.Running || len(got.Steps) != 2 || got.Steps[0].Name != "test" || got.Steps[0].Status != "succeeded" || got.Steps[1].Name != "validate" || got.Steps[1].Status != "running" {
+		t.Fatalf("mid-run = %+v; want the finished test step while validate runs", got)
 	}
 	// A blocked step only ends by cancellation: a new validation replaces
 	// the run, and the finished run lists every step once, in order.

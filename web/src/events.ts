@@ -7,6 +7,7 @@ export const EVENT_TYPES: EventType[] = [
   'change.state_changed',
   'change.merged',
   'run.started',
+  'step.started',
   'step.finished',
   'run.finished',
   'verdict.issued',

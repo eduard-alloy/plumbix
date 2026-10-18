@@ -133,8 +133,10 @@ function exitNote(s: Step): string {
   return parts.join(' · ')
 }
 
-function stepVM(s: Step, outcomes?: ValidatorOutcome[]): StepVM {
-  const vm: StepVM = { name: s.name, validator: s.validator, status: s.status, exit: exitNote(s), dur: duration(s.duration_ms / 1000), hasLog: s.status !== 'skipped' }
+/** stepVM is one step row; a running step (WU-027) has no exit or duration yet. */
+export function stepVM(s: Step, outcomes?: ValidatorOutcome[]): StepVM {
+  const live = s.status === 'running'
+  const vm: StepVM = { name: s.name, validator: s.validator, status: s.status, exit: live ? '' : exitNote(s), dur: live ? '' : duration(s.duration_ms / 1000), hasLog: s.status !== 'skipped' }
   if (s.stage) vm.stage = s.stage
   if (s.validator && outcomes) {
     const o = outcomes.find((x) => x.name === s.name)

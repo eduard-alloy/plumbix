@@ -58,6 +58,9 @@ type Options struct {
 	// the pipeline and its final result, as soon as it is known: after the
 	// step ran, when it was skipped, or when it could not be built.
 	Finished func(index int, step pipeline.Step, result StepResult)
+	// Started is called when a step begins, container or external, so a
+	// run can list what is in flight (WU-027).
+	Started func(index int, step pipeline.Step)
 }
 
 // StepSetup is extra configuration for one step.
@@ -171,6 +174,9 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 					}
 					results[i].Status = inProgress
 					running++
+					if o.Started != nil {
+						o.Started(i, st)
+					}
 					go func(i int, st pipeline.Step) { done <- finished{i, runExternal(ctx, o, st, setup, log)} }(i, st)
 					continue
 				}
@@ -185,6 +191,9 @@ func Execute(ctx context.Context, p *pipeline.Pipeline, r runner.Runner, o Optio
 				results[i].Status = inProgress
 				running++
 				containers++
+				if o.Started != nil {
+					o.Started(i, st)
+				}
 				go func(i int, st pipeline.Step) { done <- finished{i, runStep(ctx, r, job, st)} }(i, st)
 			}
 		}
