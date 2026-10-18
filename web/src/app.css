@@ -375,3 +375,6 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 .add-profile h3 { margin: 0 0 4px; font-size: 13px; font-weight: 600; }
 .add-profile .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0 18px; }
 .add-profile .field input { max-width: none; }
+
+/* Advisory validators (WU-030): recorded, never counted. */
+.tag.advisory { border-color: var(--s-amber, #c98a1b); color: var(--s-amber, #c98a1b); }

@@ -41,17 +41,19 @@ steps:
 // fakeRunner runs normal steps by script and validator steps through the
 // real reference validator, in-process.
 type fakeRunner struct {
-	mu     sync.Mutex
-	exit   map[string]int   // exit code per step name
-	block  map[string]bool  // steps that wait for cancellation
-	fail   map[string]error // steps whose runner errors
-	inputs []validation.Input
-	diffs  []string
-	jobs   []runner.Job
+	mu    sync.Mutex
+	exit  map[string]int   // exit code per step name
+	block map[string]bool  // steps that wait for cancellation
+	fail  map[string]error // steps whose runner errors
+	// verdicts replaces the reference validator's verdict for a step name.
+	verdicts map[string]string
+	inputs   []validation.Input
+	diffs    []string
+	jobs     []runner.Job
 }
 
 func newFakeRunner() *fakeRunner {
-	return &fakeRunner{exit: map[string]int{}, block: map[string]bool{}, fail: map[string]error{}}
+	return &fakeRunner{exit: map[string]int{}, block: map[string]bool{}, fail: map[string]error{}, verdicts: map[string]string{}}
 }
 
 func (f *fakeRunner) Run(ctx context.Context, job runner.Job) (runner.Result, error) {
@@ -87,12 +89,18 @@ func (f *fakeRunner) Run(ctx context.Context, job runner.Job) (runner.Result, er
 	f.mu.Lock()
 	f.inputs = append(f.inputs, input)
 	f.diffs = append(f.diffs, string(diff))
+	fixed := f.verdicts[job.Name]
 	f.mu.Unlock()
-	v, err := refvalidator.Run(ctx, in, job.Workspace, refvalidator.Options{CommandTimeout: 10 * time.Second})
-	if err != nil {
-		return runner.Result{ExitCode: 1}, nil
+	var data []byte
+	if fixed != "" {
+		data = []byte(fixed)
+	} else {
+		v, err := refvalidator.Run(ctx, in, job.Workspace, refvalidator.Options{CommandTimeout: 10 * time.Second})
+		if err != nil {
+			return runner.Result{ExitCode: 1}, nil
+		}
+		data, _ = json.Marshal(v)
 	}
-	data, _ := json.Marshal(v)
 	if err := os.WriteFile(filepath.Join(out, validation.VerdictFile), data, 0o644); err != nil {
 		return runner.Result{}, err
 	}
@@ -869,6 +877,9 @@ func TestRefreshRefusesBranchesThatAreNotPlumbixsAndConflicts(t *testing.T) {
 	}
 }
 
+// rejectingVerdict rejects with a blocker and an unmet AC-1.
+const rejectingVerdict = `{"plumbix":"verdict/v1","outcome":"reject","summary":"Wrong at the root.","criteria":[{"id":"AC-1","status":"unmet","reason":"no","evidence":["test/log.txt"]}],"findings":[{"severity":"blocker","message":"wrong approach"}]}`
+
 // approvingVerdict is a minimal valid verdict that approves AC-1.
 const approvingVerdict = `{"plumbix":"verdict/v1","outcome":"approve","summary":"Fine.","criteria":[{"id":"AC-1","status":"met","reason":"tests pass","evidence":["test/log.txt"]}]}`
 
@@ -1451,5 +1462,64 @@ steps:
 	}
 	if first == "" || second == "" || first == second {
 		t.Errorf("cache directories per repository: %q and %q, want one under each repository", first, second)
+	}
+}
+
+// TestAnAdvisoryValidatorNeverDecides (WU-030, A31): its verdict is in the
+// run, tagged, while the state follows the counting validators; the target
+// branch does not require it.
+func TestAnAdvisoryValidatorNeverDecides(t *testing.T) {
+	const without = `# before the advisory validator
+version: 1
+steps:
+  - {name: test, image: "golang:1.27", run: "go test ./..."}
+  - {name: validate, image: "plumbix-reference-validator:dev", validator: true, needs: [test]}
+`
+	const with_ = without + `  - {name: ai-grok, image: "plumbix-ai-validator:dev", validator: true, advisory: true, needs: [test]}
+`
+	h := newHarness(t, Config{})
+	// A branch cut before main gained the advisory validator, and one after.
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": without}, "no grok yet")
+	h.repo.Commit("older", map[string]string{"b.go": "package a\n"}, "older feature")
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": with_}, "advisory grok")
+	h.repo.Commit("feat", map[string]string{"a.go": "package a\n"}, "feature")
+	h.fake.mu.Lock()
+	h.fake.verdicts["ai-grok"] = rejectingVerdict
+	h.fake.mu.Unlock()
+
+	c := h.submit("feat")
+	done := h.validate(c.ID)
+	if done.Outcome != change.Approved {
+		t.Fatalf("outcome = %s with reasons %v; an advisory rejection must not count", done.Outcome, done.Result.Reasons)
+	}
+	var grok *run.Step
+	for i := range done.Steps {
+		if done.Steps[i].Name == "ai-grok" {
+			grok = &done.Steps[i]
+		}
+	}
+	if grok == nil || !grok.Advisory || !grok.Validator {
+		t.Errorf("ai-grok step = %+v", grok)
+	}
+	var seen bool
+	for _, v := range done.Result.Validators {
+		if v.Name == "ai-grok" && v.Advisory && v.Outcome == validation.Reject {
+			seen = true
+		}
+	}
+	if !seen {
+		t.Errorf("validators = %+v; want ai-grok recorded as an advisory rejection", done.Result.Validators)
+	}
+	for _, f := range done.Result.Findings {
+		if f.Validator == "ai-grok" && !f.Advisory {
+			t.Errorf("finding from ai-grok not tagged advisory: %+v", f)
+		}
+	}
+
+	// The older branch's pipeline has no ai-grok; main's advisory validator
+	// is not one the branch must report.
+	c2 := h.submit("older")
+	if done := h.validate(c2.ID); done.Outcome != change.Approved {
+		t.Errorf("outcome without the advisory validator = %s %v", done.Outcome, done.Result.Reasons)
 	}
 }

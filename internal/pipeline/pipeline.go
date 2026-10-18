@@ -62,6 +62,9 @@ type Step struct {
 	OnlyPaths []string
 	// Stage is the stage the step belongs to, or empty.
 	Stage string
+	// Advisory marks a validator whose verdict is recorded but never
+	// counted (WU-030, A31): for comparing a second model.
+	Advisory bool
 	// Reviewer names the reviewer profile that judges this validator step
 	// (WU-028); empty means the default profile.
 	Reviewer string
@@ -216,7 +219,7 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 		return st, refs
 	}
 	seen := map[string]bool{}
-	var envNode, secretsNode, whenKey, allowKey, externalKey, reviewerKey, cacheKey *yaml.Node
+	var envNode, secretsNode, whenKey, allowKey, externalKey, reviewerKey, cacheKey, advisoryKey *yaml.Node
 	keyNodes := map[string]*yaml.Node{}
 	for i := 0; i+1 < len(n.Content); i += 2 {
 		key, val := n.Content[i], n.Content[i+1]
@@ -287,6 +290,13 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 				}
 				st.Reviewer = s
 			}
+		case "advisory":
+			advisoryKey = key
+			if val.Kind != yaml.ScalarNode || val.Tag != "!!bool" {
+				ps.add(fp, val.Line, "must be a boolean")
+			} else {
+				st.Advisory = val.Value == "true"
+			}
 		case "external":
 			externalKey = key
 			if val.Kind != yaml.ScalarNode || val.Tag != "!!bool" {
@@ -308,6 +318,9 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 		if whenKey != nil {
 			ps.add(p+".when", whenKey.Line, "is not allowed on a validator step: validators always run")
 		}
+	}
+	if advisoryKey != nil && !st.Validator {
+		ps.add(p+".advisory", advisoryKey.Line, "is only for validator steps: a plain step has no verdict to leave uncounted")
 	}
 	if reviewerKey != nil && !st.Validator {
 		ps.add(p+".reviewer", reviewerKey.Line, "is only for validator steps: a reviewer profile says which model judges")

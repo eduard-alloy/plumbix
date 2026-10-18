@@ -42,8 +42,10 @@ type Run struct {
 
 // Step is one step's outcome within a run.
 type Step struct {
-	Name       string `json:"name"`
-	Validator  bool   `json:"validator"`
+	Name      string `json:"name"`
+	Validator bool   `json:"validator"`
+	// Advisory marks a validator whose verdict was recorded but not counted (WU-030).
+	Advisory   bool   `json:"advisory,omitempty"`
 	Status     string `json:"status"`
 	ExitCode   int    `json:"exit_code"`
 	DurationMS int64  `json:"duration_ms"`

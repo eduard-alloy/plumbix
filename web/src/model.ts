@@ -77,6 +77,8 @@ export interface Change {
 export interface Step {
   name: string
   validator: boolean
+  /** A validator whose verdict was recorded but not counted (WU-030). */
+  advisory?: boolean
   status: StepStatus
   exit_code: number
   duration_ms: number
@@ -96,6 +98,8 @@ export interface Assessment {
   status: CriterionStatus
   reason: string
   evidence?: string[]
+  /** From an advisory validator: shown, not merged into the criterion's status (WU-030). */
+  advisory?: boolean
 }
 
 export interface CombinedCriterion {
@@ -107,6 +111,7 @@ export interface CombinedCriterion {
 
 export interface Finding {
   validator: string
+  advisory?: boolean
   severity: Severity
   message: string
   criterion?: string
@@ -116,6 +121,7 @@ export interface Finding {
 
 export interface Risk {
   validator: string
+  advisory?: boolean
   area: string
   message: string
   human_required: boolean
@@ -125,6 +131,8 @@ export type ValidatorDecision = 'approve' | 'fix' | 'reject'
 
 export interface ValidatorOutcome {
   name: string
+  /** Recorded, never counted (WU-030). */
+  advisory?: boolean
   outcome?: ValidatorDecision
   summary?: string
   error?: string
@@ -314,6 +322,8 @@ export interface PipelineStep {
   cache: string[]
   timeout?: string
   validator: boolean
+  /** The validator's verdict is recorded but never counted (WU-030). */
+  advisory: boolean
   /** The validator waits for a reviewer outside the pipeline. */
   external: boolean
   /** The reviewer profile the validator step names; absent for the default. */

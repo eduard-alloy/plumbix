@@ -76,7 +76,7 @@ export function verdictColumn(c: Change, runs: Run[], now: Date): { text: string
   const judged = latestJudged(runs)?.result
   if (!judged) return { text: '', blockers: '' }
   const met = judged.criteria.filter((x) => x.status === 'met').length
-  const blockers = judged.findings.filter((f) => f.severity === 'blocker').length
+  const blockers = judged.findings.filter((f) => f.severity === 'blocker' && !f.advisory).length // advisory findings are shown, not counted (WU-030)
   let text = `${met}/${judged.criteria.length} met`
   if (blockers) return { text, blockers: plural(blockers, 'blocker') }
   if (c.state !== 'closed') text += ' · 0 blockers'

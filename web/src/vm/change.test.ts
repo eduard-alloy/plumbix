@@ -37,14 +37,21 @@ describe('changeView for an approved change', () => {
       reasons: [],
       record: undefined,
     })
-    expect(v.verdict.steps.map((s) => s.name)).toEqual(['validate', 'ai-review'])
-    expect(v.verdict.steps.map((s) => s.outcome)).toEqual(['approve', 'approve'])
+    expect(v.verdict.steps.map((s) => s.name)).toEqual(['validate', 'ai-review', 'ai-grok'])
+    expect(v.verdict.steps.map((s) => s.outcome)).toEqual(['approve', 'approve', 'reject'])
   })
 
   it('groups findings by severity with their links, and lists risks', () => {
-    expect(v.findings.map((g) => [g.label, g.items.length])).toEqual([['Minor', 1]])
-    expect(v.findings[0].items[0]).toMatchObject({ severity: 'minor', message: 'Backoff ceiling is hard-coded at 8 s; consider a constant', validator: 'ai-review', criterion: '', loc: 'internal/evidence/upload.go:71', file: 'internal/evidence/upload.go', line: 71 })
-    expect(v.risks).toEqual([{ area: 'tests', message: '2 test files were modified', validator: 'ai-review', humanRequired: false }])
+    // The advisory blocker is listed and tagged, but never counted (WU-030).
+    expect(v.findings.map((g) => [g.label, g.items.length])).toEqual([
+      ['Blockers', 1],
+      ['Minor', 1],
+    ])
+    expect(v.findings[0].items[0]).toMatchObject({ severity: 'blocker', validator: 'ai-grok', advisory: true })
+    expect(v.findings[1].items[0]).toMatchObject({ severity: 'minor', message: 'Backoff ceiling is hard-coded at 8 s; consider a constant', validator: 'ai-review', advisory: false, criterion: '', loc: 'internal/evidence/upload.go:71', file: 'internal/evidence/upload.go', line: 71 })
+    expect(v.verdict.counts).toContain('0 blockers')
+    expect(v.verdict.steps.find((s) => s.name === 'ai-grok')).toMatchObject({ advisory: true, outcome: 'reject' })
+    expect(v.risks).toEqual([{ area: 'tests', message: '2 test files were modified', validator: 'ai-review', advisory: false, humanRequired: false }])
     expect(v.judged).toBe(true)
   })
 
@@ -53,7 +60,7 @@ describe('changeView for an approved change', () => {
     expect(v.iterations[0]).toMatchObject({ n: 2, status: 'approved', headline: 'All criteria met', head: '9f3c1e2', dur: '4m 00s', ago: '4m', selected: true, index: 1 })
     expect(v.iterations[1]).toMatchObject({ n: 1, status: 'fix_requested', headline: 'AC-1 unmet: only one retry attempted', dur: '3m 00s', selected: false, index: 0 })
     expect(v.evidence.label).toBe('iteration 2 · run_8h2k4m1qz2bb · 9f3c1e2')
-    expect(v.evidence.steps).toHaveLength(5)
+    expect(v.evidence.steps).toHaveLength(6)
     expect(v.evidence.steps[0]).toMatchObject({ name: 'build', status: 'succeeded', exit: 'exit 0', dur: '42s', hasLog: true, validator: false })
     expect(v.evidence.steps[3]).toMatchObject({ name: 'validate', validator: true })
     expect(v.evidence.runId).toBe('run_8h2k4m1qz2bb')

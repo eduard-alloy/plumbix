@@ -230,7 +230,7 @@ export function ChangePage({ id }: { id: string }) {
     const stepName = path.split('/')[1] ?? ''
     const run = latestRun
     const step = run?.steps.find((s) => s.name === stepName)
-    if (run && step) openLog(run, { name: step.name, validator: step.validator, status: step.status, exit: `exit ${step.exit_code}`, dur: '', hasLog: true })
+    if (run && step) openLog(run, { name: step.name, validator: step.validator, advisory: !!step.advisory, status: step.status, exit: `exit ${step.exit_code}`, dur: '', hasLog: true })
   }
 
   const stepRow = (s: StepVM, key: string, className: string) => {
@@ -238,7 +238,10 @@ export function ChangePage({ id }: { id: string }) {
       <>
         <StatePill status={s.status as PillStatus} mode="icon" />
         <span className="name">{s.name}</span>
-        <span>{s.validator && <span className="tag">validator</span>}</span>
+        <span>
+          {s.validator && <span className="tag">validator</span>}
+          {s.advisory && <span className="tag advisory">advisory</span>}
+        </span>
         <span className="status-cell">
           <StatePill status={s.status as PillStatus} mode="text" />
           <Decision step={s} />
@@ -477,6 +480,7 @@ export function ChangePage({ id }: { id: string }) {
                               <StatePill status={m.status} mode="plain" />
                               <span>{m.reason}</span>
                               <span className="by">{m.validator}</span>
+                              {m.advisory && <span className="tag advisory">advisory</span>}
                               {m.evidence.map((p) => (
                                 <button key={p} className="link mono" onClick={() => openPathLog(p)}>
                                   {p}
@@ -523,6 +527,7 @@ export function ChangePage({ id }: { id: string }) {
                     <button key={s.name} className="vstep" disabled={!s.hasLog} onClick={() => openLog(latestRun, s)} title={s.summary}>
                       <StatePill status={s.status as PillStatus} mode="icon" />
                       <span className="name">{s.name}</span>
+                      {s.advisory && <span className="tag advisory">advisory</span>}
                       <Decision step={s} />
                       <span className="dur">{s.dur}</span>
                     </button>
@@ -575,6 +580,7 @@ export function ChangePage({ id }: { id: string }) {
                     <span className="meta">
                       <StatePill status={f.severity} mode="text" />
                       <span className="mono">{f.validator}</span>
+                      {f.advisory && <span className="tag advisory">advisory</span>}
                       {f.criterion && (
                         <button className="link mono" onClick={() => goCriterion(f.criterion)}>
                           {f.criterion}
@@ -608,6 +614,7 @@ export function ChangePage({ id }: { id: string }) {
               <span className="body">
                 <span>{r.message}</span>
                 <span className="by">{r.validator}</span>
+                {r.advisory && <span className="tag advisory">advisory</span>}
               </span>
               {r.humanRequired ? <StatePill status="human_required" /> : <span className="nohr">No human needed</span>}
             </div>

@@ -16,6 +16,9 @@ type ValidatorResult struct {
 	Name    string
 	Verdict *Verdict
 	Err     error
+	// Advisory marks a validator whose verdict is recorded but never
+	// counted (WU-030, A31).
+	Advisory bool
 }
 
 // Result is the combined outcome of an iteration's validators.
@@ -31,10 +34,11 @@ type Result struct {
 // ValidatorOutcome is one validator's own decision, kept apart from how
 // its step ran: a validator that asks for fixes has still run fine.
 type ValidatorOutcome struct {
-	Name    string  `json:"name"`
-	Outcome Outcome `json:"outcome,omitempty"` // empty when the validator produced no verdict
-	Summary string  `json:"summary,omitempty"`
-	Error   string  `json:"error,omitempty"` // why there is no verdict
+	Name     string  `json:"name"`
+	Outcome  Outcome `json:"outcome,omitempty"` // empty when the validator produced no verdict
+	Summary  string  `json:"summary,omitempty"`
+	Error    string  `json:"error,omitempty"`    // why there is no verdict
+	Advisory bool    `json:"advisory,omitempty"` // recorded, never counted
 }
 
 // CombinedCriterion is one criterion's status across validators.
@@ -51,23 +55,28 @@ type Assessment struct {
 	Status    Status   `json:"status"`
 	Reason    string   `json:"reason"`
 	Evidence  []string `json:"evidence,omitempty"`
+	Advisory  bool     `json:"advisory,omitempty"` // shown, not merged into the criterion's status
 }
 
 // SourcedFinding is a finding with the validator that reported it.
 type SourcedFinding struct {
 	Validator string `json:"validator"`
+	Advisory  bool   `json:"advisory,omitempty"`
 	Finding
 }
 
 // SourcedRisk is a risk with the validator that reported it.
 type SourcedRisk struct {
 	Validator string `json:"validator"`
+	Advisory  bool   `json:"advisory,omitempty"`
 	Risk
 }
 
 // Combine merges validator results into a change outcome (WU-005 rules).
 // required lists the validators the target branch's pipeline demands, and
-// changedFiles are the files the change touches.
+// changedFiles are the files the change touches. An advisory result
+// (WU-030, A31) is carried in full, tagged, and moves nothing: not the
+// state, not a criterion's status, not the need for a human.
 func Combine(criteria []change.Criterion, results []ValidatorResult, required, changedFiles []string) Result {
 	r := Result{Criteria: []CombinedCriterion{}, Findings: []SourcedFinding{}, Risks: []SourcedRisk{}, Reasons: []string{}, Validators: []ValidatorOutcome{}}
 	byID := map[string]*CombinedCriterion{}
@@ -80,40 +89,48 @@ func Combine(criteria []change.Criterion, results []ValidatorResult, required, c
 
 	var rejected, fix bool
 	var human []string
+	counted := 0
 	reported := map[string]bool{}
 	for _, res := range results {
 		reported[res.Name] = true
+		if !res.Advisory {
+			counted++
+		}
 		if res.Err != nil || res.Verdict == nil {
 			why := "no verdict file"
 			if res.Err != nil {
 				why = res.Err.Error()
 			}
-			r.Validators = append(r.Validators, ValidatorOutcome{Name: res.Name, Error: why})
-			human = append(human, fmt.Sprintf("validator %s produced no valid verdict: %s", res.Name, why))
+			r.Validators = append(r.Validators, ValidatorOutcome{Name: res.Name, Error: why, Advisory: res.Advisory})
+			if !res.Advisory {
+				human = append(human, fmt.Sprintf("validator %s produced no valid verdict: %s", res.Name, why))
+			}
 			continue
 		}
 		v := res.Verdict
-		r.Validators = append(r.Validators, ValidatorOutcome{Name: res.Name, Outcome: v.Outcome, Summary: v.Summary})
-		switch v.Outcome {
-		case Reject:
-			rejected = true
-			r.Reasons = append(r.Reasons, fmt.Sprintf("validator %s rejected the change: %s", res.Name, v.Summary))
-		case Fix:
-			fix = true
+		r.Validators = append(r.Validators, ValidatorOutcome{Name: res.Name, Outcome: v.Outcome, Summary: v.Summary, Advisory: res.Advisory})
+		if !res.Advisory {
+			switch v.Outcome {
+			case Reject:
+				rejected = true
+				r.Reasons = append(r.Reasons, fmt.Sprintf("validator %s rejected the change: %s", res.Name, v.Summary))
+			case Fix:
+				fix = true
+			}
 		}
 		for _, cv := range v.Criteria {
 			c, ok := byID[cv.ID]
 			if !ok {
 				continue
 			}
-			c.Assessments = append(c.Assessments, Assessment{Validator: res.Name, Status: cv.Status, Reason: cv.Reason, Evidence: cv.Evidence})
+			c.Assessments = append(c.Assessments, Assessment{Validator: res.Name, Status: cv.Status, Reason: cv.Reason, Evidence: cv.Evidence, Advisory: res.Advisory})
 		}
 		for _, f := range v.Findings {
-			r.Findings = append(r.Findings, SourcedFinding{Validator: res.Name, Finding: f})
+			r.Findings = append(r.Findings, SourcedFinding{Validator: res.Name, Advisory: res.Advisory, Finding: f})
 		}
 		for _, rk := range v.Risks {
-			r.Risks = append(r.Risks, SourcedRisk{Validator: res.Name, Risk: rk})
-			if rk.HumanRequired {
+			r.Risks = append(r.Risks, SourcedRisk{Validator: res.Name, Advisory: res.Advisory, Risk: rk})
+			if rk.HumanRequired && !res.Advisory {
 				human = append(human, fmt.Sprintf("validator %s flagged a risk that needs a human (%s): %s", res.Name, rk.Area, rk.Message))
 			}
 		}
@@ -131,7 +148,7 @@ func Combine(criteria []change.Criterion, results []ValidatorResult, required, c
 		}
 	}
 
-	if len(results) == 0 && len(required) == 0 {
+	if counted == 0 && len(required) == 0 {
 		human = append(human, "no validator ran")
 	}
 	for _, name := range required {
@@ -163,11 +180,14 @@ func Combine(criteria []change.Criterion, results []ValidatorResult, required, c
 	return r
 }
 
-// mergeStatus: unmet if any validator says unmet, met if any says met,
-// otherwise unknown.
+// mergeStatus: unmet if any counting validator says unmet, met if any says
+// met, otherwise unknown. Advisory assessments are shown, not merged.
 func mergeStatus(as []Assessment) Status {
 	status := Unknown
 	for _, a := range as {
+		if a.Advisory {
+			continue
+		}
 		switch a.Status {
 		case Unmet:
 			return Unmet
