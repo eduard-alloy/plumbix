@@ -305,3 +305,40 @@ func TestOwnImagesAreStoredBuiltFromTheirDirectoryAndReportedAgainstTheirDockerf
 		t.Errorf("list after removal = %d images", len(list))
 	}
 }
+
+// TestOwnBuildLabelsTheDockerfileItPacks (WU-033 note): a save between the
+// build request and the packing of the context is what gets built and
+// labelled; a FROM separated by a tab is a FROM.
+func TestOwnBuildLabelsTheDockerfileItPacks(t *testing.T) {
+	f := &fakeDocker{images: map[string]client.ImageInspectResult{}, stream: ""}
+	s := New(f, "v", t.TempDir())
+	if _, err := s.PutOwn("tabbed", "FROM\talpine:3.20\n"); err != nil {
+		t.Fatalf("a FROM followed by a tab was refused: %v", err)
+	}
+	packing, saved := make(chan struct{}), make(chan struct{})
+	s.beforePack = func() {
+		close(packing)
+		<-saved
+	}
+	first, err := s.Build(context.Background(), "tabbed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-packing
+	// Saved while the build is about to pack: the context and the label
+	// follow the new file.
+	edited := "FROM alpine:3.20\nRUN echo edited\n"
+	if _, err := s.PutOwn("tabbed", edited); err != nil {
+		t.Fatal(err)
+	}
+	close(saved)
+	if done := waitBuild(t, s, first.ID); done.Status != BuildSucceeded {
+		t.Fatalf("build = %+v", done)
+	}
+	f.mu.Lock()
+	opts := f.builds[len(f.builds)-1]
+	f.mu.Unlock()
+	if opts.Labels[LabelDockerfile] != dockerfileHash(edited) {
+		t.Errorf("label = %s, want the hash of the file as packed", opts.Labels[LabelDockerfile])
+	}
+}
