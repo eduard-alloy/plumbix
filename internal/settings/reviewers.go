@@ -19,6 +19,10 @@ const (
 	KindAnthropic  = "anthropic"   // the Anthropic API, from the container validator; billed per token
 	KindOpenAI     = "openai"      // any OpenAI-compatible endpoint, by base URL; billed by its vendor
 	KindClaudeCode = "claude-code" // plumbix review --watch on a person's machine, on its Claude subscription
+	// KindClaudeCodeImage is Claude Code inside the pipeline (WU-035, A33):
+	// the shipped plumbix-claude-code-validator image, on a long-lived token
+	// from `claude setup-token` or an API key held in the key secret.
+	KindClaudeCodeImage = "claude-code-image"
 )
 
 // Family is where a reviewer runs: an API kind judges from the container
@@ -81,6 +85,8 @@ func KindLabel(kind string) string {
 		return "OpenAI-compatible API"
 	case KindClaudeCode:
 		return "Claude Code"
+	case KindClaudeCodeImage:
+		return "Claude Code (in the pipeline)"
 	}
 	return kind
 }
@@ -155,6 +161,10 @@ func (s *Service) PutReviewer(ctx context.Context, r Reviewer) (Reviewer, error)
 		if r.KeySecret != "" {
 			add("key_secret", "is not for Claude Code: it uses the subscription of the machine running plumbix review, no key")
 		}
+	case KindClaudeCodeImage:
+		if r.BaseURL != "" {
+			add("base_url", "is not for Claude Code in the pipeline: it reaches Anthropic with the token in its key secret")
+		}
 	case KindOpenAI:
 		if r.BaseURL == "" {
 			add("base_url", "is required for an OpenAI-compatible reviewer: the chat-completions base such as https://api.openai.com/v1")
@@ -162,7 +172,7 @@ func (s *Service) PutReviewer(ctx context.Context, r Reviewer) (Reviewer, error)
 			add("base_url", err.Error())
 		}
 	default:
-		add("kind", fmt.Sprintf("must be %s or %s", KindAnthropic, KindOpenAI))
+		add("kind", fmt.Sprintf("must be %s, %s, %s or %s", KindAnthropic, KindOpenAI, KindClaudeCode, KindClaudeCodeImage))
 	}
 	if r.Model != "" && !modelRe.MatchString(r.Model) {
 		add("model", "lowercase letters, digits, dots and dashes only")
@@ -179,6 +189,8 @@ func (s *Service) PutReviewer(ctx context.Context, r Reviewer) (Reviewer, error)
 	case "low", "medium", "high":
 		if r.Kind == KindClaudeCode {
 			add("effort", "is not for Claude Code: the loop runs with the machine's own settings")
+		} else if r.Kind == KindClaudeCodeImage {
+			add("effort", "is not for Claude Code in the pipeline: it runs with Claude Code's own settings")
 		}
 	default:
 		add("effort", "must be low, medium or high, or empty for the vendor's default")

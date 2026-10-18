@@ -37,10 +37,11 @@ function usageOf(profile: ReviewerProfile, pipelines: { repo: Repo; steps: Pipel
 
 /** kindLabel and kindNote say what a kind is and how it is paid for. */
 function kindLabel(kind: ReviewerKind): string {
-  return kind === 'anthropic' ? 'Anthropic API' : kind === 'openai' ? 'OpenAI-compatible API' : 'Claude Code'
+  return kind === 'anthropic' ? 'Anthropic API' : kind === 'openai' ? 'OpenAI-compatible API' : kind === 'claude-code-image' ? 'Claude Code (in the pipeline)' : 'Claude Code'
 }
 function kindNote(kind: ReviewerKind): string {
   if (kind === 'claude-code') return 'Runs outside the pipeline: plumbix review --watch on a machine of yours answers external steps with that machine\'s Claude Code, on its subscription quota. No key.'
+  if (kind === 'claude-code-image') return 'Runs inside the pipeline: the plumbix-claude-code-validator step runs Claude Code with tools in the checked-out code, on a token of yours. Mint it with claude setup-token on a machine signed in to your Claude subscription (or use an API key) and store it under the key secret; build the image on the Images page.'
   if (kind === 'anthropic') return 'Runs inside the pipeline: the plumbix-ai-validator step asks the Anthropic API with this key, billed per token to that key.'
   return 'Runs inside the pipeline: the plumbix-ai-validator step asks this endpoint with this key, billed by its vendor.'
 }
@@ -64,6 +65,8 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
   const external = kind === 'claude-code'
+  const hasTools = external || kind === 'claude-code-image'
+  const hasEffort = !hasTools
   const dirty = kind !== profile.kind || baseURL !== profile.base_url || model !== profile.model || tools !== profile.tools || keySecret !== profile.key_secret || effort !== (profile.effort ?? '')
 
   async function run(label: string, fn: () => Promise<unknown>) {
@@ -100,7 +103,7 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
       <form
         onSubmit={(e) => {
           e.preventDefault()
-          void run('Saved', () => api.putReviewer(profile.name, { kind, base_url: kind === 'openai' ? baseURL : '', model, tools, effort: external ? '' : effort, key_secret: external ? '' : keySecret }))
+          void run('Saved', () => api.putReviewer(profile.name, { kind, base_url: kind === 'openai' ? baseURL : '', model, tools, effort: hasEffort ? effort : '', key_secret: external ? '' : keySecret }))
         }}
       >
         <div className="grid">
@@ -110,11 +113,12 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
               <option value="anthropic">Anthropic API (per token)</option>
               <option value="openai">OpenAI-compatible API (per token)</option>
               <option value="claude-code">Claude Code (subscription, external)</option>
+              <option value="claude-code-image">Claude Code in the pipeline (your token)</option>
             </select>
           </div>
           <div className="field">
             <label htmlFor={id('model')}>Model</label>
-            <input id={id('model')} value={model} onChange={(e) => setModel(e.target.value)} placeholder={kind === 'anthropic' ? 'claude-opus-5-5' : kind === 'claude-code' ? 'the machine\'s Claude Code default' : 'the model the endpoint serves'} />
+            <input id={id('model')} value={model} onChange={(e) => setModel(e.target.value)} placeholder={kind === 'anthropic' ? 'claude-opus-5-5' : kind === 'claude-code' ? 'the machine\'s Claude Code default' : kind === 'claude-code-image' ? 'Claude Code\'s default' : 'the model the endpoint serves'} />
           </div>
           {kind === 'openai' && (
             <div className="field" style={{ gridColumn: '1 / -1' }}>
@@ -123,7 +127,7 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
               <p className="hint">{vendorHints}</p>
             </div>
           )}
-          {!external && (
+          {hasEffort && (
             <div className="field">
               <label htmlFor={id('effort')}>Reasoning effort</label>
               <select id={id('effort')} value={effort} onChange={(e) => setEffort(e.target.value as ReviewerEffort)}>
@@ -139,11 +143,11 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
             <div className="field">
               <label htmlFor={id('key')}>Key secret</label>
               <input id={id('key')} value={keySecret} onChange={(e) => setKeySecret(e.target.value)} pattern="[A-Za-z_][A-Za-z0-9_]*" />
-              <p className="hint">The secret that holds this reviewer's API key. Set its value below; it is never shown again.</p>
+              <p className="hint">{kind === 'claude-code-image' ? 'The secret that holds the token from claude setup-token, or an API key. Set its value below; it is never shown again.' : "The secret that holds this reviewer's API key. Set its value below; it is never shown again."}</p>
             </div>
           )}
         </div>
-        {external && (
+        {hasTools && (
           <fieldset className="tools">
             <legend>Tools</legend>
             <label>
@@ -209,6 +213,7 @@ function AddProfile({ onAdded }: { onAdded: () => Promise<void> }) {
             <option value="anthropic">Anthropic API (per token)</option>
             <option value="openai">OpenAI-compatible API (per token)</option>
             <option value="claude-code">Claude Code (subscription, external)</option>
+            <option value="claude-code-image">Claude Code in the pipeline (your token)</option>
           </select>
         </div>
         {kind === 'openai' && (
@@ -219,10 +224,11 @@ function AddProfile({ onAdded }: { onAdded: () => Promise<void> }) {
         )}
         <div className="field">
           <label htmlFor="new-rp-model">Model</label>
-          <input id="new-rp-model" value={model} onChange={(e) => setModel(e.target.value)} placeholder={kind === 'openai' ? 'grok-4' : kind === 'claude-code' ? 'leave empty for the machine\'s default' : 'claude-sonnet-5-5'} />
+          <input id="new-rp-model" value={model} onChange={(e) => setModel(e.target.value)} placeholder={kind === 'openai' ? 'grok-4' : kind === 'claude-code' || kind === 'claude-code-image' ? 'leave empty for Claude Code\'s default' : 'claude-sonnet-5-5'} />
         </div>
       </div>
       {kind === 'openai' && <p className="hint">{vendorHints}</p>}
+      {kind === 'claude-code-image' && <p className="hint">{kindNote(kind)}</p>}
       <div className="form-row">
         <button className="secondary small" type="submit" disabled={!name.trim() || (kind === 'openai' && !baseURL.trim())}>
           Add reviewer

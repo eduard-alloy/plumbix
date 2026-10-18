@@ -80,13 +80,16 @@ func TestListMergesPipelineUsesAndShippedImagesWithStatus(t *testing.T) {
 	for i, in := range list {
 		refs[i] = in.Ref
 	}
-	want := []string{"plumbix-ai-validator:dev", "plumbix-reference-validator:dev", "golang:1.27", "node:24-alpine"}
+	want := []string{"plumbix-ai-validator:dev", "plumbix-claude-code-validator:dev", "plumbix-reference-validator:dev", "golang:1.27", "node:24-alpine"}
 	if strings.Join(refs, " ") != strings.Join(want, " ") {
 		t.Fatalf("refs = %v, want shipped first then by name %v", refs, want)
 	}
-	ai, ref, golang, node := list[0], list[1], list[2], list[3]
+	ai, cc, ref, golang, node := list[0], list[1], list[2], list[3], list[4]
 	if !ai.Shipped || ai.Status != StatusCurrent || ai.Version != "3ce0061" || !ai.Present || ai.SizeBytes != 20_000_000 || len(ai.UsedBy) != 1 || !ai.UsedBy[0].Validator || ai.Purpose == "" {
 		t.Errorf("ai = %+v", ai)
+	}
+	if !cc.Shipped || cc.Status != StatusMissing || cc.Present || len(cc.UsedBy) != 0 || cc.Purpose == "" {
+		t.Errorf("claude code validator never built = %+v", cc)
 	}
 	if !ref.Shipped || ref.Status != StatusUnlabelled || len(ref.UsedBy) != 0 {
 		t.Errorf("reference validator built by hand = %+v", ref)
@@ -254,8 +257,9 @@ func TestOwnImagesAreStoredBuiltFromTheirDirectoryAndReportedAgainstTheirDockerf
 	if !lt.Own || lt.Status != StatusMissing || lt.Dockerfile != own.Dockerfile || len(lt.UsedBy) != 1 || lt.Shipped {
 		t.Errorf("own image before the build = %+v", lt)
 	}
-	if list[0].Shipped != true || list[2].Ref != "lint-tools:latest" {
-		t.Errorf("order = %v", []string{list[0].Ref, list[1].Ref, list[2].Ref})
+	n := len(ShippedImages) // own images follow the shipped ones
+	if list[0].Shipped != true || list[n].Ref != "lint-tools:latest" {
+		t.Errorf("order = %v", []string{list[0].Ref, list[1].Ref, list[n].Ref})
 	}
 
 	// Built from its own directory, labelled with the Dockerfile's hash.
@@ -280,15 +284,15 @@ func TestOwnImagesAreStoredBuiltFromTheirDirectoryAndReportedAgainstTheirDockerf
 	f.images["lint-tools:latest"] = inspected("2026-10-18T19:00:00Z", 9_000_000, map[string]string{LabelVersion: "3ce0061", LabelOwn: "lint-tools", LabelDockerfile: dockerfileHash(own.Dockerfile)})
 	f.mu.Unlock()
 	list, _ = s.List(context.Background(), nil)
-	if list[2].Status != StatusCurrent {
-		t.Errorf("after the build = %s", list[2].Status)
+	if list[n].Status != StatusCurrent {
+		t.Errorf("after the build = %s", list[n].Status)
 	}
 	if _, err := s.PutOwn("lint-tools", "FROM alpine:3.20\nRUN apk add --no-cache shellcheck shfmt"); err != nil {
 		t.Fatal(err)
 	}
 	list, _ = s.List(context.Background(), nil)
-	if list[2].Status != StatusStale {
-		t.Errorf("after editing the Dockerfile = %s", list[2].Status)
+	if list[n].Status != StatusStale {
+		t.Errorf("after editing the Dockerfile = %s", list[n].Status)
 	}
 
 	// Removal: the definition goes, the local image is Docker's to prune.
@@ -301,7 +305,7 @@ func TestOwnImagesAreStoredBuiltFromTheirDirectoryAndReportedAgainstTheirDockerf
 	if _, err := s.Build(context.Background(), "lint-tools"); !errors.Is(err, ErrNotShipped) {
 		t.Errorf("building a removed own image: %v", err)
 	}
-	if list, _ := s.List(context.Background(), nil); len(list) != 2 {
+	if list, _ := s.List(context.Background(), nil); len(list) != len(ShippedImages) {
 		t.Errorf("list after removal = %d images", len(list))
 	}
 }

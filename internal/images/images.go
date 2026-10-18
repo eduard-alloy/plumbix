@@ -34,10 +34,11 @@ type Shipped struct {
 	Purpose    string `json:"purpose"`
 }
 
-// ShippedImages are the validators Plumbix ships, built from validators/.
+// ShippedImages are the three validators Plumbix ships, built from validators/.
 var ShippedImages = []Shipped{
 	{Name: "plumbix-reference-validator", Dockerfile: "validators/reference/Dockerfile", Purpose: "The deterministic validator: checks each acceptance criterion against step results and declared paths; must approve before any merge (A12)."},
 	{Name: "plumbix-ai-validator", Dockerfile: "validators/ai/Dockerfile", Purpose: "The AI validator run inside the pipeline: asks its reviewer profile's model (Anthropic or any OpenAI-compatible endpoint) and writes a verdict."},
+	{Name: "plumbix-claude-code-validator", Dockerfile: "validators/claude-code/Dockerfile", Purpose: "Claude Code run inside the pipeline (A33): reviews with tools in the checked-out code on the token of a claude-code-image reviewer profile, minted with claude setup-token or an API key."},
 }
 
 // Docker is what the service needs from the Docker client.

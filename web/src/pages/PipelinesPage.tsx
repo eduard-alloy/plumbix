@@ -571,7 +571,7 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName, p
               <option value="">Default for this kind of step</option>
               {profiles.map((p) => (
                 <option key={p.name} value={p.name}>
-                  {p.name} · {p.kind === 'claude-code' ? 'Claude Code' : p.kind === 'anthropic' ? 'Anthropic API' : 'OpenAI-compatible'}
+                  {p.name} · {p.kind === 'claude-code' ? 'Claude Code' : p.kind === 'claude-code-image' ? 'Claude Code in the pipeline' : p.kind === 'anthropic' ? 'Anthropic API' : 'OpenAI-compatible'}
                   {p.model ? ` · ${p.model}` : ''}
                   {p.effort ? ` · effort ${p.effort}` : ''}
                 </option>

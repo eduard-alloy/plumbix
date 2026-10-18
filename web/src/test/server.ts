@@ -240,7 +240,9 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       const body = JSON.parse(String(init?.body)) as ReviewerInput
       const bad: { field: string; message: string }[] = []
       if (!reviewerNameRe.test(name)) bad.push({ field: 'name', message: 'must be lowercase letters, digits and dashes, start with a letter or digit, at most 32 characters' })
-      if (body.kind !== 'anthropic' && body.kind !== 'openai' && body.kind !== 'claude-code') bad.push({ field: 'kind', message: 'must be anthropic, openai or claude-code' })
+      if (body.kind !== 'anthropic' && body.kind !== 'openai' && body.kind !== 'claude-code' && body.kind !== 'claude-code-image') bad.push({ field: 'kind', message: 'must be anthropic, openai, claude-code or claude-code-image' })
+      if (body.kind === 'claude-code-image' && body.base_url) bad.push({ field: 'base_url', message: 'is not for Claude Code in the pipeline' })
+      if (body.kind === 'claude-code-image' && body.effort) bad.push({ field: 'effort', message: 'is not for Claude Code in the pipeline' })
       if (body.kind === 'claude-code' && body.key_secret) bad.push({ field: 'key_secret', message: 'is not for Claude Code: it uses the subscription of the machine running plumbix review, no key' })
       if (body.kind === 'claude-code' && body.base_url) bad.push({ field: 'base_url', message: 'is not for Claude Code' })
       const baseURL = body.kind === 'openai' ? (body.base_url ?? '').trim() : ''

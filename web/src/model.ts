@@ -226,8 +226,8 @@ export interface SecretStatus {
   updated_at?: string
 }
 
-/** anthropic and openai are API kinds (the container validator, billed per token); claude-code is the external loop on a person's machine, on its subscription. */
-export type ReviewerKind = 'anthropic' | 'openai' | 'claude-code'
+/** anthropic and openai are API kinds (the container validator, billed per token); claude-code is the external loop on a person's machine, on its subscription; claude-code-image is Claude Code inside the pipeline on a token the person minted (WU-035, A33). */
+export type ReviewerKind = 'anthropic' | 'openai' | 'claude-code' | 'claude-code-image'
 export type ReviewerTools = 'read-only' | 'full'
 /** The reasoning effort of an API reviewer's model; '' leaves the vendor's default (WU-034). */
 export type ReviewerEffort = '' | 'low' | 'medium' | 'high'

@@ -159,6 +159,32 @@ describe('Settings page', () => {
     expect(db.settings.defaults.external).toBe('claude-code')
   })
 
+  it('adds a Claude Code in-the-pipeline reviewer: a token secret and tools, no effort or base URL (WU-035)', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Settings' })
+    await screen.findByLabelText('Reviewer claude-api')
+    const add = within(screen.getByLabelText('Add a reviewer'))
+    fireEvent.change(add.getByLabelText('Name'), { target: { value: 'cc' } })
+    fireEvent.change(add.getByLabelText('Kind'), { target: { value: 'claude-code-image' } })
+    expect(add.queryByLabelText('Base URL')).toBeNull()
+    expect(screen.getByLabelText('Add a reviewer').textContent).toContain('claude setup-token')
+    fireEvent.click(add.getByRole('button', { name: 'Add reviewer' }))
+    const card = await screen.findByLabelText('Reviewer cc')
+    expect(db.profiles.find((p) => p.name === 'cc')).toMatchObject({ kind: 'claude-code-image', base_url: '', tools: 'read-only', effort: '', key_secret: 'PLUMBIX_REVIEWER_CC_KEY' })
+    expect(card.textContent).toContain('Claude Code (in the pipeline)')
+    expect(card.textContent).toContain('plumbix-claude-code-validator')
+    // Tools and the token secret, like the loop's profile plus a key; no effort.
+    expect((within(card).getByLabelText('Read only') as HTMLInputElement).checked).toBe(true)
+    expect(within(card).queryByLabelText('Reasoning effort')).toBeNull()
+    expect(within(card).getByText('PLUMBIX_REVIEWER_CC_KEY', { selector: '.secret .key' })).toBeTruthy()
+    fireEvent.click(within(card).getByLabelText('Full, including commands'))
+    fireEvent.click(within(card).getByRole('button', { name: 'Save reviewer' }))
+    await waitFor(() => expect(db.profiles.find((p) => p.name === 'cc')?.tools).toBe('full'))
+    expect(db.profiles.find((p) => p.name === 'cc')?.effort).toBe('')
+    // The editor's profile list names the kind.
+    expect(db.profiles.find((p) => p.name === 'cc')?.kind).toBe('claude-code-image')
+  })
+
   it('refuses a profile the server rejects, naming the field', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'Settings' })

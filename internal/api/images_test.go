@@ -76,7 +76,7 @@ func TestImagesListAndShippedBuild(t *testing.T) {
 	for _, im := range view.Images {
 		by[im.Ref] = im
 	}
-	if view.Version != "dev" || len(view.Images) != 4 {
+	if view.Version != "dev" || len(view.Images) != 5 {
 		t.Fatalf("view = %+v", view)
 	}
 	if x := by["x:latest"]; !x.Present || x.Shipped || x.Status != "present" || len(x.UsedBy) != 1 || x.UsedBy[0].Step != "test" || x.UsedBy[0].Validator {

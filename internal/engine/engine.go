@@ -787,9 +787,10 @@ func (e *Engine) reviewerProfile(ctx context.Context, st pipeline.Step, family s
 }
 
 // profileEnv is what a container validator learns from its profile:
-// PLUMBIX_AI_MODEL, for openai the provider and base URL, the key under
-// the variable the kind reads, when the named secret has a value, and
-// PLUMBIX_AI_EFFORT from the step's effort over the profile's (WU-034).
+// PLUMBIX_AI_MODEL, for openai the provider and base URL, for
+// claude-code-image the tools, the key under the variable the kind reads,
+// when the named secret has a value, and PLUMBIX_AI_EFFORT from the step's
+// effort over the profile's (WU-034) for the kinds that take one.
 func profileEnv(r settings.Reviewer, secrets map[string]string, stepEffort string) map[string]string {
 	env := map[string]string{}
 	if r.Model != "" {
@@ -801,10 +802,20 @@ func profileEnv(r settings.Reviewer, secrets map[string]string, stepEffort strin
 		env["PLUMBIX_AI_EFFORT"] = r.Effort
 	}
 	keyVar := "ANTHROPIC_API_KEY"
-	if r.Kind == settings.KindOpenAI {
+	switch r.Kind {
+	case settings.KindOpenAI:
 		env["PLUMBIX_AI_PROVIDER"] = settings.KindOpenAI
 		if r.BaseURL != "" {
 			env["PLUMBIX_AI_BASE_URL"] = r.BaseURL
+		}
+		keyVar = "PLUMBIX_AI_API_KEY"
+	case settings.KindClaudeCodeImage:
+		// Claude Code in the pipeline (WU-035, A33): the token under the
+		// generic name, since by its prefix it is a setup token or an API
+		// key, and the tool policy; effort is not a setting of this kind.
+		delete(env, "PLUMBIX_AI_EFFORT")
+		if r.Tools != "" {
+			env["PLUMBIX_AI_TOOLS"] = r.Tools
 		}
 		keyVar = "PLUMBIX_AI_API_KEY"
 	}

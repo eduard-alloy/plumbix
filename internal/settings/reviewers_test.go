@@ -273,3 +273,35 @@ func TestDefaultKeySecretName(t *testing.T) {
 		t.Error("prefix")
 	}
 }
+
+// TestClaudeCodeImageProfilesAreAPIProfilesWithAToken (WU-035, A33): the
+// kind that runs Claude Code inside the pipeline binds like an API profile,
+// has a key secret for its token and tools, and refuses a base URL and an
+// effort.
+func TestClaudeCodeImageProfilesAreAPIProfilesWithAToken(t *testing.T) {
+	s := newService(t)
+	ctx := context.Background()
+	r, err := s.PutReviewer(ctx, Reviewer{Name: "cc", Kind: KindClaudeCodeImage, Model: "claude-opus-5-5", Tools: review.ToolsFull})
+	if err != nil || r.Family() != FamilyAPI || r.KeySecret != "PLUMBIX_REVIEWER_CC_KEY" || r.Tools != review.ToolsFull || r.Model != "claude-opus-5-5" {
+		t.Fatalf("profile = %+v %v, want the api family, the default key secret and the tools", r, err)
+	}
+	if got, ok, err := s.Reviewer(ctx, "cc", FamilyAPI); err != nil || !ok || got.Kind != KindClaudeCodeImage {
+		t.Errorf("api lookup = %+v %v %v", got, ok, err)
+	}
+	for _, c := range []struct {
+		r     Reviewer
+		field string
+	}{
+		{Reviewer{Name: "x", Kind: KindClaudeCodeImage, BaseURL: "https://x"}, "base_url"},
+		{Reviewer{Name: "x", Kind: KindClaudeCodeImage, Effort: "low"}, "effort"},
+	} {
+		_, err := s.PutReviewer(ctx, c.r)
+		var inv *change.InvalidError
+		if !errors.As(err, &inv) || len(inv.Problems) != 1 || inv.Problems[0].Field != c.field {
+			t.Errorf("%+v: err = %v, want a problem on %s", c.r, err, c.field)
+		}
+	}
+	if KindLabel(KindClaudeCodeImage) != "Claude Code (in the pipeline)" {
+		t.Errorf("label = %q", KindLabel(KindClaudeCodeImage))
+	}
+}

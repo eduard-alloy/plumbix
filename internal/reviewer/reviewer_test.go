@@ -303,7 +303,7 @@ func TestStreamedToolUsesBecomeProgressLines(t *testing.T) {
 		t.Errorf("claude args lack the streaming format:\n%s", args)
 	}
 	longCmd := "go test ./... && echo done with a very long command line that keeps going on and on and on and on and on and on past the limit"
-	want := []string{"tok-1|turn 1: Read app.go", "tok-1|turn 2: Grep func Greet", "tok-1|turn 2: Bash " + string([]rune(longCmd)[:maxProgressArg]) + "…"}
+	want := []string{"tok-1|turn 1: Read app.go", "tok-1|turn 2: Grep func Greet", "tok-1|turn 2: Bash " + string([]rune(longCmd)[:120]) + "…"}
 	if strings.Join(fs.progress, "\n") != strings.Join(want, "\n") {
 		t.Errorf("progress = %q\nwant %q", fs.progress, want)
 	}
