@@ -37,15 +37,13 @@ describe('prose', () => {
     expect(prose('only (1) here')).toEqual([{ kind: 'p', inline: [{ text: 'only (1) here', code: false }] }])
   })
 
-  it('marks code spans and leaves an unmatched backtick alone', () => {
+  it('marks code spans and keeps an unmatched backtick as typed', () => {
     expect(inlines('run `go test` now')).toEqual([
       { text: 'run ', code: false },
       { text: 'go test', code: true },
       { text: ' now', code: false },
     ])
-    expect(inlines('a `b')).toEqual([
-      { text: 'a ', code: false },
-      { text: 'b', code: false },
-    ])
+    expect(inlines('a `b')).toEqual([{ text: 'a `b', code: false }])
+    expect(inlines('`x` and `y')).toEqual([{ text: '`x` and `y', code: false }])
   })
 })

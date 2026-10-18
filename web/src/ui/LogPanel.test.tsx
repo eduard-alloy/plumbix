@@ -61,10 +61,13 @@ describe('Log panel', () => {
     expect(within(panel).getByText('1/3')).toBeTruthy()
     fireEvent.change(search, { target: { value: 'nothing here' } })
     expect(within(panel).getByText('0/0')).toBeTruthy()
+    // Long lines wrap by default; the button turns it off.
     const wrap = within(panel).getByRole('button', { name: 'Wrap' })
-    expect(wrap.getAttribute('aria-pressed')).toBe('false')
-    fireEvent.click(wrap)
     expect(wrap.getAttribute('aria-pressed')).toBe('true')
+    expect(panel.querySelector('.log-body')?.className).toContain('wrap')
+    fireEvent.click(wrap)
+    expect(wrap.getAttribute('aria-pressed')).toBe('false')
+    expect(panel.querySelector('.log-body')?.className).not.toContain('wrap')
   })
 
   it('closes with Escape and with the close button, and / focuses its search while open', async () => {

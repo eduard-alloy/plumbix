@@ -24,7 +24,7 @@ export function LogPanel({ target, onClose }: { target: LogTarget; onClose: () =
   const [text, setText] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [current, setCurrent] = useState(0)
-  const [wrap, setWrap] = useState(false)
+  const [wrap, setWrap] = useState(true) // long lines wrap unless the reader turns it off
   const bodyRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const following = step.status === 'running'
