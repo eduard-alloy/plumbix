@@ -86,12 +86,12 @@ func (s *Service) resolve(name string) (buildable, error) {
 		if s.beforePack != nil {
 			s.beforePack()
 		}
-		cur, err := s.GetOwn(own.Name)
+		tarball, dockerfile, err := s.ownContextTar(own.Name)
 		if err != nil {
-			return nil, fmt.Errorf("the Dockerfile of %s is gone: %w", own.Name, err)
+			return nil, err
 		}
-		b.labels[LabelDockerfile] = dockerfileHash(cur.Dockerfile)
-		return s.ownContextTar(own.Name)
+		b.labels[LabelDockerfile] = dockerfileHash(dockerfile)
+		return tarball, nil
 	}
 	return b, nil
 }

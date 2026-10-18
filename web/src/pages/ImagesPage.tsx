@@ -56,7 +56,7 @@ RUN apk add --no-cache git
 `
 
 /** withFinalNewline is how the server stores a Dockerfile, so edits compare like for like. */
-const withFinalNewline = (s: string) => (s.endsWith('\n') ? s : s + '\n')
+const withFinalNewline = (s: string) => (s === '' || s.endsWith('\n') ? s : s + '\n')
 
 function OwnEditor({ im, onChanged }: { im: ImageInfo; onChanged: () => Promise<void> }) {
   const [text, setText] = useState(im.dockerfile ?? '')

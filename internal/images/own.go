@@ -1,10 +1,12 @@
 package images
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -152,10 +154,83 @@ func dockerfileHash(dockerfile string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// ownContextTar packs an own image's directory as its build context.
-func (s *Service) ownContextTar(name string) (*bytesReader, error) {
-	return ContextTar(os.DirFS(s.ownDir(name)))
+// ownContextTar packs an own image's directory as its build context and
+// returns the Dockerfile exactly as packed, so the build's label hashes the
+// file the image is built from and nothing else.
+func (s *Service) ownContextTar(name string) (*bytesReader, string, error) {
+	fsys := os.DirFS(s.ownDir(name))
+	data, err := fs.ReadFile(fsys, "Dockerfile")
+	if err != nil {
+		return nil, "", fmt.Errorf("the Dockerfile of %s is gone: %w", name, err)
+	}
+	// The context is packed from the bytes just read, not from a second
+	// read of the directory, so the two cannot differ.
+	tarball, err := ContextTar(staticFS{"Dockerfile": data})
+	return tarball, string(data), err
 }
+
+// staticFS is an in-memory fs.FS of the files a context holds.
+type staticFS map[string][]byte
+
+func (f staticFS) Open(name string) (fs.File, error) {
+	if name == "." {
+		return &staticDir{entries: f}, nil
+	}
+	data, ok := f[name]
+	if !ok {
+		return nil, fs.ErrNotExist
+	}
+	return &staticFile{name: name, Reader: bytes.NewReader(data), size: int64(len(data))}, nil
+}
+
+type staticDir struct {
+	entries staticFS
+	read    bool
+}
+
+func (d *staticDir) Stat() (fs.FileInfo, error) { return staticInfo{name: ".", dir: true}, nil }
+func (d *staticDir) Read([]byte) (int, error)   { return 0, fs.ErrInvalid }
+func (d *staticDir) Close() error               { return nil }
+func (d *staticDir) ReadDir(int) ([]fs.DirEntry, error) {
+	if d.read {
+		return nil, nil
+	}
+	d.read = true
+	names := make([]string, 0, len(d.entries))
+	for n := range d.entries {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	out := make([]fs.DirEntry, 0, len(names))
+	for _, n := range names {
+		out = append(out, fs.FileInfoToDirEntry(staticInfo{name: n, size: int64(len(d.entries[n]))}))
+	}
+	return out, nil
+}
+
+type staticFile struct {
+	name string
+	*bytes.Reader
+	size int64
+}
+
+func (f *staticFile) Stat() (fs.FileInfo, error) { return staticInfo{name: f.name, size: f.size}, nil }
+func (f *staticFile) Close() error               { return nil }
+
+type staticInfo struct {
+	name string
+	size int64
+	dir  bool
+}
+
+func (i staticInfo) Name() string { return i.name }
+func (i staticInfo) Size() int64  { return i.size }
+func (i staticInfo) Mode() fs.FileMode {
+	return map[bool]fs.FileMode{true: fs.ModeDir | 0o755, false: 0o644}[i.dir]
+}
+func (i staticInfo) ModTime() time.Time { return time.Unix(0, 0) }
+func (i staticInfo) IsDir() bool        { return i.dir }
+func (i staticInfo) Sys() any           { return nil }
 
 // canonical gives a reference its implicit tag, so my-validator and
 // my-validator:latest are one image.
