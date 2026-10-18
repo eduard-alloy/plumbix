@@ -68,6 +68,7 @@ func TestWritesVerdictFromClaudeCode(t *testing.T) {
 	in, out, ws := setup(t)
 	exe, rec := fakeClaude(t, approving)
 	env := map[string]string{"PLUMBIX_IN": in, "PLUMBIX_OUT": out, "PLUMBIX_WORKSPACE": ws, "PLUMBIX_CLAUDE": exe, "PLUMBIX_AI_API_KEY": "sk-ant-api03-secret-value", "PLUMBIX_AI_MODEL": "claude-opus-5-5"}
+	t.Setenv("PLUMBIX_AI_API_KEY", env["PLUMBIX_AI_API_KEY"]) // as the container has it
 	var stderr bytes.Buffer
 	if code := run(func(k string) string { return env[k] }, &stderr); code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr.String())
@@ -88,8 +89,8 @@ func TestWritesVerdictFromClaudeCode(t *testing.T) {
 	if cwd := strings.TrimSpace(recorded(t, rec, "cwd")); cwd != ws && !strings.HasSuffix(cwd, ws) {
 		t.Errorf("claude ran in %q, want the workspace %q", cwd, ws)
 	}
-	if e := recorded(t, rec, "env"); !strings.Contains(e, "ANTHROPIC_API_KEY=sk-ant-api03-secret-value\n") || strings.Contains(e, "CLAUDE_CODE_OAUTH_TOKEN=") {
-		t.Errorf("an API key should reach claude as ANTHROPIC_API_KEY only:\n%s", e)
+	if e := recorded(t, rec, "env"); !strings.Contains(e, "ANTHROPIC_API_KEY=sk-ant-api03-secret-value\n") || strings.Contains(e, "CLAUDE_CODE_OAUTH_TOKEN=") || strings.Contains(e, "PLUMBIX_AI_API_KEY=") {
+		t.Errorf("an API key should reach claude as ANTHROPIC_API_KEY only, never as PLUMBIX_AI_API_KEY:\n%s", e)
 	}
 	log := stderr.String()
 	if strings.Contains(log, "secret-value") {

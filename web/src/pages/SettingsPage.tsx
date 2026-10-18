@@ -156,7 +156,11 @@ function ProfileCard({ profile, secret, usage, onChanged }: { profile: ReviewerP
             <label>
               <input type="radio" name={id('tools')} value="full" checked={tools === 'full'} onChange={() => setTools('full')} /> Full, including commands
             </label>
-            <p className="hint">Read only lets Claude Code open files beyond the diff; full also lets it run commands in the checked-out code, which text in the repository could try to steer.</p>
+            <p className="hint">
+              {kind === 'claude-code-image'
+                ? 'Read only lets Claude Code open files beyond the diff; full also lets it run commands in the checked-out code, which text in the repository could try to steer. In the pipeline those commands run in a container that holds your token, so a steered command could read it: keep read only unless you accept that.'
+                : 'Read only lets Claude Code open files beyond the diff; full also lets it run commands in the checked-out code, which text in the repository could try to steer.'}
+            </p>
           </fieldset>
         )}
         <div className="actions">

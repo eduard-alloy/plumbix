@@ -61,11 +61,13 @@ const streamed = `{"type":"system","subtype":"init","session_id":"s1"}
 func TestRunPassesPromptSchemaPolicyAndEnvironment(t *testing.T) {
 	bin, rec := fakeClaude(t, streamed)
 	dir := t.TempDir()
+	t.Setenv("PLUMBIX_AI_API_KEY", "raw-secret")
+	t.Setenv("ANTHROPIC_API_KEY", "stale")
 	var progress []string
 	res, err := Run(context.Background(), Options{
 		Claude: filepath.Join(bin, "claude"), Dir: dir, System: "You judge.", User: "The change.",
 		Schema: review.OutputSchema([]string{"AC-1"}), Tools: review.ToolsReadOnly, Model: "claude-opus-5-5", MaxTurns: 7,
-		Env:      []string{"ANTHROPIC_API_KEY=sk-ant-test"},
+		Env: []string{"ANTHROPIC_API_KEY=sk-ant-test"}, Drop: []string{"PLUMBIX_AI_API_KEY"},
 		Progress: func(line string) { progress = append(progress, line) },
 	})
 	if err != nil {
@@ -92,8 +94,8 @@ func TestRunPassesPromptSchemaPolicyAndEnvironment(t *testing.T) {
 	if got := strings.TrimSpace(recorded(t, rec, "cwd")); got != dir && !strings.HasSuffix(got, dir) {
 		t.Errorf("cwd = %q, want %q", got, dir)
 	}
-	if env := recorded(t, rec, "env"); !strings.Contains(env, "ANTHROPIC_API_KEY=sk-ant-test\n") || !strings.Contains(env, "PLUMBIX_TEST_REC=") {
-		t.Errorf("env lacks the extra variable or the inherited one:\n%s", env)
+	if env := recorded(t, rec, "env"); !strings.Contains(env, "ANTHROPIC_API_KEY=sk-ant-test\n") || !strings.Contains(env, "PLUMBIX_TEST_REC=") || strings.Contains(env, "raw-secret") || strings.Contains(env, "stale") {
+		t.Errorf("env should carry the extra variable once, the inherited ones, and no dropped or overridden value:\n%s", env)
 	}
 	want := []string{"turn 1: Read app.go", "turn 2: Grep func Greet", "turn 2: Bash go test ./..."}
 	if strings.Join(progress, "|") != strings.Join(want, "|") {

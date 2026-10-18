@@ -46,6 +46,10 @@ type Options struct {
 	Deadline time.Time
 	// Env is added to the inherited environment (authentication, typically).
 	Env []string
+	// Drop names variables removed from the inherited environment before
+	// claude starts, so a credential it was handed under another name is
+	// not also visible to it and to the commands it runs.
+	Drop []string
 	// Progress receives one line per tool use, with the turn it belongs to.
 	Progress func(string)
 }
@@ -133,8 +137,8 @@ func Run(ctx context.Context, o Options) (Result, error) {
 	cmd := exec.CommandContext(runCtx, o.Claude, args...)
 	cmd.Dir = o.Dir
 	cmd.Stdin = strings.NewReader(o.User)
-	if len(o.Env) > 0 {
-		cmd.Env = append(os.Environ(), o.Env...)
+	if len(o.Env) > 0 || len(o.Drop) > 0 {
+		cmd.Env = environment(o.Env, o.Drop)
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -164,6 +168,28 @@ func Run(ctx context.Context, o Options) (Result, error) {
 		return Result{}, fmt.Errorf("claude returned no structured output: %s", Excerpt(res.Result))
 	}
 	return res, nil
+}
+
+// environment is the process environment without the dropped names and
+// without the names extra sets, followed by extra.
+func environment(extra, drop []string) []string {
+	skip := map[string]bool{}
+	for _, name := range drop {
+		skip[name] = true
+	}
+	for _, kv := range extra {
+		if name, _, ok := strings.Cut(kv, "="); ok {
+			skip[name] = true
+		}
+	}
+	var env []string
+	for _, kv := range os.Environ() {
+		if name, _, ok := strings.Cut(kv, "="); ok && skip[name] {
+			continue
+		}
+		env = append(env, kv)
+	}
+	return append(env, extra...)
 }
 
 // Excerpt trims text to what an error message or a log line can carry.

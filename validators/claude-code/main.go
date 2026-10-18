@@ -84,7 +84,11 @@ func run(getenv func(string) string, stderr io.Writer) int {
 	res, err := claudecode.Run(context.Background(), claudecode.Options{
 		Claude: or("PLUMBIX_CLAUDE", "claude"), Dir: workspace, System: prompt.System, User: prompt.User,
 		Schema: review.OutputSchema(review.CriterionIDs(in.Change.AcceptanceCriteria)), Tools: tools, Model: model, MaxTurns: maxTurns,
+		// The credential reaches claude under the one variable it reads;
+		// the raw PLUMBIX_AI_API_KEY is dropped from the environment claude
+		// and the commands it runs inherit.
 		Env:      []string{authVar(key) + "=" + key},
+		Drop:     []string{"PLUMBIX_AI_API_KEY"},
 		Progress: func(line string) { fmt.Fprintln(stderr, prefix+line) },
 	})
 	if err != nil {
