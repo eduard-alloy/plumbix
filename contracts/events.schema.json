@@ -627,7 +627,8 @@
           "enum": [
             "bypass_commit",
             "token_expiry",
-            "no_reviewer"
+            "no_reviewer",
+            "pipeline_unapproved"
           ]
         },
         "key": {
@@ -655,7 +656,8 @@
           "enum": [
             "bypass_commit",
             "token_expiry",
-            "no_reviewer"
+            "no_reviewer",
+            "pipeline_unapproved"
           ]
         },
         "key": {

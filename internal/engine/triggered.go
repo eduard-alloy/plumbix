@@ -226,15 +226,14 @@ func (e *Engine) startTriggered(ctx context.Context, repo change.Repo, f Trigger
 	if err := e.store.CreateRun(ctx, r); err != nil {
 		return run.Run{}, err
 	}
-	p := f.Pipeline
 	e.launch(key, r, func(ctx context.Context) ([]run.Step, *validation.Result, error) {
-		return e.runTriggered(ctx, r, repo, p, sha)
+		return e.runTriggered(ctx, r, repo, f, sha)
 	})
 	return r, nil
 }
 
 // runTriggered runs a triggered pipeline in a worktree of sha.
-func (e *Engine) runTriggered(ctx context.Context, r run.Run, repo change.Repo, p *pipeline.Pipeline, sha string) ([]run.Step, *validation.Result, error) {
+func (e *Engine) runTriggered(ctx context.Context, r run.Run, repo change.Repo, f TriggeredFile, sha string) ([]run.Step, *validation.Result, error) {
 	work := filepath.Join(e.cfg.DataDir, workDir, r.ID)
 	defer os.RemoveAll(work)
 	if err := e.store.SetRunCommits(ctx, r.ID, sha, ""); err != nil {
@@ -253,8 +252,16 @@ func (e *Engine) runTriggered(ctx context.Context, r run.Run, repo change.Repo, 
 		return nil, nil, err
 	}
 	defer remove()
+	src, _, err := m.Show(ctx, sha, f.File)
+	if err != nil {
+		return nil, nil, err
+	}
+	secrets, withheld, err := e.gate(ctx, m, repo, r.Branch, sha, f.File, src)
+	if err != nil {
+		return nil, nil, err
+	}
 	logs := map[string]*os.File{}
 	defer closeLogs(logs)
-	res := scheduler.Execute(ctx, p, e.runner, e.schedulerOptions(r, repo, r.Branch, workspace, logs))
-	return toSteps(p, res), nil, nil
+	res := scheduler.Execute(ctx, f.Pipeline, e.runner, e.schedulerOptions(r, secrets, withheld, workspace, logs))
+	return toSteps(f.Pipeline, res), nil, nil
 }

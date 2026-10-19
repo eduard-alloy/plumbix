@@ -27,6 +27,14 @@ describe('Alerts page', () => {
     expect(document.body.textContent).toContain('plumbix review install')
   })
 
+  it('labels a pipeline_unapproved alert and says how to approve the file (WU-051)', async () => {
+    db.alerts.push({ id: 'al_pipeunappr01', kind: 'pipeline_unapproved', key: 'r_plumbix00001:.plumbix/pipelines/deploy.yaml', repo_id: 'r_plumbix00001', message: 'A run of .plumbix/pipelines/deploy.yaml on main at 3b7f2a9 got no secrets: .plumbix/pipelines/deploy.yaml at this commit is not a version a person approved; bring it in through a Plumbix change.', details: { file: '.plumbix/pipelines/deploy.yaml', branch: 'main' }, created_at: NOW.toISOString() })
+    window.history.replaceState(null, '', '/alerts')
+    render(<App />)
+    await screen.findByText('Pipeline file not approved: runs get no secrets')
+    expect(document.body.textContent).toContain('submit the file as a change')
+  })
+
   it('lists open alerts with their commits, resolves one, and shows resolved ones behind a toggle', async () => {
     window.history.replaceState(null, '', '/alerts')
     render(<App />)

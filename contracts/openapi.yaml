@@ -1827,7 +1827,7 @@ components:
           pattern: "^al_[a-z2-7]{12}$"
         kind:
           type: string
-          enum: [bypass_commit, token_expiry, no_reviewer]
+          enum: [bypass_commit, token_expiry, no_reviewer, pipeline_unapproved]
         key:
           description: Identifies the alert's subject; one open alert per kind and key.
           type: string
@@ -1836,7 +1836,7 @@ components:
         message:
           type: string
         details:
-          description: "bypass_commit: branch, head, count, commits[{sha, author, email, time, subject}]. token_expiry: host, expires. no_reviewer: change_id, run_id, review_id, step."
+          description: "bypass_commit: branch, head, count, commits[{sha, author, email, time, subject}]. token_expiry: host, expires. no_reviewer: change_id, run_id, review_id, step. pipeline_unapproved: file, branch, commit for a run that got no secrets, or change_id, branch when a merge could not record its pipeline files."
           type: object
         created_at:
           type: string

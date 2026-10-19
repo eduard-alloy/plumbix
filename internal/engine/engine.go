@@ -23,6 +23,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/gitops"
+	"github.com/eduard-alloy/plumbix/internal/guard"
 	"github.com/eduard-alloy/plumbix/internal/host"
 	"github.com/eduard-alloy/plumbix/internal/pipeline"
 	"github.com/eduard-alloy/plumbix/internal/review"
@@ -61,6 +62,7 @@ type Store interface {
 	review.Store
 	alert.Store
 	events.Appender
+	guard.Store
 }
 
 // Config configures runs.
@@ -326,10 +328,18 @@ func (e *Engine) runBranch(ctx context.Context, r run.Run, repo change.Repo) ([]
 		return nil, nil, err
 	}
 	defer remove()
+	src, _, err := m.Show(ctx, head, PipelineFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	secrets, withheld, err := e.gate(ctx, m, repo, r.Branch, head, PipelineFile, src)
+	if err != nil {
+		return nil, nil, err
+	}
 	plain := p.WithoutValidators()
 	logs := map[string]*os.File{}
 	defer closeLogs(logs)
-	res := scheduler.Execute(ctx, plain, e.runner, e.schedulerOptions(r, repo, r.Branch, workspace, logs))
+	res := scheduler.Execute(ctx, plain, e.runner, e.schedulerOptions(r, secrets, withheld, workspace, logs))
 	return toSteps(plain, res), nil, nil
 }
 
@@ -354,17 +364,44 @@ func (e *Engine) readPipeline(ctx context.Context, m *gitops.Mirror, commit, bra
 	return p, nil
 }
 
-// schedulerOptions returns the options shared by every run. Only runs on a
-// protected branch get secrets (A38): a pipeline file on any other branch
-// was written by whoever pushed it and nobody has approved it.
-func (e *Engine) schedulerOptions(r run.Run, repo change.Repo, branch, workspace string, logs map[string]*os.File) scheduler.Options {
-	var secrets map[string]string
-	withheld := ""
-	if slices.Contains(repo.ProtectedBranches, branch) {
-		secrets = e.secrets()
-	} else {
-		withheld = fmt.Sprintf("secrets are only given to runs on protected branches; this run is on %s", branch)
+// gate says which secrets a run's steps get (A38, WU-051): none off a
+// protected branch, where whoever pushed wrote the pipeline file and nobody
+// approved it; on a protected branch, the secrets when the file's content
+// at commit is one a person approved. A repository with no approvals at all
+// first trusts every pipeline file at commit, so existing setups keep
+// working. withheld says why a step that names a secret gets none; a
+// withheld protected-branch run raises a pipeline_unapproved alert.
+func (e *Engine) gate(ctx context.Context, m *gitops.Mirror, repo change.Repo, branch, commit, file string, content []byte) (secrets map[string]string, withheld string, err error) {
+	if !slices.Contains(repo.ProtectedBranches, branch) {
+		return nil, fmt.Sprintf("secrets are only given to runs on protected branches; this run is on %s", branch), nil
 	}
+	if err := e.trustFirstUse(ctx, m, repo, commit); err != nil {
+		return nil, "", err
+	}
+	ok, err := e.store.PipelineApproved(ctx, repo.ID, file, guard.Digest(content))
+	if err != nil {
+		return nil, "", err
+	}
+	key := repo.ID + ":" + file
+	if !ok {
+		why := fmt.Sprintf("%s at this commit is not a version a person approved; bring it in through a Plumbix change", file)
+		a := alert.Alert{Kind: alert.PipelineUnapproved, Key: key, RepoID: repo.ID, CreatedAt: e.now().UTC(),
+			Message: fmt.Sprintf("A run of %s on %s at %s got no secrets: %s.", file, branch, short(commit), why),
+			Details: map[string]any{"file": file, "branch": branch, "commit": commit}}
+		if _, _, err := e.store.Raise(ctx, a); err != nil {
+			e.log.Warn("raise pipeline_unapproved alert", "repo", repo.ID, "file", file, "err", err)
+		}
+		return nil, why, nil
+	}
+	if err := e.store.ResolveKey(ctx, alert.PipelineUnapproved, key, e.now().UTC()); err != nil {
+		e.log.Warn("resolve pipeline_unapproved alert", "repo", repo.ID, "file", file, "err", err)
+	}
+	return e.secrets(), "", nil
+}
+
+// schedulerOptions returns the options shared by every run, with the
+// secrets gate decided for it.
+func (e *Engine) schedulerOptions(r run.Run, secrets map[string]string, withheld, workspace string, logs map[string]*os.File) scheduler.Options {
 	return scheduler.Options{
 		MaxParallel: e.cfg.MaxParallel, DefaultTimeout: e.cfg.DefaultTimeout,
 		Workspace: workspace, CPUs: e.cfg.CPUs, MemoryMB: e.cfg.MemoryMB, Secrets: secrets, SecretsWithheld: withheld,
@@ -513,7 +550,11 @@ func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([
 	}
 	// The change's source branch carries its own pipeline file: its steps
 	// get no secrets unless that branch is protected (A38).
-	opts := e.schedulerOptions(r, repo, c.SourceBranch, prep.workspace, logs)
+	secrets, withheld, err := e.gate(ctx, prep.mirror, repo, c.SourceBranch, prep.head, PipelineFile, prep.source)
+	if err != nil {
+		return nil, nil, err
+	}
+	opts := e.schedulerOptions(r, secrets, withheld, prep.workspace, logs)
 	// A change's run compares base to head, so when.paths can be judged.
 	// Plain branch runs go through runBranch, which never sets this, and a
 	// missing base leaves conditional steps running here too.
@@ -551,6 +592,15 @@ func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([
 		return steps, nil, nil
 	}
 	combined := validation.Combine(c.AcceptanceCriteria, results, prep.required, prep.changed)
+	// The pipeline guard's report (WU-051): Plumbix's own check, not a step
+	// any file defines; every risk needs a person.
+	for _, rk := range prep.guard {
+		combined.Risks = append(combined.Risks, validation.SourcedRisk{Validator: guard.Name, Risk: rk})
+	}
+	if len(prep.guard) > 0 && combined.State == change.Approved {
+		combined.State = change.NeedsHuman
+		combined.Reasons = append(combined.Reasons, "the pipeline guard's report needs a person")
+	}
 	if len(infra) > 0 && combined.State != change.Rejected {
 		// Infrastructure failures make the evidence unreliable; they are
 		// never the author's to fix.
@@ -568,10 +618,18 @@ func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([
 type prepared struct {
 	head, base, workspace string
 	pipeline              *pipeline.Pipeline
-	required, changed     []string
-	diff                  []byte
-	previous              []validation.Finding
-	cleanup               func()
+	// source is the change's pipeline file at head, for the secrets gate.
+	source []byte
+	mirror *gitops.Mirror
+	// targetValidators are the target branch's validator steps by name: a
+	// validator gets its reviewer key only when it matches one (WU-051).
+	targetValidators map[string]pipeline.Step
+	// guard is the pipeline guard's report on the change (WU-051).
+	guard             []validation.Risk
+	required, changed []string
+	diff              []byte
+	previous          []validation.Finding
+	cleanup           func()
 }
 
 func (e *Engine) prepare(ctx context.Context, r run.Run, c change.Change, work string) (prepared, error) {
@@ -601,9 +659,17 @@ func (e *Engine) prepare(ctx context.Context, r run.Run, c change.Change, work s
 	if p.pipeline, err = e.readPipeline(ctx, m, p.head, c.SourceBranch); err != nil {
 		return p, err
 	}
+	if p.source, _, err = m.Show(ctx, p.head, PipelineFile); err != nil {
+		return p, err
+	}
+	p.mirror = m
+	p.targetValidators = map[string]pipeline.Step{}
 	if targetSrc, ok, err := m.Show(ctx, target, PipelineFile); err == nil && ok {
 		if tp, err := pipeline.Parse(targetSrc); err == nil {
 			for _, st := range tp.Steps {
+				if st.Validator {
+					p.targetValidators[st.Name] = st
+				}
 				if st.Validator && !st.Advisory {
 					p.required = append(p.required, st.Name)
 				}
@@ -611,6 +677,9 @@ func (e *Engine) prepare(ctx context.Context, r run.Run, c change.Change, work s
 		}
 	}
 	if p.changed, err = m.ChangedFiles(ctx, p.base, p.head); err != nil {
+		return p, err
+	}
+	if p.guard, err = e.guardReview(ctx, m, repo, p.base, p.head, p.changed); err != nil {
 		return p, err
 	}
 	if p.diff, err = m.Diff(ctx, p.base, p.head); err != nil {
@@ -666,8 +735,14 @@ func (e *Engine) setupValidator(r run.Run, p prepared, work string, st pipeline.
 			if err != nil {
 				return scheduler.StepSetup{}, err
 			}
-			if ok {
+			// Only a validator the target branch defines the same way gets
+			// the key: one the change adds or redefines could be any image
+			// (WU-051).
+			tv, known := p.targetValidators[st.Name]
+			if ok && known && sameValidator(tv, st) {
 				setup.Env = profileEnv(prof, e.secrets(), st.Effort)
+			} else if ok {
+				e.log.Warn("validator not defined this way on the target branch; no reviewer key", "run", r.ID, "step", st.Name)
 			}
 		}
 	}

@@ -214,7 +214,7 @@ export interface Reviewer {
 
 export interface Alert {
   id: string
-  kind: 'bypass_commit' | 'token_expiry' | 'no_reviewer'
+  kind: 'bypass_commit' | 'token_expiry' | 'no_reviewer' | 'pipeline_unapproved'
   key: string
   repo_id?: string
   message: string

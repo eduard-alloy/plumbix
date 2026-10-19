@@ -1,6 +1,7 @@
 // Package alert holds the things a human should look at: commits that
 // reached a protected branch without a verdict, tokens about to expire, and
-// external reviews waiting with no reviewer around.
+// external reviews waiting with no reviewer around, and pipeline files on a
+// protected branch that nobody approved.
 package alert
 
 import (
@@ -18,6 +19,10 @@ const (
 	// NoReviewer: an external review is waiting and no reviewer has polled
 	// recently; key is the repository id (WU-026).
 	NoReviewer Kind = "no_reviewer"
+	// PipelineUnapproved: a run on a protected branch got no secrets because
+	// its pipeline file's content is not approved, or a merge could not
+	// record its pipeline files as approved; key is "<repo>:<file>" (WU-051).
+	PipelineUnapproved Kind = "pipeline_unapproved"
 )
 
 // Alert is one open or resolved alert. Kind and Key identify its subject:

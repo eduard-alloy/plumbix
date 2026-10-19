@@ -133,7 +133,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-047 | Azure importer: templates, variables, simple conditions | F-014 | ⚪ |
 | WU-048 | Import from the web, CLI and API; submit as a change; re-check | F-014, F-004 | ⚪ |
 | WU-049 | User docs: importing pipelines, the reason codes, what each release supports | F-014 | ⚪ |
-| WU-051 | Pipeline guard: built-in check of every change to `.plumbix/`, approved pipeline fingerprints gate secrets on protected branches (A38) | F-014 | ⚪ |
+| WU-051 | Pipeline guard: built-in check of every change to `.plumbix/`, approved pipeline fingerprints gate secrets on protected branches (A38) | F-014 | ✅ |
 | WU-050 | Pipelines page: every pipeline of a repository, its triggers and blockers, edit any, run one by hand | F-004, F-014 | ⚪ |
 
 ## Milestone 2 candidates
