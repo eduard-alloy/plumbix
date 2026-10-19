@@ -175,6 +175,9 @@ describe('Settings page', () => {
     expect(card.textContent).toContain('plumbix-claude-code-validator')
     // Tools and the token secret, like the loop's profile plus a key; no effort.
     expect((within(card).getByLabelText('Read only') as HTMLInputElement).checked).toBe(true)
+    // The tools switch says what full means for this kind: commands beside the token.
+    expect(card.textContent).toContain('a container that holds your token')
+    expect(screen.getByLabelText('Reviewer claude-code').textContent).not.toContain('holds your token')
     expect(within(card).queryByLabelText('Reasoning effort')).toBeNull()
     expect(within(card).getByText('PLUMBIX_REVIEWER_CC_KEY', { selector: '.secret .key' })).toBeTruthy()
     fireEvent.click(within(card).getByLabelText('Full, including commands'))

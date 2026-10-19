@@ -108,12 +108,13 @@ func TestTokenToolsAndTurns(t *testing.T) {
 	in, out, ws := setup(t)
 	exe, rec := fakeClaude(t, approving)
 	env := map[string]string{"PLUMBIX_IN": in, "PLUMBIX_OUT": out, "PLUMBIX_WORKSPACE": ws, "PLUMBIX_CLAUDE": exe, "PLUMBIX_AI_API_KEY": "sk-ant-oat01-token-value", "PLUMBIX_AI_TOOLS": "full", "PLUMBIX_AI_MAX_TURNS": "12"}
+	t.Setenv("PLUMBIX_AI_API_KEY", env["PLUMBIX_AI_API_KEY"]) // as the container has it
 	var stderr bytes.Buffer
 	if code := run(func(k string) string { return env[k] }, &stderr); code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr.String())
 	}
-	if e := recorded(t, rec, "env"); !strings.Contains(e, "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-token-value\n") || strings.Contains(e, "ANTHROPIC_API_KEY=") {
-		t.Errorf("a setup token should reach claude as CLAUDE_CODE_OAUTH_TOKEN only:\n%s", e)
+	if e := recorded(t, rec, "env"); !strings.Contains(e, "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-token-value\n") || strings.Contains(e, "ANTHROPIC_API_KEY=") || strings.Contains(e, "PLUMBIX_AI_API_KEY=") {
+		t.Errorf("a setup token should reach claude as CLAUDE_CODE_OAUTH_TOKEN only, never as PLUMBIX_AI_API_KEY:\n%s", e)
 	}
 	args := recorded(t, rec, "args")
 	if !strings.Contains(args, "--tools\nBash,Read,Grep,Glob\n") || strings.Contains(args, "--restricted") || !strings.Contains(args, "--max-turns\n12\n") || strings.Contains(args, "--model") {
