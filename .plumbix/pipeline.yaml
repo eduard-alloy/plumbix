@@ -37,13 +37,13 @@ steps:
     validator: true
     external: true
     needs: [build, test, lint, web]
-    timeout: 30m
+    timeout: 30m0s
   - name: ai-grok
     image: plumbix-ai-validator:dev
     validator: true
     reviewer: grok-4
     advisory: true
-    effort: medium
+    effort: low
     needs: [build, test, lint, web]
   - name: ai-claude
     image: plumbix-claude-code-validator:dev
@@ -51,6 +51,6 @@ steps:
     reviewer: claude-code-container
     advisory: true
     needs: [build, test, lint, web]
-    timeout: 30m
+    timeout: 30m0s
 stages:
   checks: [build, test, lint, web]
