@@ -732,6 +732,41 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /repos/{id}/import:
+    get:
+      operationId: previewPipelineImport
+      summary: What importing a CI system's pipelines at a branch head would write (WU-046).
+      description: >
+        Reads the YAML files at the head of the branch (default: the first
+        protected branch), finds the source system's pipelines and converts
+        each into a triggered pipeline under .plumbix/pipelines/. Every job is
+        kept; what Plumbix cannot run yet is disabled with a reason, and a
+        pipeline with any disabled step is disabled. Nothing is written.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+        - name: source
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [azure]
+        - name: branch
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The converted pipelines and the files that could not be converted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportPreview"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /repos/{id}/pipelines/{name}/runs:
     post:
       operationId: runTriggeredPipeline
@@ -2548,6 +2583,74 @@ components:
           additionalProperties:
             type: integer
             minimum: 1
+    ImportPreview:
+      type: object
+      additionalProperties: false
+      required: [branch, sha, source, pipelines, problems]
+      properties:
+        branch:
+          type: string
+        sha:
+          type: string
+        source:
+          type: string
+        pipelines:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [source_file, name, file, content, disabled, blockers, steps, notes]
+            properties:
+              source_file:
+                type: string
+              name:
+                type: string
+              file:
+                description: Where the pipeline would be written, .plumbix/pipelines/<name>.yaml.
+                type: string
+              content:
+                description: The pipeline file as it would be written.
+                type: string
+              disabled:
+                type: boolean
+              blockers:
+                type: object
+                additionalProperties:
+                  type: integer
+                  minimum: 1
+              steps:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [name, line]
+                  properties:
+                    name:
+                      type: string
+                    reason:
+                      description: Why the step is disabled; absent when it runs.
+                      type: string
+                    note:
+                      type: string
+                    line:
+                      description: The source job's line.
+                      type: integer
+              notes:
+                description: What did not carry over, such as dropped excludes or the pr trigger.
+                type: array
+                items:
+                  type: string
+        problems:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [source_file, message]
+            properties:
+              source_file:
+                type: string
+              message:
+                type: string
     TriggeredPipelines:
       type: object
       additionalProperties: false
@@ -2727,7 +2830,7 @@ components:
           properties:
             reason:
               type: string
-              enum: [user, docker, services, host, task, template, condition, checkout, deployment, secrets]
+              enum: [user, docker, services, host, task, template, condition, checkout, deployment, secrets, variables]
             note:
               type: string
               maxLength: 500

@@ -1,0 +1,77 @@
+# A made-up CI pipeline for the importer tests.
+trigger:
+  branches:
+    include: [main, "release/*"]
+  paths:
+    exclude: ["docs/*", "*.md"]
+
+pr:
+  branches:
+    include: [main]
+
+resources:
+  containers:
+    - container: node20
+      image: node:20
+    - container: golang
+      image: golang:1.27
+
+variables:
+  nodeEnv: production
+  imageTag: latest
+
+stages:
+  - stage: Build
+    jobs:
+      - job: Lint
+        container: node20
+        steps:
+          - checkout: self
+          - script: npm ci
+            displayName: Install
+          - script: npm run lint
+            workingDirectory: web
+            env:
+              NODE_ENV: $(nodeEnv)
+      - job: Test
+        dependsOn: Lint
+        container: node20
+        strategy:
+          matrix:
+            api:
+              SERVICE: api
+            worker:
+              SERVICE: worker
+        steps:
+          - script: cd services/$(SERVICE) && npm test
+      - job: Report
+        dependsOn: Test
+        container: node20
+        steps:
+          - script: echo report
+          - task: PublishTestResults@2
+            inputs:
+              testResultsFiles: "**/junit.xml"
+  - stage: Go
+    jobs:
+      - job: Integration
+        container: golang
+        steps:
+          - script: docker run --rm -d redis:7 && go test ./...
+      - job: Version
+        container: golang
+        steps:
+          - script: echo "build $(Build.BuildId) in $(Build.SourcesDirectory) at $(git rev-parse HEAD)"
+  - stage: Scan
+    dependsOn: []
+    jobs:
+      - job: Secrets
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - script: gitleaks detect
+      - job: Gate
+        container: golang
+        condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        steps:
+          - script: echo gate

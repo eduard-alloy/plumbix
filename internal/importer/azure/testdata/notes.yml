@@ -1,0 +1,3 @@
+# Not a pipeline: plain configuration.
+name: notes
+items: [a, b]

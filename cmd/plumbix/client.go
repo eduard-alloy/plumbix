@@ -269,6 +269,26 @@ func runPipeline(args []string, stdout, stderr io.Writer) int {
 	return usageError(stderr, "usage: plumbix pipeline list <repo-id> [--branch <b>] | plumbix pipeline run <repo-id> <name> [--branch <b>]")
 }
 
+// runImport handles "plumbix import preview" (WU-046): what importing a
+// repository's CI pipelines would write.
+func runImport(args []string, stdout, stderr io.Writer) int {
+	c := newClientCmd("import", stdout, stderr)
+	branch := c.fs.String("branch", "", "branch head to read (default: the first protected branch)")
+	source := c.fs.String("source", "azure", "the CI system to import from")
+	pos, ok := c.parse(args)
+	if !ok {
+		return 2
+	}
+	if len(pos) == 2 && pos[0] == "preview" {
+		q := url.Values{"source": {*source}}
+		if *branch != "" {
+			q.Set("branch", *branch)
+		}
+		return c.call(http.MethodGet, "/api/v1/repos/"+url.PathEscape(pos[1])+"/import?"+q.Encode(), nil)
+	}
+	return usageError(stderr, "usage: plumbix import preview <repo-id> [--branch <b>] [--source azure]")
+}
+
 // runAlert handles "plumbix alert list|resolve".
 func runAlert(args []string, stdout, stderr io.Writer) int {
 	c := newClientCmd("alert", stdout, stderr)

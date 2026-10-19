@@ -49,7 +49,7 @@ describe('disabled steps in the editor (WU-044)', () => {
       { reason: 'docker', count: 1 },
       { reason: 'task', count: 1 },
     ])
-    expect(Object.keys(REASONS)).toEqual(['user', 'docker', 'services', 'host', 'task', 'template', 'condition', 'checkout', 'deployment', 'secrets'])
+    expect(Object.keys(REASONS)).toEqual(['user', 'docker', 'services', 'host', 'task', 'template', 'condition', 'checkout', 'deployment', 'secrets', 'variables'])
   })
 
   it('saves an unrelated edit byte for byte around the disabled steps', () => {

@@ -161,3 +161,24 @@ func TestListFiles(t *testing.T) {
 		t.Errorf("missing folder = %v, %v", files, err)
 	}
 }
+
+// TestListTree (WU-046): every file at a commit with its size.
+func TestListTree(t *testing.T) {
+	r := gittest.New(t)
+	head := r.Commit("main", map[string]string{"a.yml": "abc\n", "pipelines/b.yaml": "hello\n"}, "files")
+	m := Open(filepath.Join(t.TempDir(), "mirror.git"), r.Remote)
+	if err := m.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	files, err := m.ListTree(ctx, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int64{}
+	for _, f := range files {
+		got[f.Path] = f.Size
+	}
+	if got["a.yml"] != 4 || got["pipelines/b.yaml"] != 6 {
+		t.Errorf("files = %v", got)
+	}
+}

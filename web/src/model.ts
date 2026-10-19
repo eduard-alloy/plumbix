@@ -384,7 +384,7 @@ export interface PipelineStep {
 }
 
 /** DisabledReason is a published code for a disabled step (pipeline.schema.json). */
-export type DisabledReason = 'user' | 'docker' | 'services' | 'host' | 'task' | 'template' | 'condition' | 'checkout' | 'deployment' | 'secrets'
+export type DisabledReason = 'user' | 'docker' | 'services' | 'host' | 'task' | 'template' | 'condition' | 'checkout' | 'deployment' | 'secrets' | 'variables'
 
 export interface PipelineModel {
   version: number

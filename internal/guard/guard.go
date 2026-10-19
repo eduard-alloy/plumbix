@@ -194,7 +194,7 @@ func summary(after, before *pipeline.Pipeline) []string {
 		parts = append(parts, "env changed: "+strings.Join(envChanged, ", "))
 	}
 	if len(otherChanged) > 0 {
-		parts = append(parts, "needs, caches or conditions changed: "+strings.Join(otherChanged, ", "))
+		parts = append(parts, "other settings changed: "+strings.Join(otherChanged, ", "))
 	}
 	if len(parts) == 0 {
 		parts = append(parts, "no step changes; timeouts, retries, stages or formatting only")

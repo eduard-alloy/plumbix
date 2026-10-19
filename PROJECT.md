@@ -129,7 +129,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 |----|-------|----------|--------|
 | WU-044 | Disabled steps: a reason per step, a pipeline with one is disabled and never runs, the editor dims and explains them | F-002, F-014 | ✅ |
 | WU-045 | Triggered pipelines: one file each under `.plumbix/pipelines/`, run on matching pushes or by hand (API, CLI) | F-002, F-014 | ✅ |
-| WU-046 | Import source interface and the Azure importer core, with a preview | F-014 | ⚪ |
+| WU-046 | Import source interface and the Azure importer core, with a preview (API, CLI) | F-014 | ✅ |
 | WU-047 | Azure importer: templates, variables, simple conditions | F-014 | ⚪ |
 | WU-048 | Import from the web, CLI and API; submit as a change; re-check | F-014, F-004 | ⚪ |
 | WU-049 | User docs: importing pipelines, the reason codes, what each release supports | F-014 | ⚪ |

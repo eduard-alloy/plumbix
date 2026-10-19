@@ -242,6 +242,7 @@ export const REASONS: Record<DisabledReason, { label: string; text: string }> = 
   checkout: { label: 'another repository', text: 'It needs another repository checked out.' },
   deployment: { label: 'deployment', text: 'It deploys to an environment or waits for an approval.' },
   secrets: { label: 'unmapped secrets', text: 'It needs variables or secret groups that are not mapped to Plumbix secrets.' },
+  variables: { label: 'unresolved variables', text: 'It uses variables or expressions of the source CI system that Plumbix cannot resolve.' },
 }
 
 /** blockers counts the disabled steps per reason, in REASONS order; empty when the pipeline runs. */

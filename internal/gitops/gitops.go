@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/eduard-alloy/plumbix/internal/diff"
@@ -252,6 +253,35 @@ func (m *Mirror) Show(ctx context.Context, commit, path string) ([]byte, bool, e
 		return nil, false, err
 	}
 	return out, true, nil
+}
+
+// TreeFile is one file at a commit.
+type TreeFile struct {
+	Path string
+	Size int64
+}
+
+// ListTree returns every file at a commit with its size (WU-046).
+func (m *Mirror) ListTree(ctx context.Context, commit string) ([]TreeFile, error) {
+	out, err := m.git(ctx, "ls-tree", "-r", "-l", commit)
+	if err != nil {
+		return nil, err
+	}
+	var files []TreeFile
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		// "<mode> <type> <object> <size>\t<path>"
+		meta, file, ok := strings.Cut(line, "\t")
+		fields := strings.Fields(meta)
+		if !ok || len(fields) < 4 || fields[1] != "blob" {
+			continue
+		}
+		size, err := strconv.ParseInt(fields[3], 10, 64)
+		if err != nil {
+			continue
+		}
+		files = append(files, TreeFile{Path: file, Size: size})
+	}
+	return files, nil
 }
 
 // ListFiles returns the paths of the files directly in dir at a commit,

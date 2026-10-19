@@ -83,7 +83,17 @@ type Step struct {
 	// Disabled, when set, keeps the step from running and the pipeline
 	// with it (WU-044); image and run are then optional.
 	Disabled *Disabled
-	Line     int
+	// Source says where an imported step came from (WU-046): the source
+	// file, the job's line and a hash of the job, for re-check.
+	Source *Source
+	Line   int
+}
+
+// Source is an imported step's origin.
+type Source struct {
+	File string
+	Line int
+	Hash string // SHA-256 of the source job, hex
 }
 
 // Script turns a list of commands into one shell script that stops at the
@@ -350,6 +360,8 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 			}
 		case "disabled":
 			st.Disabled = ps.disabled(fp, val, Reasons)
+		case "source":
+			st.Source = ps.source(fp, val)
 		case "external":
 			externalKey = key
 			if val.Kind != yaml.ScalarNode || val.Tag != "!!bool" {

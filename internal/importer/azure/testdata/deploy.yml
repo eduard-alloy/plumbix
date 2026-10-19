@@ -1,0 +1,36 @@
+# A made-up deploy pipeline for the importer tests.
+trigger:
+  tags:
+    include: ["v*"]
+
+parameters:
+  - name: target
+    type: string
+    default: test
+
+variables:
+  - group: prod-secrets
+  - name: region
+    value: eu
+
+resources:
+  repositories:
+    - repository: infra
+      type: git
+      name: Platform/infra
+
+jobs:
+  - job: Build
+    container: docker:27
+    steps:
+      - checkout: infra
+      - script: echo building for $(region) with $(DEPLOY_TOKEN)
+  - deployment: Release
+    dependsOn: Build
+    environment: production
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - script: ./deploy.sh
+  - template: jobs/notify.yml@infra

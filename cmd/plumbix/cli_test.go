@@ -280,6 +280,8 @@ func TestCLIUsageErrors(t *testing.T) {
 		{"pipeline"},
 		{"pipeline", "run", "r_x"},
 		{"pipeline", "list"},
+		{"import"},
+		{"import", "preview"},
 	} {
 		if code, _, _ := c.run("", args...); code != 2 {
 			t.Errorf("plumbix %v: exit %d, want 2", args, code)
@@ -354,5 +356,20 @@ func TestPipelineCommands(t *testing.T) {
 	}
 	if code, _, errOut := c.run("", "pipeline", "run", repoID, "nope"); code != 1 || !strings.Contains(errOut, "not_found") {
 		t.Errorf("unknown pipeline: exit %d, %q", code, errOut)
+	}
+}
+
+// TestImportPreviewCommand (WU-046): the preview of a repository's Azure
+// pipelines, written nowhere.
+func TestImportPreviewCommand(t *testing.T) {
+	repo := redirectGitHub(t, "https://github.com/eduard-alloy/plumbix")
+	repo.Commit("main", map[string]string{"azure-pipelines.yml": "trigger: [main]\ncontainer: node:20\nsteps:\n  - script: npm test\n"}, "azure")
+	addr, dataDir := startServer(t)
+	c := cli{t: t, server: addr, dataDir: dataDir}
+	repoID := c.mustRun("", "repo", "add", "--host", "github", "--url", "https://github.com/eduard-alloy/plumbix")["id"].(string)
+	v := c.mustRun("", "import", "preview", repoID, "--branch", "main")
+	ps := v["pipelines"].([]any)
+	if v["source"] != "azure" || len(ps) != 1 || ps[0].(map[string]any)["file"] != ".plumbix/pipelines/azure-pipelines.yaml" {
+		t.Errorf("preview = %v", v)
 	}
 }

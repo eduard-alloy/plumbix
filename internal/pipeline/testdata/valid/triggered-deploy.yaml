@@ -2,10 +2,10 @@ version: 1
 on:
   push:
     branches: [main, "release/*"]
-    paths: ["services/claims/**"]
+    paths: ["services/orders/**"]
   manual: true
 steps:
   - name: build
     image: docker:27
-    run: docker build -t claims .
+    run: docker build -t orders .
     disabled: {reason: docker}

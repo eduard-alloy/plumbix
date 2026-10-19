@@ -101,6 +101,7 @@
             "checkout",
             "deployment",
             "secrets",
+            "variables",
             "trigger"
           ]
         },
@@ -311,7 +312,7 @@
           ],
           "properties": {
             "reason": {
-              "description": "user: disabled by a person; docker: uses Docker itself; services: needs service containers beside it; host: runs on the build agent's machine with no image; task: a source CI task with no Plumbix equivalent; template: from a template Plumbix could not read; condition: a run condition Plumbix cannot express; checkout: needs another repository checked out; deployment: deploys to an environment or waits for an approval; secrets: needs variables or secret groups not mapped to Plumbix secrets.",
+              "description": "user: disabled by a person; docker: uses Docker itself; services: needs service containers beside it; host: runs on the build agent's machine with no image; task: a source CI task with no Plumbix equivalent; template: from a template Plumbix could not read; condition: a run condition Plumbix cannot express; checkout: needs another repository checked out; deployment: deploys to an environment or waits for an approval; secrets: needs variables or secret groups not mapped to Plumbix secrets; variables: uses variables or expressions of the source CI system that Plumbix cannot resolve.",
               "type": "string",
               "enum": [
                 "user",
@@ -323,13 +324,38 @@
                 "condition",
                 "checkout",
                 "deployment",
-                "secrets"
+                "secrets",
+                "variables"
               ]
             },
             "note": {
               "description": "Free text: what the step did in its source, or why a person disabled it.",
               "type": "string",
               "maxLength": 500
+            }
+          }
+        },
+        "source": {
+          "description": "Where an imported step came from (WU-046): the source CI file, the line of the job and a SHA-256 of the job, so a re-check can see what changed at the source. Ignored when running.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "file",
+            "line",
+            "hash"
+          ],
+          "properties": {
+            "file": {
+              "type": "string",
+              "minLength": 1
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
             }
           }
         }

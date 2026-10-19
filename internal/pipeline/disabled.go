@@ -36,6 +36,7 @@ var Reasons = []Reason{
 	{"checkout", "Needs another repository checked out."},
 	{"deployment", "Deploys to an environment or waits for an approval."},
 	{"secrets", "Needs variables or secret groups that are not mapped to Plumbix secrets."},
+	{"variables", "Uses variables or expressions of the source CI system that Plumbix cannot resolve."},
 }
 
 // PipelineReasons are the codes a whole pipeline may be disabled with: the

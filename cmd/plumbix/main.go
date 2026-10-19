@@ -23,6 +23,7 @@ commands:
                         read, close, revalidate or merge changes
   run show|log          read a run, or a step's log
   pipeline list|run     list a repo's triggered pipelines, or run one by hand
+  import preview        show what importing a repo's Azure pipelines would write
   alert list|resolve    bypass commits and token warnings
   events                follow the event stream as JSON lines
   review --watch|--once answer external reviews with Claude Code on this machine
@@ -63,6 +64,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runRun(args[1:], stdout, stderr)
 	case "pipeline":
 		return runPipeline(args[1:], stdout, stderr)
+	case "import":
+		return runImport(args[1:], stdout, stderr)
 	case "alert":
 		return runAlert(args[1:], stdout, stderr)
 	case "login":
