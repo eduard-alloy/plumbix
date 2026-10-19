@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/review"
+	"github.com/eduard-alloy/plumbix/internal/validation"
 )
 
 const (
@@ -67,6 +68,9 @@ type Result struct {
 	Usage            struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
+		// Input read from and written to the prompt cache; input_tokens excludes both.
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 	} `json:"usage"`
 	ModelUsage map[string]struct {
 		OutputTokens      int `json:"outputTokens"`
@@ -86,6 +90,12 @@ func (r Result) Model() string {
 		}
 	}
 	return best
+}
+
+// VerdictUsage is the result's usage as a verdict records it, under model (WU-039: cached input included).
+func (r Result) VerdictUsage(model string) validation.Usage {
+	return validation.Usage{Model: model, InputTokens: r.Usage.InputTokens, OutputTokens: r.Usage.OutputTokens,
+		CacheReadTokens: r.Usage.CacheReadInputTokens, CacheWriteTokens: r.Usage.CacheCreationInputTokens, Turns: r.NumTurns, CostUSD: r.TotalCostUSD}
 }
 
 // Run runs claude -p in o.Dir with the prompt and schema, under the tool

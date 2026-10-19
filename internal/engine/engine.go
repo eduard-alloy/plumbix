@@ -481,6 +481,10 @@ func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([
 		st := prep.pipeline.Steps[i]
 		if st.Validator {
 			vr := readVerdict(work, s, c.AcceptanceCriteria)
+			// An external step's log already has the notes from the posted verdict.
+			if vr.Verdict != nil && !st.External {
+				e.appendVerdictNotes(r.ID, st.Name, *vr.Verdict)
+			}
 			vr.Advisory = st.Advisory
 			results = append(results, vr)
 		} else if s.Status == scheduler.Errored {

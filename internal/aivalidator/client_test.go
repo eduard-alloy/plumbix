@@ -48,7 +48,7 @@ func (f *fakeAPI) server(t *testing.T) *httptest.Server {
 			"id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
 			"content":     []map[string]any{{"type": "text", "text": f.text}},
 			"stop_reason": f.stopReason, "stop_sequence": nil,
-			"usage": map[string]any{"input_tokens": 900, "output_tokens": 120},
+			"usage": map[string]any{"input_tokens": 900, "output_tokens": 120, "cache_read_input_tokens": 300, "cache_creation_input_tokens": 50},
 		}
 		if f.stopReason == "refusal" {
 			resp["stop_details"] = map[string]any{"type": "refusal", "category": "cyber", "explanation": "declined"}
@@ -73,7 +73,7 @@ func TestRequestShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Outcome != validation.Fix || v.Usage.Model != "claude-opus-5-5" || v.Usage.InputTokens != 900 || v.Usage.OutputTokens != 120 {
+	if v.Outcome != validation.Fix || v.Usage.Model != "claude-opus-5-5" || v.Usage.InputTokens != 900 || v.Usage.OutputTokens != 120 || v.Usage.CacheReadTokens != 300 || v.Usage.CacheWriteTokens != 50 {
 		t.Errorf("verdict = %+v usage %+v", v, v.Usage)
 	}
 	if f.path != "/v1/messages" {

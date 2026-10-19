@@ -80,6 +80,10 @@ func run(getenv func(string) string, stderr io.Writer, opts ...option.RequestOpt
 	if v.Usage.ReasoningTokens > 0 {
 		reasoning = fmt.Sprintf(", %d reasoning tokens", v.Usage.ReasoningTokens)
 	}
-	fmt.Fprintf(stderr, "ai validator: %s: %s (%s, %d input and %d output tokens%s)\n", v.Outcome, v.Summary, v.Usage.Model, v.Usage.InputTokens, v.Usage.OutputTokens, reasoning)
+	cache := ""
+	if v.Usage.CacheReadTokens > 0 || v.Usage.CacheWriteTokens > 0 {
+		cache = fmt.Sprintf(", %d read from cache, %d written to cache", v.Usage.CacheReadTokens, v.Usage.CacheWriteTokens)
+	}
+	fmt.Fprintf(stderr, "ai validator: %s: %s (%s, %d input%s and %d output tokens%s)\n", v.Outcome, v.Summary, v.Usage.Model, v.Usage.InputTokens, cache, v.Usage.OutputTokens, reasoning)
 	return 0
 }

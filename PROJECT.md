@@ -117,6 +117,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-036 | The pipeline editor keeps the file's text: edits applied to the served YAML with comments and formatting kept, byte-identical when unchanged | F-004 | ✅ |
 | WU-037 | The editor can make a validator external: an External switch, reviewer profiles filtered by step kind | F-004 | ✅ |
 | WU-038 | Stage cards fit the window width: columns follow the measured canvas, cards narrow to a minimum, chains wrap; no horizontal scroll | F-004 | ✅ |
+| WU-039 | Verdict notes in every validator log; cached input tokens recorded in usage for all reviewers | F-003, F-004 | ✅ |
 
 ## Milestone 2 candidates
 

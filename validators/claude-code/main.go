@@ -100,7 +100,7 @@ func run(getenv func(string) string, stderr io.Writer) int {
 	if model == "" {
 		model = "claude-code"
 	}
-	v, err := review.ToVerdict(res.StructuredOutput, in.Change.AcceptanceCriteria, validation.Usage{Model: model, InputTokens: res.Usage.InputTokens, OutputTokens: res.Usage.OutputTokens, Turns: res.NumTurns, CostUSD: res.TotalCostUSD})
+	v, err := review.ToVerdict(res.StructuredOutput, in.Change.AcceptanceCriteria, res.VerdictUsage(model))
 	if err != nil {
 		return fail("claude's answer is not a verdict Plumbix accepts: %v", err)
 	}
@@ -112,7 +112,8 @@ func run(getenv func(string) string, stderr io.Writer) int {
 	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
 		return fail("write verdict: %v", err)
 	}
-	fmt.Fprintf(stderr, prefix+"%s · %d turns · $%.2f · %s (%d input and %d output tokens): %s\n", v.Outcome, res.NumTurns, res.TotalCostUSD, model, res.Usage.InputTokens, res.Usage.OutputTokens, firstLine(v.Summary))
+	fmt.Fprintf(stderr, prefix+"%s · %d turns · $%.2f · %s (%d input, %d read from cache, %d written to cache, %d output tokens): %s\n", v.Outcome, res.NumTurns, res.TotalCostUSD, model,
+		res.Usage.InputTokens, res.Usage.CacheReadInputTokens, res.Usage.CacheCreationInputTokens, res.Usage.OutputTokens, firstLine(v.Summary))
 	return 0
 }
 

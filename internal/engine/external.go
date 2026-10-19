@@ -169,6 +169,22 @@ func (e *Engine) takeVerdict(dir string, rv review.Review, log io.Writer) schedu
 	return scheduler.StepResult{Status: scheduler.Succeeded}
 }
 
+// appendVerdictNotes adds the verdict notes to a container validator's log
+// after the run (WU-039), so every validator's log ends the way an external
+// step's does. A log that cannot be opened is left as it is.
+func (e *Engine) appendVerdictNotes(runID, step string, v validation.Verdict) {
+	path := e.LogPath(runID, step)
+	if path == "" {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	writeVerdictNotes(f, v)
+}
+
 // writeVerdictNotes prints a posted verdict for a step log: one verdict line
 // with the summary's first line and the usage, the remaining summary lines
 // indented, then "finding <severity>:" and "risk <area>:" lines.
@@ -209,7 +225,18 @@ func usageNote(u *validation.Usage) string {
 	if u == nil {
 		return ""
 	}
-	parts := []string{fmt.Sprintf("%s, %d input and %d output tokens", u.Model, u.InputTokens, u.OutputTokens)}
+	var cache []string
+	if u.CacheReadTokens > 0 {
+		cache = append(cache, fmt.Sprintf("%d read from cache", u.CacheReadTokens))
+	}
+	if u.CacheWriteTokens > 0 {
+		cache = append(cache, fmt.Sprintf("%d written to cache", u.CacheWriteTokens))
+	}
+	input := fmt.Sprintf("%d input", u.InputTokens)
+	if len(cache) > 0 {
+		input += " (" + strings.Join(cache, ", ") + ")"
+	}
+	parts := []string{fmt.Sprintf("%s, %s and %d output tokens", u.Model, input, u.OutputTokens)}
 	if u.ReasoningTokens > 0 {
 		parts = append(parts, fmt.Sprintf("%d reasoning tokens", u.ReasoningTokens))
 	}

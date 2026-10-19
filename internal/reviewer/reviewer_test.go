@@ -107,7 +107,7 @@ func (f *fakeServer) handler() http.Handler {
 }
 
 const approving = `{"type":"result","subtype":"success","is_error":false,"num_turns":3,"total_cost_usd":0.0421,
- "usage":{"input_tokens":1200,"output_tokens":300},
+ "usage":{"input_tokens":1200,"output_tokens":300,"cache_read_input_tokens":41000,"cache_creation_input_tokens":6000},
  "structured_output":{"outcome":"approve","summary":"The feature does what the intent says.",
    "criteria":[{"id":"AC-1","status":"met","reason":"app.go defines the package","evidence":["app.go:1"]}],"findings":[],"risks":[]}}`
 
@@ -142,7 +142,7 @@ func TestOneReviewRunsClaudeInAWorktreeAndPostsTheVerdict(t *testing.T) {
 	if v["plumbix"] != "verdict/v1" || v["outcome"] != "approve" || !strings.Contains(string(fs.posted.Verdict), `"AC-1"`) {
 		t.Errorf("verdict = %s", fs.posted.Verdict)
 	}
-	if usage, _ := v["usage"].(map[string]any); usage == nil || usage["input_tokens"] != float64(1200) || usage["turns"] != float64(3) || usage["cost_usd"] != 0.0421 {
+	if usage, _ := v["usage"].(map[string]any); usage == nil || usage["input_tokens"] != float64(1200) || usage["turns"] != float64(3) || usage["cost_usd"] != 0.0421 || usage["cache_read_tokens"] != float64(41000) || usage["cache_write_tokens"] != float64(6000) {
 		t.Errorf("verdict usage = %v", v["usage"])
 	}
 	// claude ran non-interactively, read-only, with the brief's prompt and schema, in a checkout of head.

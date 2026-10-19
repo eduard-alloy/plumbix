@@ -109,7 +109,8 @@ func validateAnthropic(ctx context.Context, cfg Config, inDir, workspace string,
 			text.WriteString(tb.Text)
 		}
 	}
-	usage := validation.Usage{Model: string(resp.Model), InputTokens: int(resp.Usage.InputTokens), OutputTokens: int(resp.Usage.OutputTokens)}
+	usage := validation.Usage{Model: string(resp.Model), InputTokens: int(resp.Usage.InputTokens), OutputTokens: int(resp.Usage.OutputTokens),
+		CacheReadTokens: int(resp.Usage.CacheReadInputTokens), CacheWriteTokens: int(resp.Usage.CacheCreationInputTokens)}
 	return review.ToVerdict([]byte(text.String()), in.Change.AcceptanceCriteria, usage)
 }
 

@@ -60,7 +60,7 @@ func (f *fakeOpenAI) server(t *testing.T) *httptest.Server {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id": "chatcmpl-1", "object": "chat.completion", "model": "gpt-5.5",
 			"choices": []map[string]any{{"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": f.content}}},
-			"usage":   map[string]any{"prompt_tokens": 800, "completion_tokens": 150, "completion_tokens_details": map[string]any{"reasoning_tokens": 6927}},
+			"usage":   map[string]any{"prompt_tokens": 800, "completion_tokens": 150, "completion_tokens_details": map[string]any{"reasoning_tokens": 6927}, "prompt_tokens_details": map[string]any{"cached_tokens": 600}},
 		})
 	}))
 	t.Cleanup(srv.Close)
@@ -81,7 +81,7 @@ func TestOpenAICompatibleRequestAndVerdict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Outcome != "fix" || v.Usage == nil || v.Usage.Model != "gpt-5.5" || v.Usage.InputTokens != 800 || v.Usage.OutputTokens != 150 {
+	if v.Outcome != "fix" || v.Usage == nil || v.Usage.Model != "gpt-5.5" || /* prompt_tokens includes the cached part: input counts the rest */ v.Usage.InputTokens != 200 || v.Usage.CacheReadTokens != 600 || v.Usage.OutputTokens != 150 {
 		t.Errorf("verdict = %+v usage %+v", v.Outcome, v.Usage)
 	}
 	if len(f.requests) != 1 || f.auth[0] != "Bearer sk-vendor" {

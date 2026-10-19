@@ -24,7 +24,7 @@ func setup(t *testing.T) (in, out, ws string) {
 }
 
 const approving = `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"WORKSPACE/go.mod"}}]}}
-{"type":"result","subtype":"success","is_error":false,"num_turns":3,"total_cost_usd":0.0421,"usage":{"input_tokens":1200,"output_tokens":300},"modelUsage":{"claude-opus-5-5":{"outputTokens":280}},"structured_output":{"outcome":"approve","summary":"tests pass","criteria":[{"id":"AC-1","status":"met","reason":"step passed","evidence":["evidence/test/log.txt"]}],"findings":[],"risks":[]}}
+{"type":"result","subtype":"success","is_error":false,"num_turns":3,"total_cost_usd":0.0421,"usage":{"input_tokens":1200,"output_tokens":300,"cache_read_input_tokens":41000,"cache_creation_input_tokens":6000},"modelUsage":{"claude-opus-5-5":{"outputTokens":280}},"structured_output":{"outcome":"approve","summary":"tests pass","criteria":[{"id":"AC-1","status":"met","reason":"step passed","evidence":["evidence/test/log.txt"]}],"findings":[],"risks":[]}}
 `
 
 // fakeClaude is a `claude` that records its arguments, stdin, working
@@ -74,7 +74,7 @@ func TestWritesVerdictFromClaudeCode(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, stderr.String())
 	}
 	v, err := validation.ReadVerdict(filepath.Join(out, validation.VerdictFile), crit)
-	if err != nil || v.Outcome != validation.Approve || v.Usage == nil || v.Usage.InputTokens != 1200 || v.Usage.Turns != 3 || v.Usage.CostUSD != 0.0421 || v.Usage.Model != "claude-opus-5-5" {
+	if err != nil || v.Outcome != validation.Approve || v.Usage == nil || v.Usage.InputTokens != 1200 || v.Usage.Turns != 3 || v.Usage.CostUSD != 0.0421 || v.Usage.Model != "claude-opus-5-5" || v.Usage.CacheReadTokens != 41000 || v.Usage.CacheWriteTokens != 6000 {
 		t.Fatalf("verdict = %+v, %v", v, err)
 	}
 	args := recorded(t, rec, "args")
@@ -96,7 +96,7 @@ func TestWritesVerdictFromClaudeCode(t *testing.T) {
 	if strings.Contains(log, "secret-value") {
 		t.Fatal("stderr leaks the key")
 	}
-	if !strings.Contains(log, "claude code validator: turn 1: Read go.mod") || !strings.Contains(log, "claude code validator: approve") || !strings.Contains(log, "3 turns") {
+	if !strings.Contains(log, "claude code validator: turn 1: Read go.mod") || !strings.Contains(log, "claude code validator: approve") || !strings.Contains(log, "3 turns") || !strings.Contains(log, "41000 read from cache, 6000 written to cache") {
 		t.Errorf("stderr lacks the progress or the final line:\n%s", log)
 	}
 }

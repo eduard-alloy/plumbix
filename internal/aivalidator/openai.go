@@ -147,6 +147,9 @@ func chatCompletion(ctx context.Context, cfg Config, body map[string]any) (strin
 			Details          struct {
 				ReasoningTokens int `json:"reasoning_tokens"`
 			} `json:"completion_tokens_details"`
+			Prompt struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
@@ -159,7 +162,9 @@ func chatCompletion(ctx context.Context, cfg Config, body map[string]any) (strin
 	if model == "" {
 		model = cfg.Model
 	}
-	usage := validation.Usage{Model: model, InputTokens: out.Usage.PromptTokens, OutputTokens: out.Usage.CompletionTokens, ReasoningTokens: out.Usage.Details.ReasoningTokens}
+	// prompt_tokens includes the cached part; a verdict counts uncached input apart from cache reads (WU-039).
+	cached := min(out.Usage.Prompt.CachedTokens, out.Usage.PromptTokens)
+	usage := validation.Usage{Model: model, InputTokens: out.Usage.PromptTokens - cached, CacheReadTokens: cached, OutputTokens: out.Usage.CompletionTokens, ReasoningTokens: out.Usage.Details.ReasoningTokens}
 	return contentText(out.Choices[0].Message.Content), usage, resp.StatusCode, nil
 }
 

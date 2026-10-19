@@ -187,7 +187,7 @@ func reviewOne(ctx context.Context, o Options, b review.Brief) error {
 	if model == "" {
 		model = "claude-code"
 	}
-	v, err := review.ToVerdict(res.StructuredOutput, criteria, validation.Usage{Model: model, InputTokens: res.Usage.InputTokens, OutputTokens: res.Usage.OutputTokens, Turns: res.NumTurns, CostUSD: res.TotalCostUSD})
+	v, err := review.ToVerdict(res.StructuredOutput, criteria, res.VerdictUsage(model))
 	if err != nil {
 		return fmt.Errorf("claude's answer is not a verdict Plumbix accepts: %w", err)
 	}

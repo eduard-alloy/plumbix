@@ -86,6 +86,11 @@ type Usage struct {
 	// ReasoningTokens are the hidden thinking tokens a reasoning model spent
 	// before its answer (WU-034): where a slow review's time went.
 	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
+	// CacheReadTokens and CacheWriteTokens are input tokens read from and
+	// written to the provider's prompt cache (WU-039); InputTokens counts
+	// only the rest, so the three together are the whole prompt.
+	CacheReadTokens  int `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
 }
 
 var severities = map[string]bool{"blocker": true, "major": true, "minor": true}
