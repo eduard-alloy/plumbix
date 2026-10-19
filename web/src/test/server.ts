@@ -37,6 +37,8 @@ export interface FakeDB {
   /** folders answers POST /repos/inspect by the path typed (WU-041); clones records POST /repos/{id}/clone. */
   folders: Record<string, RepoFolder>
   clones: Record<string, string>
+  /** publishes records POST /repos/publish bodies (WU-042), the token included, as the server receives it. */
+  publishes: Record<string, unknown>[]
 }
 
 const KNOWN_SECRETS = [
@@ -107,6 +109,7 @@ export function freshDB(): FakeDB {
     proposeResult: 'ok',
     folders: {},
     clones: {},
+    publishes: [],
   }
 }
 
@@ -198,6 +201,12 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       const f = db.folders[p]
       if (!f) return json(400, { error: { code: 'invalid_request', message: 'the path cannot be imported', details: { problems: [{ field: 'path', message: `${p} does not exist` }] } } })
       return json(200, f)
+    }
+    if (path === '/api/v1/repos/publish' && method === 'POST') {
+      const body = JSON.parse(String(init?.body)) as { path: string; host: 'github' | 'azuredevops'; owner?: string; project?: string; name: string }
+      db.publishes.push(body)
+      const url = body.host === 'github' ? `https://github.com/${body.owner || 'eduard'}/${body.name}` : `https://dev.azure.com/${body.owner}/${body.project}/_git/${body.name}`
+      return json(200, { url, host: body.host, default_branch: db.folders[body.path]?.default_branch ?? 'main', pushed: ['draft', 'main'] })
     }
     const clone = path.match(/^\/api\/v1\/repos\/([^/]+)\/clone$/)
     if (clone && method === 'POST') {

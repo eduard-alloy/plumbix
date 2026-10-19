@@ -52,6 +52,11 @@ func TestInspectFolder(t *testing.T) {
 	if _, err := InspectFolder(ctx, t.TempDir()); err == nil || !strings.Contains(err.Error(), "not a git working tree") {
 		t.Errorf("plain folder: %v", err)
 	}
+	// A folder inside a working tree is not the repository: its top folder is.
+	sub := filepath.Join(dir, ".plumbix")
+	if _, err := InspectFolder(ctx, sub); err == nil || !strings.Contains(err.Error(), "inside the repository at") {
+		t.Errorf("subfolder: %v", err)
+	}
 }
 
 // TestCloneIntoANewOrEmptyFolderOnly: a clone lands in a new folder, with a
@@ -84,5 +89,61 @@ func TestCloneIntoANewOrEmptyFolderOnly(t *testing.T) {
 	err := Clone(ctx, url, filepath.Join(t.TempDir(), "x"), &Auth{User: "x-access-token", Token: "wrong"}, ap)
 	if err == nil || strings.Contains(err.Error(), secretToken) || strings.Contains(err.Error(), "wrong") {
 		t.Errorf("wrong token: %v", err)
+	}
+}
+
+// TestPublishAddsOriginAndPushesEveryBranch (WU-042): a folder without a
+// remote gains origin, every branch is pushed, the checked-out one tracks
+// it; a folder that already has origin is refused.
+func TestPublishAddsOriginAndPushesEveryBranch(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "notes")
+	gitIn(t, filepath.Dir(dir), "init", "-q", "--initial-branch=main", dir)
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", ".")
+	gitIn(t, dir, "commit", "-q", "-m", "a")
+	gitIn(t, dir, "branch", "draft")
+	remote := filepath.Join(t.TempDir(), "notes.git")
+	gitIn(t, filepath.Dir(remote), "init", "-q", "--bare", remote)
+	pushed, err := Publish(ctx, dir, remote, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(pushed, ",") != "draft,main" {
+		t.Errorf("pushed = %v", pushed)
+	}
+	f, _ := InspectFolder(ctx, dir)
+	if f.Remote != remote {
+		t.Errorf("origin = %q", f.Remote)
+	}
+	out, _ := exec.Command("git", "-C", remote, "for-each-ref", "--format=%(refname:short)", "refs/heads").Output()
+	if strings.Join(strings.Fields(string(out)), ",") != "draft,main" {
+		t.Errorf("remote branches = %q", out)
+	}
+	up, _ := exec.Command("git", "-C", dir, "rev-parse", "--abbrev-ref", "main@{upstream}").Output()
+	if strings.TrimSpace(string(up)) != "origin/main" {
+		t.Errorf("upstream = %q", up)
+	}
+	if _, err := Publish(ctx, dir, remote, nil, ""); err == nil || !strings.Contains(err.Error(), "already has a remote") {
+		t.Errorf("second publish: %v", err)
+	}
+	if b, err := LocalBranches(ctx, dir); err != nil || strings.Join(b, ",") != "draft,main" {
+		t.Errorf("local branches = %v %v", b, err)
+	}
+}
+
+// TestPublishWithAnUnbornHead: checked out on a branch with no commit yet,
+// the other branches are pushed and nothing fails over the missing upstream.
+func TestPublishWithAnUnbornHead(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "notes")
+	gitIn(t, filepath.Dir(dir), "init", "-q", "--initial-branch=main", dir)
+	gitIn(t, dir, "commit", "-q", "--allow-empty", "-m", "a")
+	gitIn(t, dir, "checkout", "-q", "--orphan", "fresh")
+	remote := filepath.Join(t.TempDir(), "notes.git")
+	gitIn(t, filepath.Dir(remote), "init", "-q", "--bare", remote)
+	pushed, err := Publish(ctx, dir, remote, nil, "")
+	if err != nil || strings.Join(pushed, ",") != "main" {
+		t.Errorf("publish = %v %v", pushed, err)
 	}
 }

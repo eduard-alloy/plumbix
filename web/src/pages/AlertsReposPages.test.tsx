@@ -158,6 +158,60 @@ describe('Repositories page', () => {
     expect((within(panel).getByRole('button', { name: 'Register and clone' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
+  it('publishes a folder with no remote to a new private GitHub repository, then registers it (WU-042)', async () => {
+    db.folders['~/dev/notes'] = { path: '/Users/me/dev/notes', remote: '', default_branch: 'main', has_pipeline: false, host: '', url: '', problem: 'the folder has no remote: publish it to a new repository online first' }
+    window.history.replaceState(null, '', '/repos')
+    render(<App />)
+    await screen.findByRole('listitem', { name: 'Repository plumbix' })
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    const panel = screen.getByRole('region', { name: 'Import a repository' })
+    fireEvent.click(within(panel).getByRole('tab', { name: 'Publish a folder' }))
+    fireEvent.change(within(panel).getByLabelText('Folder'), { target: { value: '~/dev/notes' } })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Inspect' }))
+    await waitFor(() => expect((within(panel).getByLabelText('Name') as HTMLInputElement).value).toBe('notes'))
+    expect((within(panel).getByLabelText('Private') as HTMLInputElement).checked).toBe(true)
+    expect(panel.textContent).toContain('adds it to this folder as origin and pushes every branch')
+    fireEvent.click(within(panel).getByLabelText('Its own token'))
+    fireEvent.change(within(panel).getByLabelText('Token value'), { target: { value: 'ghp_publish_value' } })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Create and push' }))
+    await waitFor(() => expect(panel.textContent).toContain('Access checked'))
+    expect(db.publishes[0]).toMatchObject({ path: '~/dev/notes', host: 'github', owner: '', name: 'notes', private: true, token: 'ghp_publish_value' })
+    expect(panel.textContent).toContain('Created https://github.com/eduard/notes')
+    expect(panel.textContent).toContain('Pushed draft, main')
+    expect(panel.textContent).toContain('Registered notes')
+    const repo = db.repos.find((r) => r.url === 'https://github.com/eduard/notes')!
+    expect(db.repoTokens[repo.id]).toBe('ghp_publish_value')
+    expect(document.body.textContent).not.toContain('ghp_publish_value')
+  })
+
+  it('asks for an Azure DevOps organisation and project when publishing there, and sends a folder with a remote to the other tab', async () => {
+    db.folders['~/dev/notes'] = { path: '/Users/me/dev/notes', remote: '', default_branch: 'main', has_pipeline: false, host: '', url: '', problem: 'no remote' }
+    db.folders['~/dev/billing'] = { path: '/Users/me/dev/billing', remote: 'git@github.com:acme/billing.git', default_branch: 'main', has_pipeline: true, host: 'github', url: 'https://github.com/acme/billing.git', problem: '' }
+    window.history.replaceState(null, '', '/repos')
+    render(<App />)
+    await screen.findByRole('listitem', { name: 'Repository plumbix' })
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    const panel = screen.getByRole('region', { name: 'Import a repository' })
+    fireEvent.click(within(panel).getByRole('tab', { name: 'Publish a folder' }))
+    fireEvent.change(within(panel).getByLabelText('Folder'), { target: { value: '~/dev/billing' } })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Inspect' }))
+    await within(panel).findByText(/already has a remote/)
+    expect(within(panel).queryByRole('button', { name: 'Create and push' })).toBeNull()
+    fireEvent.change(within(panel).getByLabelText('Folder'), { target: { value: '~/dev/notes' } })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Inspect' }))
+    await within(panel).findByLabelText('Name')
+    fireEvent.change(within(panel).getByLabelText('Online host'), { target: { value: 'azuredevops' } })
+    expect(within(panel).queryByLabelText('Private')).toBeNull()
+    const create = within(panel).getByRole('button', { name: 'Create and push' }) as HTMLButtonElement
+    expect(create.disabled).toBe(true)
+    fireEvent.change(within(panel).getByLabelText('Organisation'), { target: { value: 'acme' } })
+    fireEvent.change(within(panel).getByLabelText('Project'), { target: { value: 'ledger' } })
+    expect(create.disabled).toBe(false)
+    fireEvent.click(create)
+    await waitFor(() => expect(panel.textContent).toContain('Created https://dev.azure.com/acme/ledger/_git/notes'))
+    expect(db.publishes[0]).toMatchObject({ host: 'azuredevops', owner: 'acme', project: 'ledger', name: 'notes' })
+  })
+
   it('says why a folder cannot be imported and imports nothing', async () => {
     db.folders['~/dev/notes'] = { path: '/Users/me/dev/notes', remote: '', default_branch: 'main', has_pipeline: false, host: '', url: '', problem: 'the folder has no remote: publish it to a new repository online first' }
     window.history.replaceState(null, '', '/repos')
@@ -169,6 +223,11 @@ describe('Repositories page', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Inspect' }))
     await within(panel).findByText(/has no remote/)
     expect(within(panel).queryByRole('button', { name: 'Import' })).toBeNull()
+    // The folder can be published instead, carried over to that tab.
+    fireEvent.click(within(panel).getByRole('button', { name: 'Publish it instead' }))
+    expect(within(panel).getByRole('tab', { name: 'Publish a folder' }).getAttribute('aria-selected')).toBe('true')
+    expect((within(panel).getByLabelText('Name') as HTMLInputElement).value).toBe('notes')
+    fireEvent.click(within(panel).getByRole('tab', { name: 'Local folder' }))
     fireEvent.change(within(panel).getByLabelText('Folder'), { target: { value: '/etc' } })
     fireEvent.click(within(panel).getByRole('button', { name: 'Inspect' }))
     await within(panel).findByText(/\/etc does not exist/)

@@ -24,6 +24,7 @@ const (
 type AzureDevOps struct {
 	Token      string
 	Expires    string            // the token's expiry date as YYYY-MM-DD; empty means unknown
+	APIBase    string            // empty means https://dev.azure.com (tests point it elsewhere)
 	RepoTokens map[string]string // a repository's own token, by repository id
 }
 
@@ -37,6 +38,15 @@ func (a *AzureDevOps) Auth(repo change.Repo) (gitops.Auth, bool) {
 		return gitops.Auth{}, false
 	}
 	return gitops.Auth{User: azureDevOpsUser, Token: token}, true
+}
+
+// AuthWith is git credentials for token, or the host token when it is
+// empty (WU-042).
+func (a *AzureDevOps) AuthWith(token string) (gitops.Auth, bool) {
+	if token == "" {
+		token = a.Token
+	}
+	return gitops.Auth{User: azureDevOpsUser, Token: token}, token != ""
 }
 
 // TokenExpiry returns the expiry date recorded in the secrets file. It makes

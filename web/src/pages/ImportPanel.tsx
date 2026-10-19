@@ -1,7 +1,8 @@
-// Importing a repository from the Repositories page (WU-041, A35): from a
-// local folder that has a remote, or by registering a remote and cloning it
-// to a local folder. Each step reports on its own line; the token is sent
-// once and never shown again.
+// Importing a repository from the Repositories page (WU-041, WU-042, A35):
+// from a local folder that has a remote, by registering a remote and cloning
+// it to a local folder, or by publishing a folder with no remote to a new
+// repository online. Each step reports on its own line; the token is sent
+// and never shown again.
 import { useState, type FormEvent } from 'react'
 import { api, ApiError } from '../api'
 import type { Repo, RepoFolder } from '../model'
@@ -121,8 +122,11 @@ async function run(reg: Registration, dest: string | null, report: (s: Step) => 
 
 const blank = (): Registration => ({ host: 'github', url: '', branch: 'main', merge: 'squash', ownToken: false, token: '' })
 
+type Tab = 'folder' | 'clone' | 'publish'
+
 export function ImportPanel({ onImported }: { onImported: () => Promise<void> }) {
-  const [tab, setTab] = useState<'folder' | 'clone'>('folder')
+  const [tab, setTab] = useState<Tab>('folder')
+  const [pub, setPub] = useState({ host: 'github' as 'github' | 'azuredevops', owner: '', project: '', name: '', private: true })
   const [path, setPath] = useState('')
   const [folder, setFolder] = useState<RepoFolder | null>(null)
   const [inspectError, setInspectError] = useState('')
@@ -144,6 +148,10 @@ export function ImportPanel({ onImported }: { onImported: () => Promise<void> })
       const f = await api.inspectFolder(path)
       setFolder(f)
       if (!f.problem && f.host) setReg({ ...blank(), host: f.host, url: f.url, branch: f.default_branch || 'main' })
+      if (!f.remote) {
+        setReg({ ...blank(), branch: f.default_branch || 'main' })
+        setPub((p) => ({ ...p, name: f.path.split('/').filter(Boolean).pop() ?? '' }))
+      }
     } catch (err) {
       setInspectError(errorText(err))
     }
@@ -159,6 +167,32 @@ export function ImportPanel({ onImported }: { onImported: () => Promise<void> })
     setBusy(false)
   }
 
+  async function publish() {
+    setBusy(true)
+    setSteps([])
+    const add = (s: Step) => setSteps((cur) => [...cur, s])
+    const token = reg.ownToken ? reg.token : ''
+    try {
+      const out = await api.publishFolder({ path, host: pub.host, owner: pub.owner.trim(), project: pub.project.trim(), name: pub.name.trim(), private: pub.private, token })
+      add({ text: `Created ${out.url}${pub.host === 'github' ? (pub.private ? ' (private)' : ' (public)') : ''}`, ok: true })
+      add({ text: `Pushed ${out.pushed.join(', ')}`, ok: true })
+      const registered = await run({ ...reg, host: out.host, url: out.url }, null, add)
+      if (registered) await onImported()
+    } catch (err) {
+      add({ text: `Not published: ${errorText(err)}`, ok: false })
+    }
+    setReg((cur) => ({ ...cur, token: '' }))
+    setBusy(false)
+  }
+
+  const switchTab = (t: Tab) => {
+    setTab(t)
+    setSteps([])
+    setFolder(null)
+    setInspectError('')
+    setReg(blank())
+  }
+
   const changeRemote = (v: string) => {
     setRemote(v)
     const d = detectRemote(v)
@@ -169,11 +203,14 @@ export function ImportPanel({ onImported }: { onImported: () => Promise<void> })
   return (
     <section className="import-panel" aria-label="Import a repository">
       <div className="segmented" role="tablist" aria-label="Import from">
-        <button role="tab" aria-selected={tab === 'folder'} aria-pressed={tab === 'folder'} onClick={() => { setTab('folder'); setSteps([]) }}>
+        <button role="tab" aria-selected={tab === 'folder'} aria-pressed={tab === 'folder'} onClick={() => switchTab('folder')}>
           Local folder
         </button>
-        <button role="tab" aria-selected={tab === 'clone'} aria-pressed={tab === 'clone'} onClick={() => { setTab('clone'); setSteps([]); setReg(blank()) }}>
+        <button role="tab" aria-selected={tab === 'clone'} aria-pressed={tab === 'clone'} onClick={() => switchTab('clone')}>
           Clone a remote
+        </button>
+        <button role="tab" aria-selected={tab === 'publish'} aria-pressed={tab === 'publish'} onClick={() => switchTab('publish')}>
+          Publish a folder
         </button>
       </div>
       {tab === 'folder' && (
@@ -195,7 +232,14 @@ export function ImportPanel({ onImported }: { onImported: () => Promise<void> })
                 {folder.path} · remote {folder.remote || 'none'}
               </p>
               {folder.problem ? (
-                <p className="status-text error">{folder.problem}</p>
+                <div className="form-row">
+                  <span className="status-text error">{folder.problem}</span>
+                  {!folder.remote && (
+                    <button className="secondary small" onClick={() => { setTab('publish'); setSteps([]); setReg({ ...blank(), branch: folder.default_branch || 'main' }); setPub((p) => ({ ...p, name: folder.path.split('/').filter(Boolean).pop() ?? '' })) }}>
+                      Publish it instead
+                    </button>
+                  )}
+                </div>
               ) : (
                 <>
                   <p className="dim">{folder.has_pipeline ? 'Has .plumbix/pipeline.yaml.' : 'No .plumbix/pipeline.yaml yet: after importing, start one on the Pipelines page.'}</p>
@@ -233,6 +277,71 @@ export function ImportPanel({ onImported }: { onImported: () => Promise<void> })
               Register and clone
             </button>
           </div>
+        </>
+      )}
+      {tab === 'publish' && (
+        <>
+          <p className="dim">A folder on this machine with commits but no remote. Plumbix creates an empty repository online, adds it to this folder as origin and pushes every branch, then registers it. This is the one import that changes the folder: it gains a remote.</p>
+          <form className="import-row" onSubmit={(e) => void inspect(e)}>
+            <label className="wide">
+              Folder
+              <input aria-label="Folder" className="mono" value={path} onChange={(e) => setPath(e.target.value)} placeholder="~/dev/notes" />
+            </label>
+            <button className="secondary small" type="submit" disabled={!path.trim()}>
+              Inspect
+            </button>
+          </form>
+          {inspectError && <p className="status-text error">{inspectError}</p>}
+          {folder && folder.remote && <p className="status-text error">{folder.path} already has a remote, {folder.remote}: import it from the Local folder tab.</p>}
+          {folder && !folder.remote && (
+            <div className="import-found">
+              <div className="import-grid">
+                <label>
+                  Online host
+                  <select aria-label="Online host" value={pub.host} onChange={(e) => setPub({ ...pub, host: e.target.value as 'github' | 'azuredevops' })}>
+                    <option value="github">GitHub</option>
+                    <option value="azuredevops">Azure DevOps</option>
+                  </select>
+                </label>
+                {pub.host === 'github' ? (
+                  <label>
+                    Owner
+                    <input aria-label="Owner" className="mono" value={pub.owner} onChange={(e) => setPub({ ...pub, owner: e.target.value })} placeholder="your account" />
+                  </label>
+                ) : (
+                  <>
+                    <label>
+                      Organisation
+                      <input aria-label="Organisation" className="mono" value={pub.owner} onChange={(e) => setPub({ ...pub, owner: e.target.value })} />
+                    </label>
+                    <label>
+                      Project
+                      <input aria-label="Project" className="mono" value={pub.project} onChange={(e) => setPub({ ...pub, project: e.target.value })} />
+                    </label>
+                  </>
+                )}
+                <label>
+                  Name
+                  <input aria-label="Name" className="mono" value={pub.name} onChange={(e) => setPub({ ...pub, name: e.target.value })} />
+                </label>
+                {pub.host === 'github' && (
+                  <label className="inline">
+                    <input type="checkbox" aria-label="Private" checked={pub.private} onChange={(e) => setPub({ ...pub, private: e.target.checked })} /> Private
+                  </label>
+                )}
+              </div>
+              <RegistrationFields reg={{ ...reg, host: pub.host }} set={set} fixedRemote />
+              <div className="form-row">
+                <button
+                  className="primary"
+                  disabled={busy || !pub.name.trim() || (pub.host === 'azuredevops' && (!pub.owner.trim() || !pub.project.trim())) || (reg.ownToken && !reg.token)}
+                  onClick={() => void publish()}
+                >
+                  Create and push
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
       {steps.length > 0 && (

@@ -39,6 +39,15 @@ func (g *GitHub) Auth(repo change.Repo) (gitops.Auth, bool) {
 	return gitops.Auth{User: gitHubUser, Token: token}, true
 }
 
+// AuthWith is git credentials for token, or the host token when it is
+// empty: what a push to a repository not yet registered uses (WU-042).
+func (g *GitHub) AuthWith(token string) (gitops.Auth, bool) {
+	if token == "" {
+		token = g.Token
+	}
+	return gitops.Auth{User: gitHubUser, Token: token}, token != ""
+}
+
 // TokenExpiry reads the expiry GitHub reports on any authenticated call.
 func (g *GitHub) TokenExpiry(ctx context.Context) (time.Time, bool, error) {
 	if g.Token == "" {

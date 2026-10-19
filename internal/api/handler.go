@@ -65,7 +65,7 @@ func NewHandler(d Deps) http.Handler {
 			registerPipelineRoutes(protected, &pipelineHandlers{svc: d.Changes, engine: d.Engine, runs: d.Runs, log: logger})
 			registerReviewRoutes(protected, &reviewHandlers{changeHandlers: ch})
 			if d.ImportRoot != "" {
-				registerImportRoutes(protected, &importHandlers{changeHandlers: ch, root: d.ImportRoot})
+				registerImportRoutes(protected, &importHandlers{changeHandlers: ch, root: d.ImportRoot, hosts: d.Hosts, askpass: d.Engine.Askpass})
 			}
 			if d.Images != nil {
 				registerImageRoutes(protected, &imageHandlers{images: d.Images, svc: d.Changes, engine: d.Engine, log: logger})

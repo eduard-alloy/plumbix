@@ -47,6 +47,25 @@ export interface RepoInput {
   merge_strategy?: Repo['merge_strategy']
 }
 
+/** PublishInput creates a repository online for a folder with no remote and pushes it (WU-042). */
+export interface PublishInput {
+  path: string
+  host: 'github' | 'azuredevops'
+  owner: string
+  project: string
+  name: string
+  private: boolean
+  token: string
+}
+
+/** RepoPublished is the repository a publish created and the branches it pushed. */
+export interface RepoPublished {
+  url: string
+  host: 'github' | 'azuredevops'
+  default_branch: string
+  pushed: string[]
+}
+
 /** RepoFolder is a local working tree and the registration it suggests (WU-041). */
 export interface RepoFolder {
   path: string

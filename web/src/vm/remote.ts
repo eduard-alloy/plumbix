@@ -12,8 +12,9 @@ const GITHUB_HTTPS = /^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/
 const AZURE_HTTPS = [/^https:\/\/dev\.azure\.com\/[^/\s]+\/[^/\s]+\/_git\/[^/\s]+$/, /^https:\/\/[A-Za-z0-9-]+\.visualstudio\.com\/[^/\s]+\/_git\/[^/\s]+$/]
 const GITHUB_SSH = /^(?:ssh:\/\/)?git@github\.com[:/]([A-Za-z0-9-]+\/[A-Za-z0-9._-]+)$/
 const AZURE_SSH = /^(?:ssh:\/\/)?git@ssh\.dev\.azure\.com[:/]v3\/([^/\s]+)\/([^/\s]+)\/([^/\s]+)$/
-const SSH = /^ssh:\/\/\S+$/
-const SCP = /^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:\S+$/
+// The same patterns as change.sshURL and change.scpURL on the server.
+const SSH = /^ssh:\/\/([A-Za-z0-9._-]+@)?[A-Za-z0-9.-]+(:[0-9]+)?\/.+$/
+const SCP = /^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^/\s].*$/
 
 /** detectRemote names the host of a remote and the URL to register, or null when Plumbix cannot reach it. */
 export function detectRemote(remote: string): DetectedRemote | null {

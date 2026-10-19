@@ -257,6 +257,13 @@ func (e *Engine) auth(repo change.Repo) (*gitops.Auth, error) {
 	return &auth, nil
 }
 
+// Askpass is the path of the askpass script git reads credentials through,
+// written on first use.
+func (e *Engine) Askpass() (string, error) {
+	e.askOnce.Do(func() { e.askpass, e.askErr = gitops.EnsureAskpass(e.cfg.DataDir) })
+	return e.askpass, e.askErr
+}
+
 // CloneRepo clones a registered repository into dest, a folder that does
 // not exist or is empty, with the repository's credentials (WU-041). The
 // caller has checked that dest may be written.

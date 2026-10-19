@@ -526,6 +526,70 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /repos/publish:
+    post:
+      operationId: publishFolder
+      summary: Create a repository online for a local folder with no remote and push the folder to it.
+      description: >
+        WU-042, A35. path must resolve inside the server user's home directory and be the top of a git working
+        tree with commits and no remote. The repository is created through the host's API (GitHub under the
+        token's account, or the organisation named in owner; Azure DevOps in the organisation owner and project)
+        with token, or the host token when token is empty; the token is sent only in headers and never echoed.
+        The folder then gains origin and every branch is pushed, never forced. Registering the repository is a
+        separate POST /repos. Code create_failed means nothing was created or changed; push_failed means the
+        repository exists online and the folder's origin is set, and the message says so.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [path, host, name]
+              properties:
+                path:
+                  type: string
+                host:
+                  type: string
+                  enum: [github, azuredevops]
+                owner:
+                  description: GitHub account or organisation (empty for the token's account), or Azure DevOps organisation.
+                  type: string
+                project:
+                  description: Azure DevOps project.
+                  type: string
+                name:
+                  type: string
+                private:
+                  description: GitHub visibility; Azure DevOps repositories follow their project.
+                  type: boolean
+                token:
+                  description: A token for this repository; the host token when empty.
+                  type: string
+                  writeOnly: true
+      responses:
+        "200":
+          description: The repository created and the branches pushed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoPublished"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: Code unavailable, the server has no host of that kind configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Codes create_failed and push_failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /repos/{id}/clone:
     post:
       operationId: cloneRepo
@@ -2023,6 +2087,23 @@ components:
           type: string
         problem:
           type: string
+    RepoPublished:
+      type: object
+      additionalProperties: false
+      required: [url, host, default_branch, pushed]
+      properties:
+        url:
+          description: The new repository's HTTPS URL, to register.
+          type: string
+        host:
+          type: string
+          enum: [github, azuredevops]
+        default_branch:
+          type: string
+        pushed:
+          type: array
+          items:
+            type: string
     RepoClone:
       type: object
       additionalProperties: false

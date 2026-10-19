@@ -29,3 +29,12 @@ func TestDetectRemote(t *testing.T) {
 		}
 	}
 }
+
+// TestDetectRemoteRefusesMalformedSSH keeps the cases web/src/vm/remote.test.ts shares.
+func TestDetectRemoteRefusesMalformedSSH(t *testing.T) {
+	for _, bad := range []string{"ssh://host", "git@host:/abs"} {
+		if _, _, err := DetectRemote(bad); err == nil {
+			t.Errorf("DetectRemote(%q) accepted", bad)
+		}
+	}
+}
