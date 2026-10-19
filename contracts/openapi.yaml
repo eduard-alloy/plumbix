@@ -2441,7 +2441,7 @@ components:
     PipelineCheck:
       type: object
       additionalProperties: false
-      required: [valid]
+      required: [valid, disabled]
       properties:
         valid:
           type: boolean
@@ -2455,6 +2455,15 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PipelineProblem"
+        disabled:
+          description: True when a valid pipeline has a disabled step; such a pipeline never runs (WU-044). False for an invalid one.
+          type: boolean
+        blockers:
+          description: Disabled steps counted per reason. Present when disabled.
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 1
     PipelineFile:
       type: object
       additionalProperties: false
@@ -2484,10 +2493,13 @@ components:
       description: The parsed file in the editor's shape. Lists are never null.
       type: object
       additionalProperties: false
-      required: [version, steps, stages]
+      required: [version, steps, stages, disabled]
       properties:
         version:
           type: integer
+        disabled:
+          description: True when any step is disabled; the pipeline then never runs (WU-044).
+          type: boolean
         steps:
           type: array
           items:
@@ -2568,6 +2580,18 @@ components:
             type: string
         stage:
           type: string
+        disabled:
+          description: Why the step does not run; absent when it runs (WU-044). Reasons are listed in pipeline.schema.json.
+          type: object
+          additionalProperties: false
+          required: [reason]
+          properties:
+            reason:
+              type: string
+              enum: [user, docker, services, host, task, template, condition, checkout, deployment, secrets]
+            note:
+              type: string
+              maxLength: 500
     PipelineLastRun:
       type: object
       additionalProperties: false

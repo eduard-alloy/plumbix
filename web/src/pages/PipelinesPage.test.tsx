@@ -269,4 +269,63 @@ describe('Pipelines page', () => {
       width.mockRestore()
     }
   })
+
+  describe('disabled steps (WU-044)', () => {
+    /** deploy-check imported with docker build: the pipeline is disabled. */
+    function importDisabled() {
+      const f = db.pipelines[repos[0].id]
+      const step = f.pipeline!.steps.find((s) => s.name === 'deploy-check')!
+      step.disabled = { reason: 'docker', note: 'runs docker build' }
+      f.pipeline!.disabled = true
+    }
+    const notice = () => screen.queryByRole('note', { name: 'Pipeline disabled' })
+
+    it('dims a disabled card, says the pipeline is disabled and why, and explains the block in the inspector', async () => {
+      importDisabled()
+      await open()
+      expect(notice()!.textContent).toContain('This pipeline is disabled')
+      expect(notice()!.textContent).toContain('uses Docker (1)')
+      expect(card('deploy-check').className).toContain('off')
+      expect(card('deploy-check').textContent).toContain('disabled · uses Docker')
+      expect(card('build').className).not.toContain('off')
+      fireEvent.click(card('deploy-check'))
+      const panel = await screen.findByRole('complementary')
+      expect(panel.textContent).toContain('Plumbix cannot run this step yet')
+      expect(panel.textContent).toContain('runs docker build')
+      expect(within(panel).queryByRole('switch', { name: 'Disabled' })).toBeNull()
+    })
+
+    it('disables a step by hand, saves reason user, and enables it again', async () => {
+      await open()
+      expect(notice()).toBeNull()
+      fireEvent.click(card('build'))
+      const panel = await screen.findByRole('complementary')
+      fireEvent.click(within(panel).getByRole('switch', { name: 'Disabled' }))
+      expect(card('build').className).toContain('off')
+      expect(notice()!.textContent).toContain('disabled by a person (1)')
+      expect(screen.getByText(/build disabled/)).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: 'Save as change' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Push branch and open change' }))
+      await screen.findByRole('status')
+      expect(db.proposals[0].content).toContain('    disabled:\n      reason: user\n')
+    })
+
+    it('names repositories decoded in the tabs (WU-043 missed this page)', async () => {
+      db.repos[1] = { ...db.repos[1], url: 'https://dev.azure.com/northwind/ledger/_git/Ledger%20API' }
+      await open()
+      expect(screen.getByRole('tab', { name: 'Ledger API' })).toBeTruthy()
+    })
+
+    it('switches a hand-disabled step back on with no edits left', async () => {
+      await open()
+      fireEvent.click(card('build'))
+      const panel = await screen.findByRole('complementary')
+      const sw = within(panel).getByRole('switch', { name: 'Disabled' })
+      fireEvent.click(sw)
+      fireEvent.click(sw)
+      expect(card('build').className).not.toContain('off')
+      expect(notice()).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Save as change' })).toBeNull()
+    })
+  })
 })

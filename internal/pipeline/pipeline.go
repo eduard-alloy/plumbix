@@ -75,6 +75,9 @@ type Step struct {
 	// the pipeline: nothing runs in a container, Plumbix publishes a brief
 	// and waits (WU-023). Timeout bounds the wait.
 	External bool
+	// Disabled, when set, keeps the step from running and the pipeline
+	// with it (WU-044); image and run are then optional.
+	Disabled *Disabled
 	Line     int
 }
 
@@ -310,6 +313,8 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 			} else {
 				st.Advisory = val.Value == "true"
 			}
+		case "disabled":
+			st.Disabled = ps.disabled(fp, val)
 		case "external":
 			externalKey = key
 			if val.Kind != yaml.ScalarNode || val.Tag != "!!bool" {
@@ -352,7 +357,7 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 		}
 	}
 	required := []string{"name", "image"}
-	if st.External {
+	if st.External || st.Disabled != nil {
 		required = []string{"name"}
 	}
 	for _, req := range required {
@@ -360,7 +365,7 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 			ps.add(p+"."+req, n.Line, "is required")
 		}
 	}
-	if !seen["run"] && !st.Validator {
+	if !seen["run"] && !st.Validator && st.Disabled == nil {
 		ps.add(p+".run", n.Line, "is required for steps that are not validators")
 	}
 	if envNode != nil && secretsNode != nil {

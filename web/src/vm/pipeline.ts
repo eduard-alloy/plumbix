@@ -2,7 +2,7 @@
 // operations the toolbar offers, the band layout the canvas draws, the YAML
 // the server receives, and the summary the edit bar shows. Pure functions;
 // every operation returns a new model and never mutates its input.
-import type { PipelineFile, PipelineStep } from '../model'
+import type { DisabledReason, PipelineFile, PipelineStep } from '../model'
 import { applyModel } from './yamlEdit'
 
 /** EnvRow is one environment line; a secret row is exposed under its own name from Settings. */
@@ -36,6 +36,8 @@ export interface PStep {
   reviewer: string
   /** effort overrides the profile's reasoning effort; '' keeps it (WU-034). */
   effort: '' | 'low' | 'medium' | 'high'
+  /** disabled keeps the step, and so the pipeline, from running (WU-044); null when it runs. */
+  disabled: { reason: DisabledReason; note: string } | null
   /** src is the step's name in the served file, kept through a rename so a save edits that step's text in place (WU-036); absent on a step the editor created. */
   src?: string
   /** Last run duration in seconds and its status, from the newest finished run on the branch. */
@@ -78,6 +80,7 @@ export function fromApi(f: PipelineFile): PModel | null {
     external: !!s.external,
     reviewer: s.reviewer ?? '',
     effort: s.effort ?? '',
+    disabled: s.disabled ? { reason: s.disabled.reason, note: s.disabled.note ?? '' } : null,
     src: s.name,
     last: last[s.name] ? last[s.name].duration_ms / 1000 : null,
     lastStatus: last[s.name]?.status ?? '',
@@ -143,7 +146,7 @@ export function uniqueId(p: PModel, base: string): string {
 }
 
 export function newStep(id: string, extra: Partial<PStep> = {}): PStep {
-  return { id, image: 'alpine:3', run: ['echo "replace me"'], needs: [], timeout: '', retries: 0, allowFail: false, env: [], evidence: [], cache: [], paths: [], group: null, validator: false, advisory: false, external: false, reviewer: '', effort: '', last: null, lastStatus: '', ...extra }
+  return { id, image: 'alpine:3', run: ['echo "replace me"'], needs: [], timeout: '', retries: 0, allowFail: false, env: [], evidence: [], cache: [], paths: [], group: null, validator: false, advisory: false, external: false, reviewer: '', effort: '', disabled: null, last: null, lastStatus: '', ...extra }
 }
 
 /** detach rewires every step that needs id to id's own needs, so chains survive a removal. */
@@ -224,6 +227,39 @@ export function toggleValidator(p: PModel, id: string): PModel {
     s.reviewer = ''
     s.effort = ''
   }
+  return m
+}
+
+/** REASONS labels the published codes for a disabled step (pipeline.schema.json), in its order. */
+export const REASONS: Record<DisabledReason, { label: string; text: string }> = {
+  user: { label: 'disabled by a person', text: 'Disabled by a person. Switch it on again to run it.' },
+  docker: { label: 'uses Docker', text: 'It runs Docker itself (docker run, docker build). Steps have no Docker access yet.' },
+  services: { label: 'needs service containers', text: 'It needs service containers, such as a database or a cache, beside it.' },
+  host: { label: 'runs on the agent machine', text: 'It ran on the build agent\'s machine with no container image.' },
+  task: { label: 'source CI task', text: 'It is a task of the source CI system that Plumbix has no equivalent for.' },
+  template: { label: 'template not read', text: 'It comes from a template Plumbix could not read.' },
+  condition: { label: 'unsupported condition', text: 'It runs under a condition Plumbix cannot express.' },
+  checkout: { label: 'another repository', text: 'It needs another repository checked out.' },
+  deployment: { label: 'deployment', text: 'It deploys to an environment or waits for an approval.' },
+  secrets: { label: 'unmapped secrets', text: 'It needs variables or secret groups that are not mapped to Plumbix secrets.' },
+}
+
+/** blockers counts the disabled steps per reason, in REASONS order; empty when the pipeline runs. */
+export function blockers(p: PModel): { reason: DisabledReason; count: number }[] {
+  return (Object.keys(REASONS) as DisabledReason[]).map((reason) => ({ reason, count: p.steps.filter((s) => s.disabled?.reason === reason).length })).filter((b) => b.count > 0)
+}
+
+/** runnable says whether a step has what the parser asks of a step that runs: an image unless external, commands unless a validator. */
+export const runnable = (s: PStep): boolean => (s.external || !!s.image) && (s.validator || s.run.some((c) => c.trim()))
+
+/** toggleDisabled disables a running step with reason user, or runs a step a person disabled once it has what a running step needs (runnable). A step blocked by anything else is left as it is: Plumbix cannot run it yet. */
+export function toggleDisabled(p: PModel, id: string): PModel {
+  const cur = find(p, id)
+  if (!cur || (cur.disabled && cur.disabled.reason !== 'user')) return p
+  if (cur.disabled && !runnable(cur)) return p
+  const m = clone(p)
+  const s = find(m, id)!
+  s.disabled = s.disabled ? null : { reason: 'user', note: '' }
   return m
 }
 
@@ -315,16 +351,17 @@ export function yamlStr(s: string): string {
 const list = (xs: string[]) => `[${xs.map(yamlStr).join(', ')}]`
 
 /** StepKeys are the keys the editor owns on a step, in the order it writes new ones; anything else in a file is left alone (WU-036). */
-export const STEP_KEYS = ['image', 'validator', 'external', 'run', 'needs', 'env', 'secrets', 'artifacts', 'cache', 'timeout', 'retries', 'allow_failure', 'reviewer', 'advisory', 'effort', 'when'] as const
+export const STEP_KEYS = ['image', 'validator', 'external', 'run', 'needs', 'env', 'secrets', 'artifacts', 'cache', 'timeout', 'retries', 'allow_failure', 'reviewer', 'advisory', 'effort', 'when', 'disabled'] as const
 export type StepKey = (typeof STEP_KEYS)[number]
-export type StepValue = string | number | boolean | string[] | Record<string, string> | { paths: string[] }
+export type StepValue = string | number | boolean | string[] | Record<string, string> | { paths: string[] } | { reason: string; note?: string }
 
 /** desired lists the keys a step writes, as plain values, in STEP_KEYS order; toYaml and the text writer both use it. */
 export function desired(s: PStep, plainIds: string[]): Partial<Record<StepKey, StepValue>> {
   const d: Partial<Record<StepKey, StepValue>> = {}
   // An external validator runs no container: no image, no commands, no
   // env, secrets, cache or retries; a reviewer outside answers it.
-  if (!s.external) d.image = s.image
+  // A disabled step may have no image (an imported source task): it writes none.
+  if (!s.external && !(s.disabled && !s.image)) d.image = s.image
   if (s.validator) d.validator = true
   if (s.external) d.external = true
   if (!s.external && s.run.length === 1) d.run = s.run[0]
@@ -344,6 +381,7 @@ export function desired(s: PStep, plainIds: string[]): Partial<Record<StepKey, S
   if (s.advisory && s.validator) d.advisory = true
   if (s.effort && s.validator && !s.external) d.effort = s.effort
   if (s.paths.length && !s.validator) d.when = { paths: [...s.paths] }
+  if (s.disabled) d.disabled = s.disabled.note ? { reason: s.disabled.reason, note: s.disabled.note } : { reason: s.disabled.reason }
   return d
 }
 
@@ -371,6 +409,10 @@ export function toYaml(p: PModel): string[] {
       } else if (key === 'when') {
         out.push('    when:')
         out.push(`      paths: ${list((v as { paths: string[] }).paths)}`)
+      } else if (key === 'disabled') {
+        const d = v as { reason: string; note?: string }
+        out.push('    disabled:', `      reason: ${d.reason}`)
+        if (d.note) out.push(`      note: ${yamlStr(d.note)}`)
       } else if (Array.isArray(v)) out.push(`    ${key}: ${list(v)}`)
       else if (typeof v === 'string') out.push(`    ${key}: ${yamlStr(v)}`)
       else out.push(`    ${key}: ${String(v)}`)
@@ -428,6 +470,7 @@ export function diffSummary(a: PModel, b: PModel): string[] {
       out.push(sb.validator ? `${id} is now a validator` : `${id} is no longer a validator`)
       continue
     }
+    if (!!sa.disabled !== !!sb.disabled) out.push(sb.disabled ? `${id} disabled` : `${id} enabled`)
     const ch: string[] = []
     if (!sb.validator && sa.needs.join() !== sb.needs.join()) ch.push(sb.needs.length ? `needs ${sb.needs.join(', ')}` : 'needs nothing')
     if (sa.image !== sb.image && !sb.external) ch.push(`image ${sb.image}`)
@@ -510,6 +553,8 @@ export interface Card {
   sel: boolean
   chips: Chip[]
   validator: boolean
+  /** disabled is the reason's label when the step does not run (WU-044), else null. */
+  disabled: string | null
 }
 
 export interface Edge {
@@ -683,6 +728,7 @@ function cardOf(s: PStep, q: Placed, bandOf: Record<string, number>, sel: Set<st
     sel: sel.has(s.id),
     chips: shown,
     validator: s.validator,
+    disabled: s.disabled ? REASONS[s.disabled.reason].label : null,
   }
 }
 

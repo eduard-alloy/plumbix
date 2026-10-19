@@ -206,19 +206,59 @@
               }
             }
           }
+        },
+        "disabled": {
+          "description": "The step does not run, and neither does any pipeline that holds it (WU-044). Imported steps Plumbix cannot run yet carry the reason that blocks them; a person may disable a step with reason user. A disabled step needs neither image nor run.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reason"
+          ],
+          "properties": {
+            "reason": {
+              "description": "user: disabled by a person; docker: uses Docker itself; services: needs service containers beside it; host: runs on the build agent's machine with no image; task: a source CI task with no Plumbix equivalent; template: from a template Plumbix could not read; condition: a run condition Plumbix cannot express; checkout: needs another repository checked out; deployment: deploys to an environment or waits for an approval; secrets: needs variables or secret groups not mapped to Plumbix secrets.",
+              "type": "string",
+              "enum": [
+                "user",
+                "docker",
+                "services",
+                "host",
+                "task",
+                "template",
+                "condition",
+                "checkout",
+                "deployment",
+                "secrets"
+              ]
+            },
+            "note": {
+              "description": "Free text: what the step did in its source, or why a person disabled it.",
+              "type": "string",
+              "maxLength": 500
+            }
+          }
         }
       },
       "allOf": [
         {
           "if": {
-            "required": [
-              "validator"
-            ],
-            "properties": {
-              "validator": {
-                "const": true
+            "anyOf": [
+              {
+                "required": [
+                  "validator"
+                ],
+                "properties": {
+                  "validator": {
+                    "const": true
+                  }
+                }
+              },
+              {
+                "required": [
+                  "disabled"
+                ]
               }
-            }
+            ]
           },
           "else": {
             "required": [
@@ -228,14 +268,23 @@
         },
         {
           "if": {
-            "required": [
-              "external"
-            ],
-            "properties": {
-              "external": {
-                "const": true
+            "anyOf": [
+              {
+                "required": [
+                  "external"
+                ],
+                "properties": {
+                  "external": {
+                    "const": true
+                  }
+                }
+              },
+              {
+                "required": [
+                  "disabled"
+                ]
               }
-            }
+            ]
           },
           "else": {
             "required": [

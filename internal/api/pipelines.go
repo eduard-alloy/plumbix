@@ -16,6 +16,9 @@ type checkResult struct {
 	Valid  bool             `json:"valid"`
 	Order  []string         `json:"order,omitempty"`
 	Errors []pipeline.Error `json:"errors,omitempty"`
+	// Disabled and Blockers describe a valid pipeline with disabled steps (WU-044).
+	Disabled bool           `json:"disabled"`
+	Blockers map[string]int `json:"blockers,omitempty"`
 }
 
 // checkPipeline validates the pipeline file sent as the request body.
@@ -42,5 +45,9 @@ func checkPipeline(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, checkResult{Valid: false, Errors: verr.Errors})
 		return
 	}
-	writeJSON(w, http.StatusOK, checkResult{Valid: true, Order: p.Order()})
+	res := checkResult{Valid: true, Order: p.Order(), Disabled: p.Disabled()}
+	if res.Disabled {
+		res.Blockers = p.Blockers()
+	}
+	writeJSON(w, http.StatusOK, res)
 }

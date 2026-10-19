@@ -215,13 +215,13 @@ describe('Repositories page', () => {
   })
 
   it('says when the host has no token and asks for one for this repository instead (WU-043)', async () => {
-    db.folders['~/dev/claims'] = { path: '/Users/me/dev/claims', remote: 'https://acme@dev.azure.com/acme/Easy%20Claim/_git/Easy%20Claim', default_branch: 'main', has_pipeline: false, host: 'azuredevops', url: 'https://dev.azure.com/acme/Easy%20Claim/_git/Easy%20Claim', problem: '' }
+    db.folders['~/dev/ledger'] = { path: '/Users/me/dev/ledger', remote: 'https://acme@dev.azure.com/acme/Ledger%20Service/_git/Ledger%20Service', default_branch: 'main', has_pipeline: false, host: 'azuredevops', url: 'https://dev.azure.com/acme/Ledger%20Service/_git/Ledger%20Service', problem: '' }
     window.history.replaceState(null, '', '/repos')
     render(<App />)
     await screen.findByRole('listitem', { name: 'Repository plumbix' })
     fireEvent.click(screen.getByRole('button', { name: 'Import' }))
     const panel = screen.getByRole('region', { name: 'Import a repository' })
-    fireEvent.change(within(panel).getByLabelText('Folder'), { target: { value: '~/dev/claims' } })
+    fireEvent.change(within(panel).getByLabelText('Folder'), { target: { value: '~/dev/ledger' } })
     fireEvent.click(within(panel).getByRole('button', { name: 'Inspect' }))
     await within(panel).findByText(/No Azure DevOps host token is set/)
     expect((within(panel).getByLabelText('Use the host token') as HTMLInputElement).disabled).toBe(true)
@@ -232,8 +232,8 @@ describe('Repositories page', () => {
     expect(importButton.disabled).toBe(false)
     fireEvent.click(importButton)
     // The registered name reads as Azure DevOps shows it, spaces and all.
-    await waitFor(() => expect(panel.textContent).toContain('Registered Easy Claim'))
-    await screen.findByRole('listitem', { name: 'Repository Easy Claim' })
+    await waitFor(() => expect(panel.textContent).toContain('Registered Ledger Service'))
+    await screen.findByRole('listitem', { name: 'Repository Ledger Service' })
   })
 
   it('asks for a token for the repository when Settings cannot be read (WU-043 review)', async () => {

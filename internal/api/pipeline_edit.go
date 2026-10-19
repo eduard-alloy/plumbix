@@ -44,6 +44,8 @@ type pipelineModel struct {
 	Version int             `json:"version"`
 	Steps   []pipelineStep  `json:"steps"`
 	Stages  []pipelineStage `json:"stages"`
+	// Disabled is true when any step is disabled: the pipeline never runs (WU-044).
+	Disabled bool `json:"disabled"`
 }
 
 type pipelineStep struct {
@@ -65,6 +67,13 @@ type pipelineStep struct {
 	AllowFailure bool              `json:"allow_failure"`
 	Paths        []string          `json:"paths"`
 	Stage        string            `json:"stage,omitempty"`
+	Disabled     *stepDisabled     `json:"disabled,omitempty"`
+}
+
+// stepDisabled says why a step does not run (WU-044).
+type stepDisabled struct {
+	Reason string `json:"reason"`
+	Note   string `json:"note,omitempty"`
 }
 
 type pipelineStage struct {
@@ -101,7 +110,7 @@ func nonNilStrings(s []string) []string {
 }
 
 func toModel(p *pipeline.Pipeline) *pipelineModel {
-	m := &pipelineModel{Version: p.Version, Steps: []pipelineStep{}, Stages: []pipelineStage{}}
+	m := &pipelineModel{Version: p.Version, Steps: []pipelineStep{}, Stages: []pipelineStage{}, Disabled: p.Disabled()}
 	for _, st := range p.Steps {
 		cmds := st.Commands
 		if cmds == nil && st.Run != "" {
@@ -116,6 +125,9 @@ func toModel(p *pipeline.Pipeline) *pipelineModel {
 			AllowFailure: st.AllowFailure, Paths: nonNilStrings(st.OnlyPaths), Stage: st.Stage}
 		if st.Timeout > 0 {
 			s.Timeout = st.Timeout.String()
+		}
+		if st.Disabled != nil {
+			s.Disabled = &stepDisabled{Reason: st.Disabled.Reason, Note: st.Disabled.Note}
 		}
 		m.Steps = append(m.Steps, s)
 	}

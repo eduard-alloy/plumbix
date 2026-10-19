@@ -71,6 +71,7 @@ function ownModel(): PModel {
         step('ai-grok', { image: 'plumbix-ai-validator:dev', validator: true, reviewer: 'grok-4', advisory: true, needs: ['build', 'test', 'lint', 'web'] }),
       ],
       stages: [{ name: 'checks', steps: ['build', 'test', 'lint', 'web'] }],
+      disabled: false,
     },
     last_run: undefined,
   }
@@ -136,6 +137,7 @@ steps:
           { name: 'test', image: 'golang:1.27', commands: ['go test ./...', 'echo done'], needs: ['build'], env: {}, secrets: [], artifacts: [], cache: [], validator: false, advisory: false, external: false, retries: 2, allow_failure: true, paths: [], stage: '' },
         ],
         stages: [],
+        disabled: false,
       },
       last_run: undefined,
     })!
@@ -201,7 +203,7 @@ steps:
     const model = fromApi({
       ...fx.pipelineFile,
       content: file,
-      pipeline: { version: 1, steps: [{ name: 'build', image: 'golang:1.27', commands: ['go build ./...'], needs: [], env: {}, secrets: [], artifacts: [], cache: [], validator: false, advisory: false, external: false, retries: 0, allow_failure: false, paths: [], stage: '' }], stages: [] },
+      pipeline: { version: 1, steps: [{ name: 'build', image: 'golang:1.27', commands: ['go build ./...'], needs: [], env: {}, secrets: [], artifacts: [], cache: [], validator: false, advisory: false, external: false, retries: 0, allow_failure: false, paths: [], stage: '' }], stages: [], disabled: false },
       last_run: undefined,
     })!
     const renamed = renameStep(model, 'build', 'compile').model

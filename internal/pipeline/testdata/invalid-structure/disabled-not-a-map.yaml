@@ -1,0 +1,6 @@
+version: 1
+steps:
+  - name: unit
+    image: golang:1.27
+    run: go test ./...
+    disabled: true

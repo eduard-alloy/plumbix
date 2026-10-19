@@ -226,6 +226,7 @@ describe('advisory validators in the editor (WU-030)', () => {
         { name: 'ai-grok', image: 'plumbix-ai-validator:dev', commands: [], needs: ['test'], env: {}, secrets: [], artifacts: [], cache: [], validator: true, advisory: true, external: false, reviewer: 'grok-4', retries: 0, allow_failure: false, paths: [] },
       ],
       stages: [],
+      disabled: false,
     },
     problems: [],
   })

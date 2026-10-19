@@ -1,0 +1,20 @@
+version: 1
+steps:
+  - name: unit
+    image: golang:1.27
+    run: go test ./...
+  - name: integration
+    image: golang:1.27
+    run: docker run --rm redis
+    needs: [unit]
+    disabled:
+      reason: docker
+      note: starts Redis with docker run
+  - name: publish-results
+    needs: [integration]
+    disabled:
+      reason: task
+  - name: validate
+    image: plumbix-reference-validator:dev
+    validator: true
+    needs: [unit, integration, publish-results]

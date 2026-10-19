@@ -5,16 +5,13 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { api, ApiError } from '../api'
 import type { Change, PipelineFile, Repo, ReviewerProfile } from '../model'
 import { useRoute } from '../router'
+import { repoName } from '../vm/changes'
 import { useStore } from '../store'
 import {
-  addStep, bands, CH, toggleExternal, dependents, diffSummary, find, fromApi, groupSteps, mergeSteps, needOptions, plain, removeSteps, renameStep,
+  addStep, bands, blockers, CH, REASONS, runnable, toggleDisabled, toggleExternal, dependents, diffSummary, find, fromApi, groupSteps, mergeSteps, needOptions, plain, removeSteps, renameStep,
   renderYaml, saveDefaults, setField, toggleValidator, yamlDiff, fmtSeconds, type Band, type PModel, type PStep,
 } from '../vm/pipeline'
 import './pipeline.css'
-
-export function repoName(r: Repo): string {
-  return r.url.replace(/\/+$/, '').replace(/\.git$/, '').split('/').pop() || r.id
-}
 
 interface Loaded {
   file: PipelineFile
@@ -180,6 +177,7 @@ export function PipelinesPage({ repoId }: { repoId?: string }) {
     )
   }
 
+  const blocked = cur ? blockers(cur) : []
   const hint = sel.length === 0 ? 'Click a step to edit. Shift-click to select several.' : sel.length === 1 ? `Add after: a new step that needs ${sel[0]}. In parallel: the same needs.` : 'Merge runs them in one container. Group keeps them separate.'
 
   return (
@@ -205,6 +203,11 @@ export function PipelinesPage({ repoId }: { repoId?: string }) {
       )}
       {cur && (
         <>
+          {blocked.length > 0 && (
+            <div className="pipe-disabled" role="note" aria-label="Pipeline disabled">
+              <b>This pipeline is disabled.</b> It never runs while a step in it is disabled. Blocked by: {blocked.map((b) => `${REASONS[b.reason].label} (${b.count})`).join(', ')}.
+            </div>
+          )}
           <div className="pipe-toolbar" role="toolbar" aria-label="Pipeline edits">
             <button className="secondary small" onClick={() => mutate((p) => addStep(p, [], null))}>
               + Step
@@ -258,14 +261,14 @@ export function PipelinesPage({ repoId }: { repoId?: string }) {
                           ))}
                         </svg>
                         {b.cards.map((c) => (
-                          <button key={c.id} className={`card${c.sel ? ' sel' : ''}`} style={{ left: c.x, top: c.y, width: b.cardW, height: CH }} aria-pressed={c.sel} aria-label={c.id} title={`${c.id} · ${c.image} · ${c.last}`} onClick={(e) => pick(c.id, e)}>
+                          <button key={c.id} className={`card${c.sel ? ' sel' : ''}${c.disabled ? ' off' : ''}`} style={{ left: c.x, top: c.y, width: b.cardW, height: CH }} aria-pressed={c.sel} aria-label={c.id} title={`${c.id} · ${c.image} · ${c.last}`} onClick={(e) => pick(c.id, e)}>
                             <span className="l1">
                               <span className="name mono">{c.id}</span>
                               <span className="image mono">{c.image}</span>
                               <span className={`last mono${c.hasLast ? '' : ' none'}`}>{c.last}</span>
                             </span>
                             <span className="l2">
-                              <span className="cmd mono">{c.cmd}</span>
+                              {c.disabled ? <span className="cmd why mono">disabled · {c.disabled}</span> : <span className="cmd mono">{c.cmd}</span>}
                               <span className="chips">
                                 {c.chips.map((ch, k) => (
                                   <span key={k} className="chip-sm mono" style={{ color: ch.fg, borderColor: ch.bc, background: ch.bg }} title={ch.title}>
@@ -482,6 +485,16 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName, p
         Name
         <input className="mono" aria-label="Name" value={nameDraft ?? id} onChange={(e) => setNameDraft(e.target.value)} onBlur={commitName} onKeyDown={(e) => e.key === 'Enter' && commitName()} />
       </label>
+      {s.disabled && s.disabled.reason !== 'user' ? (
+        <div className="blocked">
+          <b>Plumbix cannot run this step yet</b>
+          <span>{REASONS[s.disabled.reason].text}</span>
+          {s.disabled.note && <span className="mono">{s.disabled.note}</span>}
+          <span className="dim">The pipeline stays disabled while this step is in it.</span>
+        </div>
+      ) : (
+        <Switch on={!!s.disabled} label="Disabled" sub={s.disabled ? (runnable(s) ? 'Disabled by a person: it does not run, and neither does the pipeline. Switch off to run it again.' : 'Disabled by a person, and it has no image or commands yet: add them below to run it again.') : 'Turn on to keep this step from running. The whole pipeline is disabled while it is.'} toggle={() => mutate((p) => toggleDisabled(p, id))} />
+      )}
       {s.external && <p className="fixed">External validator: no image and no commands. A reviewer outside the pipeline, plumbix review --watch with Claude Code, answers it with the profile below.</p>}
       {!s.external && (
       <>

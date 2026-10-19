@@ -64,7 +64,7 @@ describe('verdictColumn', () => {
 describe('repository names (WU-043)', () => {
   it('decodes URL encoding in the name and keeps a name that is not valid encoding', () => {
     const repo = (url: string) => ({ id: 'r_1', host: 'azuredevops' as const, url, protected_branches: ['main'], merge_strategy: 'squash' as const, created_at: '' })
-    expect(repoName(repo('https://dev.azure.com/acme/Easy%20Claim/_git/Easy%20Claim'))).toBe('Easy Claim')
+    expect(repoName(repo('https://dev.azure.com/acme/Ledger%20Service/_git/Ledger%20Service'))).toBe('Ledger Service')
     expect(repoName(repo('https://github.com/acme/notes.git'))).toBe('notes')
     expect(repoName(repo('https://dev.azure.com/acme/p/_git/odd%zz'))).toBe('odd%zz')
   })

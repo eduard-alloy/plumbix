@@ -31,6 +31,13 @@
 .card { position: absolute; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 5px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); text-align: left; font: inherit; }
 .card:hover { border-color: var(--text-3); }
 .card.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+.card.off { border-style: dashed; background: var(--surface); }
+.card.off .name, .card.off .image, .card.off .last { opacity: 0.55; }
+.card .cmd.why { color: var(--s-amber); }
+.pipe-disabled { margin: 8px 20px 0; padding: 8px 12px; border: 1px solid var(--s-amber); background: var(--s-amber-bg); border-radius: var(--r-lg); font-size: 12px; color: var(--text-2); }
+.pipe-disabled b { color: var(--text); }
+.inspector .blocked { display: grid; gap: 4px; padding: 8px 10px; border: 1px dashed var(--s-amber); border-radius: 6px; font-size: 12px; }
+.inspector .blocked .mono { font-size: 11px; color: var(--text-2); overflow-wrap: anywhere; }
 .card .l1, .card .l2 { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .card .name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 13px var(--mono); }
 .card .image { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-3); }

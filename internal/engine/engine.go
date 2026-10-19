@@ -345,6 +345,11 @@ func (e *Engine) readPipeline(ctx context.Context, m *gitops.Mirror, commit, bra
 	if err != nil {
 		return nil, fmt.Errorf("%s at %s: %w", PipelineFile, short(commit), err)
 	}
+	// A disabled step disables its pipeline (WU-044): nothing runs until
+	// the steps blocking it are supported or enabled.
+	if p.Disabled() {
+		return nil, fmt.Errorf("%s at %s is disabled: steps disabled by reason %s", PipelineFile, short(commit), p.BlockerSummary())
+	}
 	return p, nil
 }
 

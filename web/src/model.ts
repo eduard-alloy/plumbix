@@ -377,12 +377,19 @@ export interface PipelineStep {
   allow_failure: boolean
   paths: string[]
   stage?: string
+  /** Why the step does not run; absent when it runs (WU-044). */
+  disabled?: { reason: DisabledReason; note?: string }
 }
+
+/** DisabledReason is a published code for a disabled step (pipeline.schema.json). */
+export type DisabledReason = 'user' | 'docker' | 'services' | 'host' | 'task' | 'template' | 'condition' | 'checkout' | 'deployment' | 'secrets'
 
 export interface PipelineModel {
   version: number
   steps: PipelineStep[]
   stages: { name: string; steps: string[] }[]
+  /** True when any step is disabled; the pipeline then never runs (WU-044). */
+  disabled: boolean
 }
 
 export interface PipelineProblem {

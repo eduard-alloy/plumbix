@@ -71,7 +71,7 @@ The fix loop runs across the contract. A "fix" verdict goes back to the client, 
 | F-011 | Kai as a client | Later |
 | F-012 | Runners on several machines | Later |
 | F-013 | Additional git hosts | Later |
-| F-014 | Azure Pipelines importer | Later |
+| F-014 | Pipeline import, Azure Pipelines first: every source pipeline and step brought in, unsupported steps disabled with a reason (A36, A37) | I1 |
 
 ## Roadmap: Milestone 1
 
@@ -123,9 +123,20 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-042 | Publish a local folder with no remote: create the repository on GitHub or Azure DevOps, push every branch, register it | F-001, F-004 | ✅ |
 | WU-043 | Import polish: decoded repository names, a warning when the host has no token, a plain error when git has no credentials | F-001, F-004 | ✅ |
 
+## Roadmap: Pipeline import (Kai workstream TCVR9R)
+
+| WU | Title | Features | Status |
+|----|-------|----------|--------|
+| WU-044 | Disabled steps: a reason per step, a pipeline with one is disabled and never runs, the editor dims and explains them | F-002, F-014 | ✅ |
+| WU-045 | One file per pipeline under `.plumbix/pipelines/`, each with its triggers | F-002, F-014 | ⚪ |
+| WU-046 | Import source interface and the Azure importer core, with a preview | F-014 | ⚪ |
+| WU-047 | Azure importer: templates, variables, simple conditions | F-014 | ⚪ |
+| WU-048 | Import from the web, CLI and API; submit as a change; re-check | F-014, F-004 | ⚪ |
+| WU-049 | User docs: importing pipelines, the reason codes, what each release supports | F-014 | ⚪ |
+
 ## Milestone 2 candidates
 
-- Move one of the user's real Azure DevOps projects onto Plumbix pipelines.
+- Move one of the user's real Azure DevOps projects onto Plumbix pipelines: now the Pipeline import workstream above.
 - Kai as the first external client.
 - Authentication, then service hooks.
 
