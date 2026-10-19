@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as fx from '../test/fixtures'
 import type { PipelineFile } from '../model'
-import { addStep, bands, diffSummary, find, fromApi, groupSteps, levels, mergeSteps, needOptions, removeSteps, renameStep, saveDefaults, setField, toYaml, toggleValidator, yamlDiff, yamlStr, type PModel } from './pipeline'
+import { addStep, bands, diffSummary, find, fromApi, groupSteps, levels, mergeSteps, needOptions, removeSteps, renameStep, saveDefaults, setField, toggleExternal, toYaml, toggleValidator, yamlDiff, yamlStr, type PModel } from './pipeline'
 
 const sampleFile = fx.pipelineFile
 
@@ -262,5 +262,33 @@ describe('external validators in the editor (WU-023 round trip)', () => {
     expect(block.some((l) => l.startsWith('    run:'))).toBe(false)
     expect(find(m, 'test')!.external).toBe(false)
     expect(lines).toContain('    image: node:24')
+  })
+})
+
+describe('making a validator external in the editor (WU-037)', () => {
+  it('turns a validator external and back: no container fields while external, an image again after, the reviewer cleared', () => {
+    let m = fromApi(fx.pipelineFile)!
+    m = setField(m, 'validate', 'reviewer', 'claude-api')
+    m = setField(m, 'validate', 'effort', 'low')
+    m = setField(m, 'validate', 'retries', 2)
+    m = setField(m, 'validate', 'run', ['echo x'])
+    m = setField(m, 'validate', 'env', [{ k: 'A', v: '1', secret: false }, { k: 'TOKEN', v: '', secret: true }])
+    const ext = toggleExternal(m, 'validate')
+    const v = find(ext, 'validate')!
+    expect(v).toMatchObject({ validator: true, external: true, reviewer: '', effort: '', retries: 0, run: [], env: [] })
+    const lines = toYaml(ext)
+    const at = lines.indexOf('  - name: validate')
+    const block = lines.slice(at + 1)
+    expect(block.slice(0, 3)).toEqual(['    validator: true', '    external: true', '    needs: [build, test, contract, deploy-check]'])
+    expect(block.some((l) => /^ {4}(image|run|env|secrets|retries|effort|reviewer):/.test(l))).toBe(false)
+    expect(diffSummary(m, ext).find((l) => l.startsWith('validate:'))).toMatch(/^validate: .*\bexternal\b.*default reviewer/)
+    // Back in the pipeline: the old image returns; a step that never had one gets the AI validator.
+    const back = toggleExternal(ext, 'validate')
+    expect(find(back, 'validate')).toMatchObject({ external: false, image: 'plumbix-reference-validator:dev' })
+    expect(diffSummary(ext, back)).toContain('validate: runs in the pipeline')
+    const fromFile = fromApi(fx.pipelineFiles[fx.repos[1].id])!
+    expect(find(toggleExternal(fromFile, 'ai-review'), 'ai-review')).toMatchObject({ external: false, image: 'plumbix-ai-validator:dev' })
+    // A plain step is never external.
+    expect(toggleExternal(m, 'build')).toBe(m)
   })
 })

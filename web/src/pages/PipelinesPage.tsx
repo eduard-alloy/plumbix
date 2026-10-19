@@ -7,7 +7,7 @@ import type { Change, PipelineFile, Repo, ReviewerProfile } from '../model'
 import { useRoute } from '../router'
 import { useStore } from '../store'
 import {
-  addStep, bands, CH, CW, dependents, diffSummary, find, fromApi, groupSteps, mergeSteps, needOptions, plain, removeSteps, renameStep,
+  addStep, bands, CH, CW, toggleExternal, dependents, diffSummary, find, fromApi, groupSteps, mergeSteps, needOptions, plain, removeSteps, renameStep,
   renderYaml, saveDefaults, setField, toggleValidator, yamlDiff, fmtSeconds, type Band, type PModel, type PStep,
 } from '../vm/pipeline'
 import './pipeline.css'
@@ -450,6 +450,8 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName, p
     setNameDraft(null)
   }
   const downstream = Array.from(dependents(cur, id)).filter((x) => x !== id)
+  // A profile answers one family (A29): the loop's for external steps, the rest for pipeline steps.
+  const fitting = profiles.filter((p) => (p.kind === 'claude-code') === s.external)
   return (
     <aside className="inspector" aria-label={kind} onClick={(e) => e.stopPropagation()}>
       <button className="close" aria-label="Close" onClick={close}>
@@ -561,6 +563,9 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName, p
         <Switch on={s.allowFail} label="Allowed to fail" sub={s.allowFail ? 'A failure is recorded as evidence but does not stop the steps that need this one.' : 'A failure stops the steps that need this one.'} toggle={() => set('allowFail', !s.allowFail)} />
       )}
       <Switch on={s.validator} label="Validator" sub={s.validator ? 'Judges the change from evidence: the image is the validator, no commands. Runs in the final phase.' : 'Turn on to make this step a validator: its image\'s entrypoint judges the change in the final phase, no commands.'} toggle={() => mutate((p) => toggleValidator(p, id))} />
+      {s.validator && (
+        <Switch on={s.external} label="External" sub={s.external ? 'Answered outside the pipeline: plumbix review --watch on a machine with Claude Code reads the change and posts the verdict. No image, commands or secrets.' : 'Turn on to have the review loop answer this step with Claude Code instead of running an image in the pipeline.'} toggle={() => mutate((p) => toggleExternal(p, id))} />
+      )}
       {s.validator && <Switch on={s.advisory} label="Advisory" sub={s.advisory ? 'Its verdict is recorded and shown, but never counted: it cannot approve, reject or call for a person. For comparing a second model.' : 'Its verdict counts like any validator. Turn on to record it without counting it.'} toggle={() => set('advisory', !s.advisory)} />}
       {s.validator && (
         <div className="group">
@@ -569,15 +574,20 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName, p
             Profile
             <select aria-label="Reviewer profile" value={s.reviewer} onChange={(e) => set('reviewer', e.target.value)}>
               <option value="">Default for this kind of step</option>
-              {profiles.map((p) => (
+              {fitting.map((p) => (
                 <option key={p.name} value={p.name}>
                   {p.name} · {p.kind === 'claude-code' ? 'Claude Code' : p.kind === 'claude-code-image' ? 'Claude Code in the pipeline' : p.kind === 'anthropic' ? 'Anthropic API' : 'OpenAI-compatible'}
                   {p.model ? ` · ${p.model}` : ''}
                   {p.effort ? ` · effort ${p.effort}` : ''}
                 </option>
               ))}
+              {s.reviewer && !fitting.some((p) => p.name === s.reviewer) && (
+                <option value={s.reviewer}>
+                  {s.reviewer} · {profiles.some((p) => p.name === s.reviewer) ? (s.external ? 'runs in the pipeline, not for an external step' : 'the review loop\'s, not for a pipeline step') : 'not defined in Settings'}
+                </option>
+              )}
             </select>
-            <span className="dim">Which model judges, from Settings. External steps take Claude Code profiles, pipeline steps API profiles.</span>
+            <span className="dim">Which model judges, from Settings. {s.external ? 'An external step takes a Claude Code profile of the review loop.' : 'A pipeline step takes an API profile or Claude Code in the pipeline.'}</span>
           </label>
           {!s.external && (
           <label>

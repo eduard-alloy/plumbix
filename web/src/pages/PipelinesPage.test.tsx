@@ -105,12 +105,47 @@ describe('Pipelines page', () => {
     expect(yaml).not.toMatch(/image: ['"]{2}/)
   })
 
+  it('makes a validator external with the switch: no image or commands, the loop\'s profiles only, written like ai-review (WU-037)', async () => {
+    await open()
+    fireEvent.click(card('validate'))
+    let panel = await screen.findByRole('complementary')
+    expect(within(panel).getByLabelText('Image')).toBeTruthy()
+    fireEvent.click(within(panel).getByRole('switch', { name: 'External' }))
+    panel = screen.getByRole('complementary')
+    expect(panel.textContent).toContain('External validator: no image and no commands')
+    expect(within(panel).queryByLabelText('Image')).toBeNull()
+    expect(within(panel).queryByLabelText('Reasoning effort')).toBeNull()
+    const profile = within(panel).getByLabelText('Reviewer profile') as HTMLSelectElement
+    await waitFor(() => expect(Array.from(profile.options).map((o) => o.value)).toEqual(['', 'claude-code']))
+    expect(screen.getByText(/^validate: .*external/)).toBeTruthy()
+    expect(card('validate').textContent).toContain('external')
+    fireEvent.click(screen.getByRole('button', { name: 'YAML' }))
+    const text = Array.from(screen.getByRole('region', { name: 'Pipeline YAML' }).querySelectorAll('.yl')).map((l) => l.textContent!.replace(/^\d+\+?/, ''))
+    const at = text.indexOf('  - name: validate')
+    expect(text.slice(at + 1, at + 4)).toEqual(['    validator: true', '    external: true', '    needs: [build, test, contract, deploy-check]'])
+    // Off again: back in the pipeline with its image.
+    fireEvent.click(screen.getByRole('button', { name: 'Visual' }))
+    fireEvent.click(within(screen.getByRole('complementary')).getByRole('switch', { name: 'External' }))
+    expect((within(screen.getByRole('complementary')).getByLabelText('Image') as HTMLInputElement).value).toBe('plumbix-reference-validator:dev')
+  })
+
+  it('keeps a reviewer the step names even when no profile of that kind exists, marked (WU-037)', async () => {
+    window.history.replaceState(null, '', '/pipelines/r_ledgerapi001')
+    render(<App />)
+    await screen.findByRole('tab', { name: 'ledger-api' })
+    fireEvent.click(await screen.findByRole('button', { name: /^ai-grok/ }))
+    const profile = within(await screen.findByRole('complementary')).getByLabelText('Reviewer profile') as HTMLSelectElement
+    await waitFor(() => expect(profile.value).toBe('grok-4'))
+    expect(profile.selectedOptions[0].textContent).toContain('not defined')
+  })
+
   it('lets a validator step pick its reviewer profile and reasoning effort, written to the file (WU-034)', async () => {
     await open()
     fireEvent.click(card('validate'))
     const panel = await screen.findByRole('complementary')
     const profile = within(panel).getByLabelText('Reviewer profile') as HTMLSelectElement
-    await waitFor(() => expect(Array.from(profile.options).map((o) => o.value)).toEqual(['', 'claude-api', 'claude-code']))
+    // A container validator is offered the profiles that run in the pipeline, not the loop's (WU-037).
+    await waitFor(() => expect(Array.from(profile.options).map((o) => o.value)).toEqual(['', 'claude-api']))
     expect(profile.options[1].textContent).toContain('Anthropic API')
     fireEvent.change(profile, { target: { value: 'claude-api' } })
     fireEvent.change(within(panel).getByLabelText('Reasoning effort'), { target: { value: 'low' } })

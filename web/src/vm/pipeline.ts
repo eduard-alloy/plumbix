@@ -227,6 +227,29 @@ export function toggleValidator(p: PModel, id: string): PModel {
   return m
 }
 
+/** The image a validator gets back when it leaves the review loop and had none. */
+export const AI_VALIDATOR_IMAGE = 'plumbix-ai-validator:dev'
+
+/** toggleExternal moves a validator between the pipeline and the review loop (WU-037). External: no commands, env, secrets, retries or effort (the writer leaves out the image). Back: an image again. The reviewer is cleared both ways, since a profile answers one family only (A29). A plain step is unchanged. */
+export function toggleExternal(p: PModel, id: string): PModel {
+  const s0 = find(p, id)
+  if (!s0 || !s0.validator) return p
+  const m = clone(p)
+  const s = find(m, id)!
+  s.reviewer = ''
+  if (!s.external) {
+    s.external = true
+    s.run = []
+    s.env = []
+    s.retries = 0
+    s.effort = ''
+  } else {
+    s.external = false
+    if (!s.image) s.image = AI_VALIDATOR_IMAGE
+  }
+  return m
+}
+
 /** mergeSteps joins two or more steps into one container run: commands in order, union of needs minus internal ones, env and evidence, longest timeout, highest retries. */
 export function mergeSteps(p: PModel, selected: string[]): { model: PModel; id: string } | null {
   const L = levels(p)
@@ -412,6 +435,7 @@ export function diffSummary(a: PModel, b: PModel): string[] {
     if (sa.retries !== sb.retries) ch.push(`retries ${sb.retries}`)
     if (sa.run.join('\n') !== sb.run.join('\n')) ch.push('commands')
     if (sa.allowFail !== sb.allowFail) ch.push(sb.allowFail ? 'allowed to fail' : 'must pass')
+    if (sa.external !== sb.external) ch.push(sb.external ? 'external' : 'runs in the pipeline')
     if (sa.advisory !== sb.advisory) ch.push(sb.advisory ? 'advisory' : 'counts')
     if (sa.reviewer !== sb.reviewer) ch.push(sb.reviewer ? `reviewer ${sb.reviewer}` : 'default reviewer')
     if (sa.effort !== sb.effort) ch.push(sb.effort ? `effort ${sb.effort}` : "profile's effort")
