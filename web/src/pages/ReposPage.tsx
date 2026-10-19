@@ -1,6 +1,6 @@
 // Repositories: read-only in this release; registration happens in the CLI.
 // Each row can open its review guidance, the one thing set here.
-import { Fragment, useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../api'
 import { agoLong, minutesBetween } from '../format'
 import type { Repo } from '../model'
@@ -164,52 +164,45 @@ export function ReposPage() {
       )}
       {state.loaded && state.repos.length > 0 && (
         <div className="repos">
-          <table className="repo-table">
-            <thead>
-              <tr>
-                <th>Repository</th>
-                <th>Host</th>
-                <th>URL</th>
-                <th>Protected branches</th>
-                <th>Merge</th>
-                <th className="right">Changes</th>
-                <th>Token</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {state.repos.map((r) => (
-                <Fragment key={r.id}>
-                  <tr>
-                    <td className="mono name" title={r.id}>
-                      {repoName(r)}
-                    </td>
-                    <td className="dim2">{HOST[r.host]}</td>
-                    <td className="mono dim2 url">{r.url}</td>
-                    <td className="mono">{r.protected_branches.join(', ')}</td>
-                    <td className="mono dim2">{r.merge_strategy}</td>
-                    <td className="mono dim right">{changes.filter((c) => c.repo_id === r.id).length}</td>
-                    <td className="dim2">{r.host === 'git' ? '—' : ownToken[r.id] ? 'Own token' : 'Host token'}</td>
-                    <td className="right">
-                      {r.host !== 'git' && (
-                        <button className="quiet" aria-expanded={open?.id === r.id && open.what === 'token'} onClick={() => setOpen(open?.id === r.id && open.what === 'token' ? null : { id: r.id, what: 'token' })}>
-                          Token
-                        </button>
-                      )}
-                      <button className="quiet" aria-expanded={open?.id === r.id && open.what === 'guidance'} onClick={() => setOpen(open?.id === r.id && open.what === 'guidance' ? null : { id: r.id, what: 'guidance' })}>
-                        Guidance
+          <ul className="repo-cards">
+            {state.repos.map((r) => {
+              const name = repoName(r)
+              const count = changes.filter((c) => c.repo_id === r.id).length
+              const panel = open?.id === r.id ? open.what : null
+              const toggle = (what: 'guidance' | 'token') => setOpen(panel === what ? null : { id: r.id, what })
+              return (
+                <li key={r.id} className="repo-card" aria-label={`Repository ${name}`}>
+                  <div className="repo-line top">
+                    <span className="mono name" title={r.id}>
+                      {name}
+                    </span>
+                    <span className="host-badge">{HOST[r.host]}</span>
+                    <span className="dim2">
+                      {count} {count === 1 ? 'change' : 'changes'}
+                    </span>
+                    <span className="dim2">{r.merge_strategy} merge</span>
+                    <span className="spacer" />
+                    {r.host !== 'git' && (
+                      <button className="quiet" aria-expanded={panel === 'token'} onClick={() => toggle('token')}>
+                        Token
                       </button>
-                    </td>
-                  </tr>
-                  {open?.id === r.id && (
-                    <tr className="editor-row">
-                      <td colSpan={8}>{open.what === 'guidance' ? <GuidanceEditor repo={r} /> : <TokenEditor repo={r} onChanged={(set) => setOwnToken((m) => ({ ...m, [r.id]: set }))} />}</td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
+                    )}
+                    <button className="quiet" aria-expanded={panel === 'guidance'} onClick={() => toggle('guidance')}>
+                      Guidance
+                    </button>
+                  </div>
+                  <div className="repo-line bottom">
+                    <span className="mono url" title={r.url}>
+                      {r.url}
+                    </span>
+                    <span className="mono">Protected: {r.protected_branches.join(', ')}</span>
+                    <span>{r.host === 'git' ? 'No token: plain git uses your SSH keys' : ownToken[r.id] ? 'Own token' : 'Host token'}</span>
+                  </div>
+                  {panel && <div className="repo-panel">{panel === 'guidance' ? <GuidanceEditor repo={r} /> : <TokenEditor repo={r} onChanged={(set) => setOwnToken((m) => ({ ...m, [r.id]: set }))} />}</div>}
+                </li>
+              )
+            })}
+          </ul>
           <p className="footnote">
             Read-only. Register and edit repositories from the terminal with <span className="mono dim2">plumbix repo</span>.
           </p>

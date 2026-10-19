@@ -279,13 +279,16 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 
 /* Repositories */
 .repos { padding: 0 20px; }
-.repo-table { width: 100%; border-collapse: collapse; }
-.repo-table th { height: 28px; text-align: left; font-size: 11px; font-weight: 400; color: var(--text-3); border-bottom: 1px solid var(--border); }
-.repo-table td { height: 38px; border-bottom: 1px solid var(--border); font-size: 13px; }
-.repo-table .name { font-weight: 500; }
-.repo-table .url { max-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
-.repo-table td.mono { font-size: 12px; }
-.repo-table th.right, .repo-table td.right { text-align: right; }
+.repo-cards { list-style: none; margin: 0; padding: 0; }
+.repo-card { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.repo-line { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.repo-line.top { font-size: 13px; }
+.repo-line.top .name { font-weight: 500; font-size: 13px; }
+.repo-line.top .spacer { flex: 1; }
+.repo-line.bottom { font-size: 12px; color: var(--text-2); }
+.repo-line.bottom > * + *::before, .repo-line.top > .dim2 + .dim2::before { content: '·'; margin-right: 12px; color: var(--text-3); }
+.repo-line.bottom .url { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.host-badge { padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; font-size: 11px; line-height: 18px; color: var(--text-2); }
 .footnote { margin: 14px 0 0; font-size: 12px; color: var(--text-3); }
 
 /* Design reference */

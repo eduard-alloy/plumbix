@@ -217,8 +217,7 @@ describe('Settings page', () => {
   it('edits per-repository guidance from the repositories page', async () => {
     window.history.replaceState(null, '', '/repos')
     render(<App />)
-    const rows = await screen.findAllByRole('row')
-    const plumbix = rows.find((r) => r.textContent?.includes('https://github.com/plumbix/plumbix'))!
+    const plumbix = await screen.findByRole('listitem', { name: 'Repository plumbix' })
     fireEvent.click(within(plumbix).getByRole('button', { name: 'Guidance' }))
     const area = await screen.findByLabelText('Guidance for plumbix')
     fireEvent.change(area, { target: { value: 'Go code needs tests.' } })
@@ -231,9 +230,8 @@ describe('Settings page', () => {
     db.repoTokens.r_ledgerapi001 = 'already-set'
     window.history.replaceState(null, '', '/repos')
     render(<App />)
-    const rows = await screen.findAllByRole('row')
-    const plumbix = rows.find((r) => r.textContent?.includes('https://github.com/plumbix/plumbix'))!
-    const ledger = rows.find((r) => r.textContent?.includes('ledger-api'))!
+    const plumbix = await screen.findByRole('listitem', { name: 'Repository plumbix' })
+    const ledger = screen.getByRole('listitem', { name: 'Repository ledger-api' })
     await waitFor(() => expect(ledger.textContent).toContain('Own token'))
     expect(plumbix.textContent).toContain('Host token')
     fireEvent.click(within(plumbix).getByRole('button', { name: 'Token' }))
