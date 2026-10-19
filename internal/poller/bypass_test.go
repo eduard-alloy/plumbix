@@ -132,6 +132,9 @@ func TestPlumbixMergesAreNotBypasses(t *testing.T) {
 	if _, b := h.eng.triggers(); len(b) != 0 {
 		t.Errorf("plumbix merge started a plain run: %v", b)
 	}
+	if p := h.eng.takePushed(); len(p) != 1 || p[0] != "r_1/main a..m1" {
+		t.Errorf("a Plumbix merge must still reach triggered pipelines (deploys run on it): %v", p)
+	}
 
 	// A fast-forward of two commits, recorded as one range, plus a foreign
 	// commit on top: only the foreign one is flagged.

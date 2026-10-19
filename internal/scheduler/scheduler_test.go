@@ -681,3 +681,23 @@ func TestStartedHookSeesEveryStepThatRuns(t *testing.T) {
 		t.Errorf("status = %v, started = %v", s, started)
 	}
 }
+
+// TestWithheldSecretsErrorTheStep (A38): off protected branches a step that
+// names a secret errors with the reason, and the others run.
+func TestWithheldSecretsErrorTheStep(t *testing.T) {
+	p := mustParse(t, "  - {name: a, image: x, run: x, secrets: [TOKEN]}\n  - {name: b, image: x, run: x}\n")
+	fake := newFake(ok)
+	o := opts(2)
+	o.SecretsWithheld = "secrets are only given to runs on protected branches; this run is on feat"
+	res := Execute(context.Background(), p, fake, o)
+	a, b := res.Steps[0], res.Steps[1]
+	if a.Status != Errored || a.Err == nil || !strings.Contains(a.Err.Error(), "TOKEN") || !strings.Contains(a.Err.Error(), "protected branches") {
+		t.Fatalf("a = %+v, want errored naming the secret and the reason", a)
+	}
+	if _, ran := fake.jobs["a"]; ran {
+		t.Error("a step ran without the secret it named")
+	}
+	if b.Status != Succeeded {
+		t.Errorf("b = %+v, want it to run", b)
+	}
+}

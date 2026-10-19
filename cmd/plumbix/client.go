@@ -246,6 +246,29 @@ func runChange(args []string, stdout, stderr io.Writer) int {
 	return usageError(stderr, "usage: plumbix change list [--repo <id>] [--state <s>] | change show|close|validate|refresh|merge|runs <id> | change approve <id> --reason <why>")
 }
 
+// runPipeline handles "plumbix pipeline list|run" (WU-045): the triggered
+// pipelines under .plumbix/pipelines/.
+func runPipeline(args []string, stdout, stderr io.Writer) int {
+	c := newClientCmd("pipeline", stdout, stderr)
+	branch := c.fs.String("branch", "", "branch head to read or run at (default: the first protected branch)")
+	pos, ok := c.parse(args)
+	if !ok {
+		return 2
+	}
+	switch {
+	case len(pos) == 2 && pos[0] == "list":
+		path := "/api/v1/repos/" + url.PathEscape(pos[1]) + "/pipelines"
+		if *branch != "" {
+			path += "?branch=" + url.QueryEscape(*branch)
+		}
+		return c.call(http.MethodGet, path, nil)
+	case len(pos) == 3 && pos[0] == "run":
+		body, _ := json.Marshal(map[string]string{"branch": *branch})
+		return c.call(http.MethodPost, "/api/v1/repos/"+url.PathEscape(pos[1])+"/pipelines/"+url.PathEscape(pos[2])+"/runs", body)
+	}
+	return usageError(stderr, "usage: plumbix pipeline list <repo-id> [--branch <b>] | plumbix pipeline run <repo-id> <name> [--branch <b>]")
+}
+
 // runAlert handles "plumbix alert list|resolve".
 func runAlert(args []string, stdout, stderr io.Writer) int {
 	c := newClientCmd("alert", stdout, stderr)

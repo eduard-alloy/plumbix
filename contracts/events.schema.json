@@ -449,6 +449,10 @@
         "iteration": {
           "type": "integer",
           "minimum": 1
+        },
+        "pipeline": {
+          "description": "The triggered pipeline under .plumbix/pipelines/ the run runs (WU-045); absent for the change pipeline.",
+          "type": "string"
         }
       }
     },

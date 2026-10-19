@@ -115,6 +115,8 @@ The base address comes from config `server.listen`, default `127.0.0.1:6400`. Ev
 |--------|------|---------|
 | POST | `/api/v1/repos` | Register a repo (host, remote URL, protected branches, merge strategy). |
 | GET | `/api/v1/repos` | List repos as `{"repos": [...]}`. |
+| GET | `/api/v1/repos/{id}/pipelines` | The triggered pipelines under `.plumbix/pipelines/` at a branch head: name, file, `on`, disabled, blockers, problems (WU-045). |
+| POST | `/api/v1/repos/{id}/pipelines/{name}/runs` | Run a triggered pipeline by hand at a branch head; 409 `not_manual`, `pipeline_disabled` or `pipeline_invalid` (WU-045). |
 | POST | `/api/v1/changes` | Submit a change: repo, source and target branch, title, intent, acceptance criteria, constraints, submitted-by. |
 | GET | `/api/v1/changes` | List changes as `{"changes": [...]}`, filtered by `repo_id` and `state`. |
 | GET | `/api/v1/changes/{id}` | One change with its iterations, latest outcome and findings. |
@@ -221,6 +223,8 @@ Unknown fields are errors. There are no triggers, matrices or reusable templates
 
 **Disabled steps** (WU-044, A36, A37): pipeline import keeps every step of the source pipeline and marks the ones Plumbix cannot run yet as disabled, with a reason. A pipeline holding any disabled step is disabled: the engine refuses it when it reads the file (`readPipeline`), so a change's run errors and the change waits for a person, and a branch run errors the same way; nothing reaches the runner. `POST /pipelines/check` reports `disabled` and `blockers` (disabled steps per reason). The editor dims disabled cards, names the reason on the card, lists the blockers above the canvas and lets a person disable a step with reason `user` and switch it back on; it never enables a step blocked for any other reason.
 
+**Triggered pipelines** (WU-045, A36): every `.plumbix/pipelines/<name>.yaml` is a pipeline of its own, started by its `on` triggers rather than by changes. It is format v1 plus a required `on` (`push: {branches, paths}`, `manual: true`, or both; globs as in `when.paths`) and an optional pipeline-level `disabled`, whose reasons are the step reasons plus `trigger` (started in a way Plumbix cannot run yet: tags, schedules, manual parameters). It holds no validators, and `.plumbix/pipeline.yaml` refuses `on`. Parsed with `pipeline.ParseTriggered`. A run records its pipeline's name (`runs.pipeline`, `run.started`); the change pipeline's runs leave it empty.
+
 **Policy source**: for a change, the list of required validators comes from the **target branch's** version of the pipeline file, not the change's version. An agent cannot remove or swap a validator in the same change it wants approved. A change that edits `.plumbix/` always ends in `needs_human`.
 
 **Editing the file** (WU-020, A22): the web app's Pipelines screen edits a repository's file visually and saves it as a change. The server reads the file at the branch head (`GET /repos/{id}/pipeline`), the browser applies the edits to that file's text (WU-036, A34: the `yaml` package keeps comments, key order and scalar and list style; an unchanged model saves byte-identical, and the YAML view shows the text that will be committed), and `POST /repos/{id}/pipeline/changes` makes Plumbix commit that one file on the target head, push a new branch without force (an existing branch is refused) and submit the change, which validates with the target's pipeline and waits for a person like every `.plumbix/` change. The editor writes validators with `needs` of every non-validator step, so "validators run last" is literal in the file. The canvas is measured and every stage is laid out to its width (WU-038): when a stage's natural grid is wider, all stages take the columns that fit at 240 px or more per card, cards share the width up to 360 px, and a step past the last column starts a new row with its line dropping from the card it needs; the open inspector narrows the width instead of pushing cards aside, so only vertical scrolling remains. A validator's External switch (WU-037) makes it an external step: no image, commands, env, secrets, retries or effort, and its reviewer list offers only the review loop's `claude-code` profiles, while a container validator's list offers the other kinds; a reviewer the file names outside that list stays selected and marked, never changed silently.
@@ -309,6 +313,8 @@ Branch heads come from `git ls-remote`, fetches and pushes from `git` with crede
 ### 5.3 Push without a change
 
 The poller sees a new head on any branch of a registered repo. If an open change uses that branch, this is the fix loop. Otherwise Plumbix starts a standalone run and shows the results without a verdict.
+
+Independently, every head move, Plumbix's own merges included, goes to `Engine.RunPushed` (WU-045), all moves of one poll together and with one fetch: for each it reads the triggered pipelines at the new head and starts each enabled one whose `push.branches` match the branch and, when `paths` is set, whose paths match a file changed since the previous head (a new branch always matches). Each run is pinned to the pushed commit; a newer run of the same pipeline on the same branch supersedes it. Disabled and invalid pipelines start nothing and are logged.
 
 ### 5.4 Merge
 
@@ -411,6 +417,7 @@ These are implementation calls made in this architecture step, with the reasons 
 4. **AI validator cost.** Each validation run calls a paid model. Large diffs cost more. The validator reports token usage in its evidence so costs stay visible.
 5. **Polling delay.** Runs start up to `poller.interval` after a push. Push notifications come with authentication (F-009).
 6. **Docker access in the development sandbox.** Integration tests need the Docker socket, which the current sandbox blocks.
+7. **Triggered pipelines come from the pushed commit (WU-045, A38).** A push to any branch, an agent's change branch included, runs pipelines as that commit writes them. Since A38, only runs on a protected branch get secrets: a step that names one in any other run (triggered, plain branch or change run) errors with the reason. Still open until WU-051: a direct push to a protected branch that edits a pipeline gets secrets (the guard will tie secrets to approved pipeline fingerprints), and validator steps added by a change's own pipeline still receive their reviewer profile's key.
 
 ## 10. Repository layout
 

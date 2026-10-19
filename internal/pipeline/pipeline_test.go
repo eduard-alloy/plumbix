@@ -91,7 +91,7 @@ func TestParseErrors(t *testing.T) {
 		{"version as string", "version: \"1\"\nsteps:\n  - {name: a, image: x, run: x}\n", "version", 1, "integer"},
 		{"missing steps", "version: 1\n", "steps", 1, "required"},
 		{"empty steps", "version: 1\nsteps: []\n", "steps", 2, "at least one"},
-		{"unknown top field", "version: 1\non: push\nsteps:\n  - {name: a, image: x, run: x}\n", "on", 2, "unknown field"},
+		{"unknown top field", "version: 1\ntriggers: push\nsteps:\n  - {name: a, image: x, run: x}\n", "triggers", 2, "unknown field"},
 		{"unknown step field", wrap("  - name: a\n    image: x\n    run: x\n    matrix: [1]\n"), "steps[0].matrix", 6, "unknown field"},
 		{"step not mapping", wrap("  - a\n"), "steps[0]", 3, "mapping"},
 		{"missing name", wrap("  - {image: x, run: x}\n"), "steps[0].name", 3, "required"},

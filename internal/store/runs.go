@@ -22,12 +22,12 @@ func (db *DB) CreateRun(ctx context.Context, r run.Run) error {
 	}
 	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO runs (id, repo_id, change_id, branch, iteration, head, base, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			r.ID, r.RepoID, changeID, r.Branch, r.Iteration, r.Head, r.Base, string(r.Status), formatTime(r.StartedAt)); err != nil {
+			`INSERT INTO runs (id, repo_id, change_id, branch, pipeline, iteration, head, base, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			r.ID, r.RepoID, changeID, r.Branch, r.Pipeline, r.Iteration, r.Head, r.Base, string(r.Status), formatTime(r.StartedAt)); err != nil {
 			return mapErr(err)
 		}
 		_, err := emit(events.Event{Type: events.RunStarted, Time: r.StartedAt, RepoID: r.RepoID, ChangeID: r.ChangeID, RunID: r.ID,
-			Payload: events.RunStartedPayload{Branch: r.Branch, Iteration: r.Iteration}})
+			Payload: events.RunStartedPayload{Branch: r.Branch, Iteration: r.Iteration, Pipeline: r.Pipeline}})
 		return err
 	})
 }
@@ -97,7 +97,7 @@ func (db *DB) FinishRun(ctx context.Context, id string, f run.Finish) error {
 	})
 }
 
-const runColumns = `id, repo_id, COALESCE(change_id, ''), branch, iteration, head, base, status, outcome, result, error, started_at, finished_at`
+const runColumns = `id, repo_id, COALESCE(change_id, ''), branch, pipeline, iteration, head, base, status, outcome, result, error, started_at, finished_at`
 
 // GetRun returns one run with its steps.
 func (db *DB) GetRun(ctx context.Context, id string) (run.Run, error) {
@@ -185,7 +185,7 @@ func (db *DB) withSteps(ctx context.Context, r run.Run) (run.Run, error) {
 func scanRun(s scanner) (run.Run, error) {
 	var r run.Run
 	var status, outcome, result, started, finished string
-	if err := s.Scan(&r.ID, &r.RepoID, &r.ChangeID, &r.Branch, &r.Iteration, &r.Head, &r.Base, &status, &outcome, &result, &r.Error, &started, &finished); err != nil {
+	if err := s.Scan(&r.ID, &r.RepoID, &r.ChangeID, &r.Branch, &r.Pipeline, &r.Iteration, &r.Head, &r.Base, &status, &outcome, &result, &r.Error, &started, &finished); err != nil {
 		return run.Run{}, mapErr(err)
 	}
 	r.Status, r.Outcome = run.Status(status), change.State(outcome)

@@ -1,0 +1,10 @@
+version: 1
+on:
+  manual: true
+disabled:
+  reason: trigger
+  note: "tags: v*"
+steps:
+  - name: notes
+    image: alpine:3
+    run: echo release

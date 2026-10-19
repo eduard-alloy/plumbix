@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"sync"
 	"testing"
@@ -27,6 +28,8 @@ type fakeEngine struct {
 	history   map[string]gitops.Commit
 	validated []string
 	branches  []string
+	pushed    []string // "repo/branch before..after" per move
+	calls     int      // RunPushed calls
 }
 
 func (f *fakeEngine) ListHeads(_ context.Context, repo change.Repo) (map[string]string, error) {
@@ -54,6 +57,25 @@ func (f *fakeEngine) RunBranch(_ context.Context, repoID, branch string) (run.Ru
 	defer f.mu.Unlock()
 	f.branches = append(f.branches, repoID+"/"+branch)
 	return run.Run{}, nil
+}
+
+func (f *fakeEngine) RunPushed(_ context.Context, repoID string, moves []run.Move) ([]run.Run, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	for _, m := range moves {
+		f.pushed = append(f.pushed, repoID+"/"+m.Branch+" "+m.Before+".."+m.After)
+	}
+	return nil, nil
+}
+
+func (f *fakeEngine) takePushed() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p := f.pushed
+	f.pushed = nil
+	sort.Strings(p)
+	return p
 }
 
 func (f *fakeEngine) push(repo, branch, sha string) {
@@ -292,5 +314,33 @@ func TestHumanStatesDoNotRevalidateOnPush(t *testing.T) {
 	// The poller still records the new heads, so the change can show them.
 	if c, _ := h.db.GetChange(ctx, ids[change.NeedsHuman]); c.SourceHead != "moved" {
 		t.Errorf("needs_human change head = %q, want the pushed head", c.SourceHead)
+	}
+}
+
+// TestEveryMovedHeadReachesTriggeredPipelines (WU-045): change branches,
+// plain pushes and new branches alike; deleted and unmoved ones do not.
+func TestEveryMovedHeadReachesTriggeredPipelines(t *testing.T) {
+	h := newHarness(t, "r_1")
+	h.eng.push("r_1", "main", "m1")
+	h.eng.push("r_1", "feat", "f1")
+	h.eng.push("r_1", "gone", "g1")
+	h.change(t, "r_1", "feat")
+	_ = h.p.PollOnce(ctx)
+	if p := h.eng.takePushed(); len(p) != 0 {
+		t.Fatalf("first poll reached pipelines: %v", p)
+	}
+	h.eng.push("r_1", "feat", "f2")
+	h.eng.push("r_1", "main", "m2")
+	h.eng.push("r_1", "new-ci", "n1")
+	h.eng.push("r_1", "gone", "")
+	if err := h.p.PollOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"r_1/feat f1..f2", "r_1/main m1..m2", "r_1/new-ci ..n1"}
+	if p := h.eng.takePushed(); !reflect.DeepEqual(p, want) {
+		t.Errorf("pushed = %v, want %v", p, want)
+	}
+	if h.eng.calls != 1 {
+		t.Errorf("RunPushed called %d times for one poll, want once per repository", h.eng.calls)
 	}
 }

@@ -277,6 +277,9 @@ func TestCLIUsageErrors(t *testing.T) {
 		{"events", "--max", "-1"},
 		{"login", "extra"},
 		{"logout", "extra"},
+		{"pipeline"},
+		{"pipeline", "run", "r_x"},
+		{"pipeline", "list"},
 	} {
 		if code, _, _ := c.run("", args...); code != 2 {
 			t.Errorf("plumbix %v: exit %d, want 2", args, code)
@@ -331,4 +334,25 @@ func TestLocalGitRepo(t *testing.T) {
 		}
 	}
 	t.Fatal("a push to the local repo started no run")
+}
+
+// TestPipelineCommands (WU-045): list a repository's triggered pipelines
+// and start one by hand.
+func TestPipelineCommands(t *testing.T) {
+	repo := redirectGitHub(t, "https://github.com/eduard-alloy/plumbix")
+	repo.Commit("main", map[string]string{".plumbix/pipelines/hand.yaml": "version: 1\non: {manual: true}\nsteps:\n  - {name: a, image: x, run: x}\n"}, "manual pipeline")
+	addr, dataDir := startServer(t)
+	c := cli{t: t, server: addr, dataDir: dataDir}
+	repoID := c.mustRun("", "repo", "add", "--host", "github", "--url", "https://github.com/eduard-alloy/plumbix")["id"].(string)
+	list := c.mustRun("", "pipeline", "list", repoID)["pipelines"].([]any)
+	if len(list) != 1 || list[0].(map[string]any)["name"] != "hand" {
+		t.Fatalf("pipelines = %v", list)
+	}
+	r := c.mustRun("", "pipeline", "run", repoID, "hand", "--branch", "main")
+	if id, _ := r["id"].(string); !strings.HasPrefix(id, "run_") || r["pipeline"] != "hand" || r["branch"] != "main" {
+		t.Errorf("run = %v", r)
+	}
+	if code, _, errOut := c.run("", "pipeline", "run", repoID, "nope"); code != 1 || !strings.Contains(errOut, "not_found") {
+		t.Errorf("unknown pipeline: exit %d, %q", code, errOut)
+	}
 }

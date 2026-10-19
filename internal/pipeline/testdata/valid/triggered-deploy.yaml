@@ -1,0 +1,11 @@
+version: 1
+on:
+  push:
+    branches: [main, "release/*"]
+    paths: ["services/claims/**"]
+  manual: true
+steps:
+  - name: build
+    image: docker:27
+    run: docker build -t claims .
+    disabled: {reason: docker}

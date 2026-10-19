@@ -2,12 +2,14 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/validation"
 )
@@ -143,5 +145,28 @@ func TestStepDetailsRoundTrip(t *testing.T) {
 	got, _ = db.GetRun(ctx, "run_1")
 	if want := []run.Step{plain, flaky, api}; !reflect.DeepEqual(got.Steps, want) {
 		t.Errorf("finished steps:\n got %+v\nwant %+v", got.Steps, want)
+	}
+}
+
+// TestRunRecordsItsPipeline (WU-045): a triggered pipeline's run keeps the
+// pipeline's name, and run.started carries it.
+func TestRunRecordsItsPipeline(t *testing.T) {
+	db := withChange(t)
+	r := run.Run{ID: "run_p", RepoID: "r_1", Branch: "main", Pipeline: "deploy", Status: run.Running, StartedAt: t0}
+	if err := db.CreateRun(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.GetRun(ctx, "run_p")
+	if err != nil || got.Pipeline != "deploy" {
+		t.Fatalf("run = %+v, %v", got, err)
+	}
+	evs, err := db.EventsAfter(ctx, 0, events.Filter{}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := evs[len(evs)-1]
+	var p events.RunStartedPayload
+	if raw, ok := last.Payload.(json.RawMessage); !ok || json.Unmarshal(raw, &p) != nil || p.Pipeline != "deploy" {
+		t.Errorf("run.started payload = %s", last.Payload)
 	}
 }

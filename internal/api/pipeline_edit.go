@@ -26,6 +26,8 @@ type pipelineHandlers struct {
 func registerPipelineRoutes(mux *http.ServeMux, h *pipelineHandlers) {
 	mux.HandleFunc("GET /api/v1/repos/{id}/pipeline", h.get)
 	mux.HandleFunc("POST /api/v1/repos/{id}/pipeline/changes", h.propose)
+	mux.HandleFunc("GET /api/v1/repos/{id}/pipelines", h.listTriggered)
+	mux.HandleFunc("POST /api/v1/repos/{id}/pipelines/{name}/runs", h.runTriggered)
 }
 
 // pipelineFile is what the editor loads.
@@ -187,8 +189,8 @@ func (h *pipelineHandlers) lastRun(ctx context.Context, repoID, branch string) (
 		return nil, err
 	}
 	for _, rr := range runs {
-		if rr.Status != run.Finished {
-			continue
+		if rr.Status != run.Finished || rr.Pipeline != "" {
+			continue // triggered pipelines' runs are not the change pipeline's (WU-045)
 		}
 		out := &lastRun{RunID: rr.ID, Head: rr.Head, Steps: map[string]lastRunStep{}}
 		for _, s := range rr.Steps {

@@ -144,3 +144,20 @@ func TestInheritedGitVariablesAreDropped(t *testing.T) {
 		t.Fatalf("Head = %s, %v; want %s", head, err, want)
 	}
 }
+
+// TestListFiles (WU-045): the files directly in a folder at a commit.
+func TestListFiles(t *testing.T) {
+	r := gittest.New(t)
+	head := r.Commit("main", map[string]string{".plumbix/pipelines/b.yaml": "b\n", ".plumbix/pipelines/a.yaml": "a\n", ".plumbix/pipelines/sub/c.yaml": "c\n", ".plumbix/pipeline.yaml": "p\n"}, "pipelines")
+	m := Open(filepath.Join(t.TempDir(), "mirror.git"), r.Remote)
+	if err := m.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	files, err := m.ListFiles(ctx, head, ".plumbix/pipelines")
+	if err != nil || !reflect.DeepEqual(files, []string{".plumbix/pipelines/a.yaml", ".plumbix/pipelines/b.yaml"}) {
+		t.Errorf("files = %v, %v", files, err)
+	}
+	if files, err := m.ListFiles(ctx, head, "missing"); err != nil || len(files) != 0 {
+		t.Errorf("missing folder = %v, %v", files, err)
+	}
+}

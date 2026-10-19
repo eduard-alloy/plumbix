@@ -36,8 +36,11 @@ type Options struct {
 	Workspace      string
 	CPUs           float64
 	MemoryMB       int
-	Secrets        map[string]string           // secret values by name
-	Log            func(step string) io.Writer // nil discards logs
+	Secrets        map[string]string // secret values by name
+	// SecretsWithheld, when set, says why this run gets no secrets (A38):
+	// a step that names one errors with it instead of running.
+	SecretsWithheld string
+	Log             func(step string) io.Writer // nil discards logs
 	// ChangedFiles are the paths a change touched, used for when.paths.
 	// ChangesKnown says the list is meaningful; a plain branch run has
 	// nothing to compare, so conditional steps run.
@@ -294,6 +297,9 @@ func buildJob(st pipeline.Step, o Options, finished []StepResult) (runner.Job, e
 		env = map[string]string{}
 	}
 	for _, name := range st.Secrets {
+		if o.SecretsWithheld != "" {
+			return runner.Job{}, fmt.Errorf("secret %s withheld: %s", name, o.SecretsWithheld)
+		}
 		v, ok := o.Secrets[name]
 		if !ok {
 			return runner.Job{}, fmt.Errorf("secret %s is not set in the secrets file", name)

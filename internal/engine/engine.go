@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -328,7 +329,7 @@ func (e *Engine) runBranch(ctx context.Context, r run.Run, repo change.Repo) ([]
 	plain := p.WithoutValidators()
 	logs := map[string]*os.File{}
 	defer closeLogs(logs)
-	res := scheduler.Execute(ctx, plain, e.runner, e.schedulerOptions(r, workspace, logs))
+	res := scheduler.Execute(ctx, plain, e.runner, e.schedulerOptions(r, repo, r.Branch, workspace, logs))
 	return toSteps(plain, res), nil, nil
 }
 
@@ -353,11 +354,20 @@ func (e *Engine) readPipeline(ctx context.Context, m *gitops.Mirror, commit, bra
 	return p, nil
 }
 
-// schedulerOptions returns the options shared by every run.
-func (e *Engine) schedulerOptions(r run.Run, workspace string, logs map[string]*os.File) scheduler.Options {
+// schedulerOptions returns the options shared by every run. Only runs on a
+// protected branch get secrets (A38): a pipeline file on any other branch
+// was written by whoever pushed it and nobody has approved it.
+func (e *Engine) schedulerOptions(r run.Run, repo change.Repo, branch, workspace string, logs map[string]*os.File) scheduler.Options {
+	var secrets map[string]string
+	withheld := ""
+	if slices.Contains(repo.ProtectedBranches, branch) {
+		secrets = e.secrets()
+	} else {
+		withheld = fmt.Sprintf("secrets are only given to runs on protected branches; this run is on %s", branch)
+	}
 	return scheduler.Options{
 		MaxParallel: e.cfg.MaxParallel, DefaultTimeout: e.cfg.DefaultTimeout,
-		Workspace: workspace, CPUs: e.cfg.CPUs, MemoryMB: e.cfg.MemoryMB, Secrets: e.secrets(),
+		Workspace: workspace, CPUs: e.cfg.CPUs, MemoryMB: e.cfg.MemoryMB, Secrets: secrets, SecretsWithheld: withheld,
 		Log: func(step string) io.Writer {
 			f, err := e.openLog(r.ID, step)
 			if err != nil {
@@ -497,7 +507,13 @@ func (e *Engine) runPipeline(ctx context.Context, r run.Run, c change.Change) ([
 
 	logs := map[string]*os.File{}
 	defer closeLogs(logs)
-	opts := e.schedulerOptions(r, prep.workspace, logs)
+	repo, err := e.store.GetRepo(ctx, c.RepoID)
+	if err != nil {
+		return nil, nil, err
+	}
+	// The change's source branch carries its own pipeline file: its steps
+	// get no secrets unless that branch is protected (A38).
+	opts := e.schedulerOptions(r, repo, c.SourceBranch, prep.workspace, logs)
 	// A change's run compares base to head, so when.paths can be judged.
 	// Plain branch runs go through runBranch, which never sets this, and a
 	// missing base leaves conditional steps running here too.

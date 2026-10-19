@@ -703,6 +703,84 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /repos/{id}/pipelines:
+    get:
+      operationId: listTriggeredPipelines
+      summary: The triggered pipelines under .plumbix/pipelines/ at a branch head (WU-045).
+      description: >
+        Fetches the repository and reads every .plumbix/pipelines/<name>.yaml at
+        the head of the branch (default: the first protected branch). A file
+        that does not parse is listed with on null and its problems. A pipeline
+        that is disabled, or holds a disabled step, never runs; blockers counts
+        what disables it per reason.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+        - name: branch
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The triggered pipelines, sorted by name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriggeredPipelines"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /repos/{id}/pipelines/{name}/runs:
+    post:
+      operationId: runTriggeredPipeline
+      summary: Run a triggered pipeline by hand at a branch head (WU-045).
+      description: >
+        The pipeline needs on.manual: true and must not be disabled. The run
+        is pinned to the branch head (default: the first protected branch) and
+        recorded with its pipeline name; a newer run of the same pipeline on
+        the same branch supersedes it.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                branch:
+                  type: string
+      responses:
+        "201":
+          description: The run that started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Unknown repository, branch or pipeline.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Codes not_manual (no on.manual), pipeline_disabled (the pipeline or a step is disabled) and pipeline_invalid (the file does not parse; details.problems lists why).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /repos/{id}/pipeline/changes:
     post:
       operationId: proposePipeline
@@ -2014,6 +2092,9 @@ components:
                 type: string
               validator:
                 type: boolean
+              pipeline:
+                description: The triggered pipeline the step is in (WU-045); absent for the change pipeline.
+                type: string
     ImageBuild:
       type: object
       additionalProperties: false
@@ -2392,6 +2473,9 @@ components:
           type: string
         branch:
           type: string
+        pipeline:
+          description: The triggered pipeline under .plumbix/pipelines/ this run ran (WU-045); absent for the change pipeline.
+          type: string
         iteration:
           type: integer
           minimum: 1
@@ -2464,6 +2548,61 @@ components:
           additionalProperties:
             type: integer
             minimum: 1
+    TriggeredPipelines:
+      type: object
+      additionalProperties: false
+      required: [branch, sha, pipelines]
+      properties:
+        branch:
+          type: string
+        sha:
+          type: string
+        pipelines:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, file, on, disabled, blockers, problems]
+            properties:
+              name:
+                type: string
+              file:
+                type: string
+              "on":
+                description: What starts the pipeline; null when the file does not parse.
+                oneOf:
+                  - type: "null"
+                  - type: object
+                    additionalProperties: false
+                    required: [manual]
+                    properties:
+                      push:
+                        type: object
+                        additionalProperties: false
+                        required: [branches, paths]
+                        properties:
+                          branches:
+                            type: array
+                            items:
+                              type: string
+                          paths:
+                            type: array
+                            items:
+                              type: string
+                      manual:
+                        type: boolean
+              disabled:
+                type: boolean
+              blockers:
+                description: What disables the pipeline, counted per reason; empty when it runs.
+                type: object
+                additionalProperties:
+                  type: integer
+                  minimum: 1
+              problems:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PipelineProblem"
     PipelineFile:
       type: object
       additionalProperties: false

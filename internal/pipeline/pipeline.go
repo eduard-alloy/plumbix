@@ -27,7 +27,12 @@ type Pipeline struct {
 	Version int
 	Steps   []Step
 	Stages  []Stage // in file order; display grouping only
-	order   []string
+	// On says what starts a triggered pipeline (WU-045); nil for the
+	// change pipeline, which changes and pushes start.
+	On *Triggers
+	// Off disables the whole pipeline (WU-045), beside any disabled step.
+	Off   *Disabled
+	order []string
 }
 
 // Stage is a named group of steps, for display and run evidence.
@@ -127,6 +132,8 @@ func ValidStepName(name string) bool { return stepNameRe.MatchString(name) }
 // parser collects every problem instead of stopping at the first.
 type parser struct {
 	errs []Error
+	// triggered is set when parsing a file under .plumbix/pipelines/.
+	triggered bool
 }
 
 func (ps *parser) add(path string, line int, format string, args ...any) {
@@ -140,8 +147,14 @@ type stepRefs struct {
 
 // Parse validates src and returns the pipeline, or a *ValidationError
 // listing every problem found.
-func Parse(src []byte) (*Pipeline, error) {
-	ps := &parser{}
+func Parse(src []byte) (*Pipeline, error) { return parse(src, false) }
+
+// ParseTriggered validates a triggered pipeline, a file under
+// .plumbix/pipelines/ (WU-045): it needs on and holds no validators.
+func ParseTriggered(src []byte) (*Pipeline, error) { return parse(src, true) }
+
+func parse(src []byte, triggered bool) (*Pipeline, error) {
+	ps := &parser{triggered: triggered}
 	var doc yaml.Node
 	if err := yaml.Unmarshal(src, &doc); err != nil {
 		ps.add("", 0, "invalid yaml: %v", err)
@@ -158,7 +171,7 @@ func Parse(src []byte) (*Pipeline, error) {
 	}
 
 	p := &Pipeline{}
-	var stepsKey, stepsNode, stagesNode *yaml.Node
+	var stepsKey, stepsNode, stagesNode, onKey *yaml.Node
 	var sawVersion bool
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		key, val := root.Content[i], root.Content[i+1]
@@ -170,12 +183,27 @@ func Parse(src []byte) (*Pipeline, error) {
 			stepsKey, stepsNode = key, val
 		case "stages":
 			stagesNode = val
+		case "on":
+			onKey = key
+			p.On = ps.on(val)
+		case "disabled":
+			if !triggered {
+				ps.add("disabled", key.Line, "is only for pipelines under .plumbix/pipelines/: disable steps of this one instead")
+				continue
+			}
+			p.Off = ps.disabled("disabled", val, PipelineReasons)
 		default:
 			ps.add(key.Value, key.Line, "unknown field")
 		}
 	}
 	if !sawVersion {
 		ps.add("version", root.Line, "is required")
+	}
+	switch {
+	case triggered && onKey == nil:
+		ps.add("on", root.Line, "is required: a pipeline under .plumbix/pipelines/ says what starts it")
+	case !triggered && onKey != nil:
+		ps.add("on", onKey.Line, "is only for pipelines under .plumbix/pipelines/: changes and pushes start this one")
 	}
 
 	var refs []stepRefs
@@ -193,6 +221,13 @@ func Parse(src []byte) (*Pipeline, error) {
 			refs = append(refs, r)
 		}
 		ps.crossCheck(p.Steps, refs)
+		if triggered {
+			for i, st := range p.Steps {
+				if st.Validator {
+					ps.add(fmt.Sprintf("steps[%d].validator", i), st.Line, "is not allowed here: validators judge changes and belong in .plumbix/pipeline.yaml")
+				}
+			}
+		}
 		p.order = ps.order(p.Steps, stepsKey.Line)
 		if stagesNode != nil {
 			p.Stages = ps.stages(stagesNode, p.Steps)
@@ -314,7 +349,7 @@ func (ps *parser) step(p string, n *yaml.Node) (Step, stepRefs) {
 				st.Advisory = val.Value == "true"
 			}
 		case "disabled":
-			st.Disabled = ps.disabled(fp, val)
+			st.Disabled = ps.disabled(fp, val, Reasons)
 		case "external":
 			externalKey = key
 			if val.Kind != yaml.ScalarNode || val.Tag != "!!bool" {

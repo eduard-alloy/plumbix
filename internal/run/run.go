@@ -24,10 +24,13 @@ const (
 // Run is one pipeline execution for one commit. For a change, it is one
 // iteration.
 type Run struct {
-	ID         string             `json:"id"`
-	RepoID     string             `json:"repo_id"`
-	ChangeID   string             `json:"change_id,omitempty"`
-	Branch     string             `json:"branch"`
+	ID       string `json:"id"`
+	RepoID   string `json:"repo_id"`
+	ChangeID string `json:"change_id,omitempty"`
+	Branch   string `json:"branch"`
+	// Pipeline names the triggered pipeline the run ran (WU-045); empty for
+	// the change pipeline, .plumbix/pipeline.yaml.
+	Pipeline   string             `json:"pipeline,omitempty"`
 	Iteration  int                `json:"iteration,omitempty"`
 	Head       string             `json:"head"`
 	Base       string             `json:"base"`
@@ -38,6 +41,14 @@ type Run struct {
 	Steps      []Step             `json:"steps"`
 	StartedAt  time.Time          `json:"started_at"`
 	FinishedAt *time.Time         `json:"finished_at,omitempty"`
+}
+
+// Move is a branch head moving from Before to After; Before is empty for a
+// new branch (WU-045).
+type Move struct {
+	Branch string
+	Before string
+	After  string
 }
 
 // Step is one step's outcome within a run.

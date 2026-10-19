@@ -1,0 +1,4 @@
+version: 1
+disabled: {reason: user}
+steps:
+  - {name: a, image: x, run: x}

@@ -357,3 +357,25 @@ Initial discovery is complete. Results are consolidated in `PROJECT.md` and `CON
 **Answer**: server-owned file; guidance plus the model, no effort knob.
 
 **Decisions**: A18 and A19. The pipeline editor is WU-019: edit in the browser, propose as a change, merge like any other, so A9 still holds.
+
+## Q20: Bringing existing pipelines into Plumbix (2026-10-19)
+
+**User**: "lets have a pipeline import. it should create all pipelines in the source repo with all their steps but make sure the steps that can not be implemented/ran/supported yet are disabled and hence the pipeline itself is disabled. then we can start supporting them". Then: "this is not an one shot import...I want this import with this behavior to be part of the product". Layout: "go with one file per pipeline".
+
+**Options given**: one file per pipeline under `.plumbix/pipelines/` (recommended) vs one file holding all pipelines; a disabled pipeline never runs vs running it with disabled steps skipped.
+
+**Answer**: one file per pipeline; any disabled step disables its pipeline; import is a repeatable product feature, Azure Pipelines first.
+
+**Decisions**: A36 and A37 (Kai workstream TCVR9R). Supersedes the "an Azure Pipelines importer may come later" note of Q08: the format stays Plumbix's own, import translates into it.
+
+## Q21: Secrets for pipelines from any branch (2026-10-19)
+
+**Problem raised**: pipeline files are read from the pushed commit, so any branch, an agent's included, could add a pipeline that runs on its own push and sends a named secret out before anyone reviews it.
+
+**User**: "let pipelines run on any branch but do not get secrets. also, when a pipeline from a branch gets promoted to main/protected-branch it needs validation that the secrets used is legitimate and not spoofed out ... checks the validity of the changes/new pipeline and also requests human intervention".
+
+**Options given**: secrets only for runs on protected branches (recommended); pipelines only from protected branches; leave it open. For the check: a built-in guard run by Plumbix on changes to `.plumbix/` (recommended) vs a hidden stage inside repository pipelines, plus approved pipeline fingerprints and, later, secret grants per pipeline.
+
+**Answer**: go with secrets only on protected branches and the built-in guard; plan the grants.
+
+**Decision**: A38. This changes existing behaviour: change runs and plain branch runs on unprotected branches no longer give steps their `secrets:`; validators take keys from reviewer profiles. The guard is WU-051, the grants a later task.

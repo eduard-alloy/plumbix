@@ -67,9 +67,10 @@ type imagesView struct {
 }
 
 // uses collects, per image reference, the steps of every registered
-// repository's pipeline at its default branch that run it. A repository
-// whose pipeline cannot be read contributes nothing: the page is about
-// images, the Pipelines page says what is wrong with the file.
+// repository's pipelines at its default branch that run it: the change
+// pipeline and the triggered ones (WU-045). A pipeline that cannot be read
+// contributes nothing: the page is about images, the Pipelines page says
+// what is wrong with the file.
 func (h *imageHandlers) uses(ctx context.Context) (map[string][]images.Use, error) {
 	repos, err := h.svc.ListRepos(ctx)
 	if err != nil {
@@ -78,14 +79,33 @@ func (h *imageHandlers) uses(ctx context.Context) (map[string][]images.Use, erro
 	out := map[string][]images.Use{}
 	for _, repo := range repos {
 		v, err := h.engine.PipelineFile(ctx, repo.ID, defaultBranch(repo))
-		if err != nil || v.Pipeline == nil {
+		if err != nil {
 			continue
 		}
-		for _, st := range v.Pipeline.Steps {
-			if st.Image == "" {
-				continue // external validators run no container
+		if v.Pipeline != nil {
+			for _, st := range v.Pipeline.Steps {
+				if st.Image == "" {
+					continue // external validators run no container
+				}
+				out[st.Image] = append(out[st.Image], images.Use{RepoID: repo.ID, Repo: repoDisplayName(repo), Step: st.Name, Validator: st.Validator})
 			}
-			out[st.Image] = append(out[st.Image], images.Use{RepoID: repo.ID, Repo: repoDisplayName(repo), Step: st.Name, Validator: st.Validator})
+		}
+		// PipelineFile just fetched: read the triggered pipelines at the
+		// same head without fetching again.
+		triggered, err := h.engine.TriggeredAt(ctx, repo.ID, v.SHA)
+		if err != nil {
+			h.log.Warn("read triggered pipelines for images", "repo", repo.ID, "err", err)
+			continue
+		}
+		for _, f := range triggered {
+			if f.Pipeline == nil {
+				continue
+			}
+			for _, st := range f.Pipeline.Steps {
+				if st.Image != "" {
+					out[st.Image] = append(out[st.Image], images.Use{RepoID: repo.ID, Repo: repoDisplayName(repo), Step: st.Name, Pipeline: f.Name})
+				}
+			}
 		}
 	}
 	return out, nil

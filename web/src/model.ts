@@ -190,6 +190,8 @@ export interface Run {
   repo_id: string
   change_id?: string
   branch: string
+  /** The triggered pipeline under .plumbix/pipelines/ the run ran (WU-045); absent for the change pipeline. */
+  pipeline?: string
   iteration?: number
   head: string
   base: string

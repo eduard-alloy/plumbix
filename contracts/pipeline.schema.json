@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/eduard-alloy/plumbix/blob/main/contracts/pipeline.schema.json",
   "title": "Plumbix pipeline, format version 1",
-  "description": "Schema for .plumbix/pipeline.yaml. Plumbix also enforces rules that span fields, which this schema cannot express: step names are unique; every name in needs refers to another existing step, appears once, and is not a validator step; needs contain no cycles; a secret name is not also an env key; timeout is above zero and at most 24h; allow_failure, when and cache are not set on validator steps; reviewer, advisory, effort and external are set only on validator steps and such a step has no image, run, env, secrets or retries; every step named in stages exists, is not a validator and is in one stage only.",
+  "description": "Schema for .plumbix/pipeline.yaml, the pipeline that judges changes, and for the triggered pipelines under .plumbix/pipelines/<name>.yaml (WU-045). Plumbix also enforces: on is required in a triggered pipeline and not allowed in .plumbix/pipeline.yaml, and a triggered pipeline has no validator steps; rules that span fields, which this schema cannot express: step names are unique; every name in needs refers to another existing step, appears once, and is not a validator step; needs contain no cycles; a secret name is not also an env key; timeout is above zero and at most 24h; allow_failure, when and cache are not set on validator steps; reviewer, advisory, effort and external are set only on validator steps and such a step has no image, run, env, secrets or retries; every step named in stages exists, is not a validator and is in one stage only.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -14,6 +14,101 @@
       "description": "Pipeline format version. Must be 1.",
       "type": "integer",
       "const": 1
+    },
+    "on": {
+      "description": "What starts a triggered pipeline (WU-045). Only in files under .plumbix/pipelines/, where it is required.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "push": {
+          "description": "Run when a matching branch moves: on every push, including Plumbix merges. With paths, only when a file changed since the branch's previous head matches; a new branch always runs.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "branches"
+          ],
+          "properties": {
+            "branches": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Glob; * and ? match within a segment, ** matches any number of segments.",
+                "not": {
+                  "pattern": "^[/\\\\]"
+                }
+              },
+              "description": "Globs over branch names."
+            },
+            "paths": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Glob; * and ? match within a segment, ** matches any number of segments.",
+                "not": {
+                  "pattern": "^[/\\\\]"
+                }
+              },
+              "description": "Globs over changed files."
+            }
+          }
+        },
+        "manual": {
+          "description": "A person may start the pipeline at a branch head.",
+          "type": "boolean"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "push"
+          ]
+        },
+        {
+          "required": [
+            "manual"
+          ],
+          "properties": {
+            "manual": {
+              "const": true
+            }
+          }
+        }
+      ]
+    },
+    "disabled": {
+      "description": "The whole pipeline does not run (WU-045): the step reasons plus trigger, for a pipeline started in a way Plumbix cannot run yet (tags, schedules, manual parameters).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "enum": [
+            "user",
+            "docker",
+            "services",
+            "host",
+            "task",
+            "template",
+            "condition",
+            "checkout",
+            "deployment",
+            "secrets",
+            "trigger"
+          ]
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
     },
     "steps": {
       "type": "array",

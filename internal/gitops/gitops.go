@@ -254,6 +254,25 @@ func (m *Mirror) Show(ctx context.Context, commit, path string) ([]byte, bool, e
 	return out, true, nil
 }
 
+// ListFiles returns the paths of the files directly in dir at a commit,
+// sorted; none when dir does not exist there (WU-045).
+func (m *Mirror) ListFiles(ctx context.Context, commit, dir string) ([]string, error) {
+	out, err := m.git(ctx, "ls-tree", commit, "--", strings.TrimSuffix(dir, "/")+"/")
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		// "<mode> <type> <object>\t<path>"; only blobs are files.
+		meta, file, ok := strings.Cut(line, "\t")
+		if fields := strings.Fields(meta); ok && len(fields) >= 2 && fields[1] == "blob" {
+			files = append(files, file)
+		}
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
 // Worktree checks out commit (detached) into dir. The returned function
 // removes the worktree.
 func (m *Mirror) Worktree(ctx context.Context, commit, dir string) (func() error, error) {

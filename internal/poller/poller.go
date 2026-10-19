@@ -31,6 +31,9 @@ type Engine interface {
 	ListHeads(ctx context.Context, repo change.Repo) (map[string]string, error)
 	Validate(ctx context.Context, changeID string) (run.Run, error)
 	RunBranch(ctx context.Context, repoID, branch string) (run.Run, error)
+	// RunPushed starts the triggered pipelines the branch moves of one poll
+	// match (WU-045), fetching once.
+	RunPushed(ctx context.Context, repoID string, moves []run.Move) ([]run.Run, error)
 	// Commits lists the first-parent commits from..to, newest first; only
 	// to itself when from is empty.
 	Commits(ctx context.Context, repo change.Repo, from, to string) ([]gitops.Commit, error)
@@ -133,10 +136,26 @@ func (p *Poller) react(ctx context.Context, repo change.Repo, heads, known map[s
 			open[c.SourceBranch] = c
 		}
 	}
+	var moves []run.Move
+	defer func() {
+		if len(moves) == 0 {
+			return
+		}
+		runs, err := p.engine.RunPushed(ctx, repo.ID, moves)
+		if err != nil {
+			p.log.Warn("triggered pipelines after push", "repo", repo.ID, "err", err)
+		}
+		if len(runs) > 0 {
+			p.log.Info("push detected, running triggered pipelines", "repo", repo.ID, "runs", len(runs))
+		}
+	}()
 	for branch, sha := range heads {
 		if known[branch] == sha {
 			continue
 		}
+		// Triggered pipelines see every move, Plumbix merges included:
+		// that is where deploys run (WU-045).
+		moves = append(moves, run.Move{Branch: branch, Before: known[branch], After: sha})
 		if c, ok := open[branch]; ok {
 			if c.State.NeedsPerson() {
 				// A change that needs a person is not moved by a push (A21).

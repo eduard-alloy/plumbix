@@ -53,6 +53,9 @@ type Use struct {
 	Repo      string `json:"repo"` // display name
 	Step      string `json:"step"`
 	Validator bool   `json:"validator"`
+	// Pipeline names the triggered pipeline the step is in (WU-045); empty
+	// for the change pipeline.
+	Pipeline string `json:"pipeline,omitempty"`
 }
 
 // Status of a shipped image's local build against the running server.

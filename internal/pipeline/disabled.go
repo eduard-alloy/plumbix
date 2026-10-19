@@ -38,8 +38,12 @@ var Reasons = []Reason{
 	{"secrets", "Needs variables or secret groups that are not mapped to Plumbix secrets."},
 }
 
-func knownReason(code string) bool {
-	for _, r := range Reasons {
+// PipelineReasons are the codes a whole pipeline may be disabled with: the
+// step reasons plus trigger (WU-045).
+var PipelineReasons = append(append([]Reason{}, Reasons...), Reason{"trigger", "Started in a way Plumbix cannot run yet, such as tags, schedules or manual parameters."})
+
+func knownReason(allowed []Reason, code string) bool {
+	for _, r := range allowed {
 		if r.Code == code {
 			return true
 		}
@@ -47,12 +51,16 @@ func knownReason(code string) bool {
 	return false
 }
 
-// Disabled reports whether any step is disabled; such a pipeline never runs.
+// Disabled reports whether the pipeline or any step is disabled; such a
+// pipeline never runs.
 func (p *Pipeline) Disabled() bool { return len(p.Blockers()) > 0 }
 
 // Blockers counts the disabled steps per reason.
 func (p *Pipeline) Blockers() map[string]int {
 	b := map[string]int{}
+	if p.Off != nil {
+		b[p.Off.Reason]++
+	}
 	for _, st := range p.Steps {
 		if st.Disabled != nil {
 			b[st.Disabled.Reason]++
@@ -76,7 +84,7 @@ func (p *Pipeline) BlockerSummary() string {
 	return strings.Join(parts, ", ")
 }
 
-func (ps *parser) disabled(p string, n *yaml.Node) *Disabled {
+func (ps *parser) disabled(p string, n *yaml.Node, allowed []Reason) *Disabled {
 	if n.Kind != yaml.MappingNode {
 		ps.add(p, n.Line, "must be a mapping with reason and an optional note")
 		return nil
@@ -90,9 +98,9 @@ func (ps *parser) disabled(p string, n *yaml.Node) *Disabled {
 		case "reason":
 			sawReason = true
 			if s, ok := ps.str(fp, val); ok {
-				if !knownReason(s) {
-					codes := make([]string, len(Reasons))
-					for j, r := range Reasons {
+				if !knownReason(allowed, s) {
+					codes := make([]string, len(allowed))
+					for j, r := range allowed {
 						codes[j] = r.Code
 					}
 					ps.add(fp, val.Line, "must be one of %s", strings.Join(codes, ", "))

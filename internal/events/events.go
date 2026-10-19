@@ -111,6 +111,8 @@ type (
 	RunStartedPayload struct {
 		Branch    string `json:"branch"`
 		Iteration int    `json:"iteration,omitempty"`
+		// Pipeline names a triggered pipeline (WU-045).
+		Pipeline string `json:"pipeline,omitempty"`
 	}
 	// StepStartedPayload: one step of a run began.
 	StepStartedPayload struct {

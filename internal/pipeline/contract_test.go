@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -41,7 +42,11 @@ func TestSchemaAndParserAgree(t *testing.T) {
 				if (schemaErr == nil) != g.wantSchemaOK {
 					t.Errorf("schema valid = %v, want %v (%v)", schemaErr == nil, g.wantSchemaOK, schemaErr)
 				}
-				_, parseErr := Parse(src)
+				parse := Parse
+				if strings.HasPrefix(filepath.Base(f), "triggered-") {
+					parse = ParseTriggered
+				}
+				_, parseErr := parse(src)
 				if (parseErr == nil) != g.wantParseOK {
 					t.Errorf("parser valid = %v, want %v (%v)", parseErr == nil, g.wantParseOK, parseErr)
 				}
