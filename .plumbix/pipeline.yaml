@@ -8,7 +8,9 @@
 # runs (WU-029, A30), per repository and step, under the server's data
 # directory. ai-grok asks the grok-4 reviewer profile from inside the
 # pipeline and is advisory (WU-030, A31): its verdict is recorded beside
-# the Claude review for comparison and never counted.
+# the Claude review for comparison and never counted. ai-claude runs
+# Claude Code inside the pipeline (WU-035, A33) on the owner's token, via
+# the claude-code-container profile, advisory for now beside the loop.
 version: 1
 steps:
   - name: build
@@ -43,5 +45,12 @@ steps:
     advisory: true
     effort: medium
     needs: [build, test, lint, web]
+  - name: ai-claude
+    image: plumbix-claude-code-validator:dev
+    validator: true
+    reviewer: claude-code-container
+    advisory: true
+    needs: [build, test, lint, web]
+    timeout: 30m
 stages:
   checks: [build, test, lint, web]
