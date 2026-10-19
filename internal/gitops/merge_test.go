@@ -168,7 +168,6 @@ func TestPushErrorsAreClassified(t *testing.T) {
 		stderr string
 		want   error
 	}{
-		{"fatal: could not read Username for 'https://github.com': terminal prompts disabled", ErrPushDenied},
 		{"remote: Invalid username or token.\nfatal: Authentication failed for 'https://github.com/o/r/'", ErrPushDenied},
 		{"remote: Permission to o/r.git denied to someone.\nfatal: unable to access 'https://github.com/o/r/': The requested URL returned error: 403", ErrPushDenied},
 		{"git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.", ErrPushDenied},
@@ -182,6 +181,10 @@ func TestPushErrorsAreClassified(t *testing.T) {
 		if errors.Is(err, ErrPushDenied) && strings.Contains(err.Error(), "github.com") {
 			t.Errorf("%q: the denied error repeats git's output: %v", c.stderr, err)
 		}
+	}
+	// The runner reports a missing token as ErrNoCredentials (WU-043); a push still reads that as denied.
+	if err := pushError(fmt.Errorf("git push: %w", ErrNoCredentials), "main"); !errors.Is(err, ErrPushDenied) {
+		t.Errorf("push without credentials: %v, want push denied", err)
 	}
 	other := errors.New("git push: exit status 1: something else")
 	if err := pushError(other, "main"); err != other {

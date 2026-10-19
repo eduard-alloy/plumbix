@@ -32,10 +32,9 @@ var (
 )
 
 // deniedMarkers are the phrases git prints when a remote refuses the
-// credentials: no token to offer, a bad token, a token without push rights,
-// or an SSH key the host does not know.
+// credentials: a bad token, a token without push rights, or an SSH key the
+// host does not know. No token at all arrives as ErrNoCredentials.
 var deniedMarkers = []string{
-	"could not read Username",
 	"Authentication failed",
 	"denied to",
 	"returned error: 403",
@@ -45,6 +44,10 @@ var deniedMarkers = []string{
 // pushError turns git's push failure into one of the push errors. The denied
 // error does not repeat git's output, which names the remote.
 func pushError(err error, branch string) error {
+	// No token to offer: the runner already turned git's prompt into ErrNoCredentials.
+	if errors.Is(err, ErrNoCredentials) {
+		return fmt.Errorf("%w: %s", ErrPushDenied, branch)
+	}
 	msg := err.Error()
 	for _, m := range deniedMarkers {
 		if strings.Contains(msg, m) {
@@ -178,7 +181,13 @@ func (m *Mirror) run(ctx context.Context, stdin io.Reader, env []string, args ..
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
+		msg := stderr.String()
+		// Without credentials git asks for a username, which Plumbix forbids;
+		// say what is missing instead of git's prompt message (WU-043).
+		if strings.Contains(msg, "could not read Username") || strings.Contains(msg, "terminal prompts disabled") {
+			return nil, fmt.Errorf("git %s: %w", args[0], ErrNoCredentials)
+		}
+		return nil, fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(msg))
 	}
 	return stdout.Bytes(), nil
 }

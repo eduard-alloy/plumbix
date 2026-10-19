@@ -58,3 +58,4 @@
 | 2026-10-19 | WU-040 | ✅ | Repositories page shows two-line cards instead of a table; A35 recorded for the three import modes that follow. |
 | 2026-10-19 | WU-041 | ✅ | Import panel on the Repositories page (local folder with a remote; clone a remote), inspect and clone routes inside the home directory, remote detection with SSH-to-HTTPS; WU-040's review notes folded in. |
 | 2026-10-19 | WU-042 | ✅ | Publish a folder tab: the server creates the repository on GitHub or Azure DevOps and pushes the folder, the page registers it; WU-041's review notes folded in (top folder only, shared remote rules tested in the browser). |
+| 2026-10-19 | WU-043 | ✅ | First real import (Azure DevOps) showed an encoded name, a host token choice with no host token, and git's prompt error; all three fixed, plus WU-042's askpass-before-create note. |

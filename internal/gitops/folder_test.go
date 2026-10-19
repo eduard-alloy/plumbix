@@ -1,6 +1,7 @@
 package gitops
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -85,6 +86,10 @@ func TestCloneIntoANewOrEmptyFolderOnly(t *testing.T) {
 	}
 	if err := Clone(ctx, r.Remote, dest, nil, ""); err == nil || !strings.Contains(err.Error(), "not empty") {
 		t.Errorf("clone into a folder with files: %v", err)
+	}
+	// Without a token the clone says what is missing (WU-043).
+	if err := Clone(ctx, url, filepath.Join(t.TempDir(), "y"), nil, ""); !errors.Is(err, ErrNoCredentials) {
+		t.Errorf("clone without a token: %v", err)
 	}
 	err := Clone(ctx, url, filepath.Join(t.TempDir(), "x"), &Auth{User: "x-access-token", Token: "wrong"}, ap)
 	if err == nil || strings.Contains(err.Error(), secretToken) || strings.Contains(err.Error(), "wrong") {

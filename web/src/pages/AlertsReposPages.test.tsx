@@ -124,6 +124,7 @@ describe('Repositories page', () => {
   })
 
   it('registers a remote and clones it to a local folder with the host token (WU-041)', async () => {
+    db.secrets.PLUMBIX_AZURE_DEVOPS_TOKEN = 'host-azure-token'
     window.history.replaceState(null, '', '/repos')
     render(<App />)
     await screen.findByRole('listitem', { name: 'Repository plumbix' })
@@ -185,6 +186,7 @@ describe('Repositories page', () => {
   })
 
   it('asks for an Azure DevOps organisation and project when publishing there, and sends a folder with a remote to the other tab', async () => {
+    db.secrets.PLUMBIX_AZURE_DEVOPS_TOKEN = 'host-azure-token'
     db.folders['~/dev/notes'] = { path: '/Users/me/dev/notes', remote: '', default_branch: 'main', has_pipeline: false, host: '', url: '', problem: 'no remote' }
     db.folders['~/dev/billing'] = { path: '/Users/me/dev/billing', remote: 'git@github.com:acme/billing.git', default_branch: 'main', has_pipeline: true, host: 'github', url: 'https://github.com/acme/billing.git', problem: '' }
     window.history.replaceState(null, '', '/repos')
@@ -210,6 +212,44 @@ describe('Repositories page', () => {
     fireEvent.click(create)
     await waitFor(() => expect(panel.textContent).toContain('Created https://dev.azure.com/acme/ledger/_git/notes'))
     expect(db.publishes[0]).toMatchObject({ host: 'azuredevops', owner: 'acme', project: 'ledger', name: 'notes' })
+  })
+
+  it('says when the host has no token and asks for one for this repository instead (WU-043)', async () => {
+    db.folders['~/dev/claims'] = { path: '/Users/me/dev/claims', remote: 'https://acme@dev.azure.com/acme/Easy%20Claim/_git/Easy%20Claim', default_branch: 'main', has_pipeline: false, host: 'azuredevops', url: 'https://dev.azure.com/acme/Easy%20Claim/_git/Easy%20Claim', problem: '' }
+    window.history.replaceState(null, '', '/repos')
+    render(<App />)
+    await screen.findByRole('listitem', { name: 'Repository plumbix' })
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    const panel = screen.getByRole('region', { name: 'Import a repository' })
+    fireEvent.change(within(panel).getByLabelText('Folder'), { target: { value: '~/dev/claims' } })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Inspect' }))
+    await within(panel).findByText(/No Azure DevOps host token is set/)
+    expect((within(panel).getByLabelText('Use the host token') as HTMLInputElement).disabled).toBe(true)
+    expect((within(panel).getByLabelText('Its own token') as HTMLInputElement).checked).toBe(true)
+    const importButton = within(panel).getByRole('button', { name: 'Import' }) as HTMLButtonElement
+    expect(importButton.disabled).toBe(true)
+    fireEvent.change(within(panel).getByLabelText('Token value'), { target: { value: 'azure-pat' } })
+    expect(importButton.disabled).toBe(false)
+    fireEvent.click(importButton)
+    // The registered name reads as Azure DevOps shows it, spaces and all.
+    await waitFor(() => expect(panel.textContent).toContain('Registered Easy Claim'))
+    await screen.findByRole('listitem', { name: 'Repository Easy Claim' })
+  })
+
+  it('asks for a token for the repository when Settings cannot be read (WU-043 review)', async () => {
+    db.folders['~/dev/billing'] = { path: '/Users/me/dev/billing', remote: 'git@github.com:acme/billing.git', default_branch: 'main', has_pipeline: false, host: 'github', url: 'https://github.com/acme/billing.git', problem: '' }
+    db.secrets.PLUMBIX_GITHUB_TOKEN = 'host'
+    const realFetch = globalThis.fetch
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => (String(input).endsWith('/api/v1/settings') ? Promise.resolve(new Response('{}', { status: 500 })) : realFetch(input, init)))
+    window.history.replaceState(null, '', '/repos')
+    render(<App />)
+    await screen.findByRole('listitem', { name: 'Repository plumbix' })
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    const panel = screen.getByRole('region', { name: 'Import a repository' })
+    fireEvent.change(within(panel).getByLabelText('Folder'), { target: { value: '~/dev/billing' } })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Inspect' }))
+    await within(panel).findByText(/No GitHub host token is set/)
+    expect((within(panel).getByLabelText('Its own token') as HTMLInputElement).checked).toBe(true)
   })
 
   it('says why a folder cannot be imported and imports nothing', async () => {

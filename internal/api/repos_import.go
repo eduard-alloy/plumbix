@@ -98,6 +98,13 @@ func (h *importHandlers) publish(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "unavailable", "this server has no host credentials configured")
 		return
 	}
+	// The push's credential script is ready before the host creates anything,
+	// so this cannot fail with a repository already online.
+	askpass, err := h.askpass()
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
 	reg := h.hosts.Hosts()
 	var url string
 	var auth gitops.Auth
@@ -126,11 +133,6 @@ func (h *importHandlers) publish(w http.ResponseWriter, r *http.Request) {
 	redact := func(s string) string { return redactSecret(redactSecret(s, in.Token), auth.Token) }
 	if err != nil {
 		writeError(w, http.StatusConflict, "create_failed", redact(err.Error()))
-		return
-	}
-	askpass, err := h.askpass()
-	if err != nil {
-		h.fail(w, err)
 		return
 	}
 	target := url

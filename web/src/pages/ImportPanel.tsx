@@ -3,7 +3,7 @@
 // it to a local folder, or by publishing a folder with no remote to a new
 // repository online. Each step reports on its own line; the token is sent
 // and never shown again.
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../api'
 import type { Repo, RepoFolder } from '../model'
 import { repoName } from '../vm/changes'
@@ -39,7 +39,9 @@ interface Registration {
   token: string
 }
 
-function RegistrationFields({ reg, set, fixedRemote }: { reg: Registration; set: (r: Partial<Registration>) => void; fixedRemote: boolean }) {
+const HOST_TOKEN: Record<Repo['host'], string> = { github: 'PLUMBIX_GITHUB_TOKEN', azuredevops: 'PLUMBIX_AZURE_DEVOPS_TOKEN', git: '' }
+
+function RegistrationFields({ reg, set, fixedRemote, hostTokenSet }: { reg: Registration; set: (r: Partial<Registration>) => void; fixedRemote: boolean; hostTokenSet: boolean }) {
   return (
     <>
       <div className="import-grid">
@@ -77,8 +79,13 @@ function RegistrationFields({ reg, set, fixedRemote }: { reg: Registration; set:
       {reg.host !== 'git' && (
         <fieldset className="import-token">
           <legend>Token</legend>
+          {!hostTokenSet && (
+            <p className="status-text error">
+              No {HOSTS.find((h) => h.value === reg.host)!.label} host token is set ({HOST_TOKEN[reg.host]} in Settings): give this repository its own token, or set the host token first.
+            </p>
+          )}
           <label>
-            <input type="radio" checked={!reg.ownToken} onChange={() => set({ ownToken: false })} /> Use the host token
+            <input type="radio" checked={!reg.ownToken} disabled={!hostTokenSet} onChange={() => set({ ownToken: false })} /> Use the host token
           </label>
           <label>
             <input type="radio" checked={reg.ownToken} onChange={() => set({ ownToken: true })} /> Its own token
@@ -137,6 +144,23 @@ export function ImportPanel({ onImported }: { onImported: () => Promise<void> })
   const [steps, setSteps] = useState<Step[]>([])
   const [busy, setBusy] = useState(false)
   const set = (r: Partial<Registration>) => setReg((cur) => ({ ...cur, ...r }))
+  // Which hosts have a token in Settings (WU-043). While loading they count
+  // as set, so nothing flashes; if Settings cannot be read they count as
+  // missing, so the panel asks for a token rather than risk a failed check.
+  const [hostTokens, setHostTokens] = useState<Record<string, boolean> | 'loading' | 'unknown'>('loading')
+  useEffect(() => {
+    let live = true
+    api
+      .settings()
+      .then((s) => live && setHostTokens(Object.fromEntries(s.secrets.map((x) => [x.key, x.set]))))
+      .catch(() => live && setHostTokens('unknown'))
+    return () => {
+      live = false
+    }
+  }, [])
+  const hostTokenSet = (h: Repo['host']) => h === 'git' || hostTokens === 'loading' || (hostTokens !== 'unknown' && !!hostTokens[HOST_TOKEN[h]])
+  // Without a host token the repository needs its own.
+  const effective = (r: Registration): Registration => ({ ...r, ownToken: r.ownToken || !hostTokenSet(r.host) })
   const detected = detectRemote(remote)
 
   async function inspect(e: FormEvent) {
@@ -171,12 +195,13 @@ export function ImportPanel({ onImported }: { onImported: () => Promise<void> })
     setBusy(true)
     setSteps([])
     const add = (s: Step) => setSteps((cur) => [...cur, s])
-    const token = reg.ownToken ? reg.token : ''
+    const r = effective({ ...reg, host: pub.host })
+    const token = r.ownToken ? reg.token : ''
     try {
       const out = await api.publishFolder({ path, host: pub.host, owner: pub.owner.trim(), project: pub.project.trim(), name: pub.name.trim(), private: pub.private, token })
       add({ text: `Created ${out.url}${pub.host === 'github' ? (pub.private ? ' (private)' : ' (public)') : ''}`, ok: true })
       add({ text: `Pushed ${out.pushed.join(', ')}`, ok: true })
-      const registered = await run({ ...reg, host: out.host, url: out.url }, null, add)
+      const registered = await run({ ...r, host: out.host, url: out.url }, null, add)
       if (registered) await onImported()
     } catch (err) {
       add({ text: `Not published: ${errorText(err)}`, ok: false })
@@ -243,9 +268,9 @@ export function ImportPanel({ onImported }: { onImported: () => Promise<void> })
               ) : (
                 <>
                   <p className="dim">{folder.has_pipeline ? 'Has .plumbix/pipeline.yaml.' : 'No .plumbix/pipeline.yaml yet: after importing, start one on the Pipelines page.'}</p>
-                  <RegistrationFields reg={reg} set={set} fixedRemote={false} />
+                  <RegistrationFields reg={effective(reg)} set={set} fixedRemote={false} hostTokenSet={hostTokenSet(reg.host)} />
                   <div className="form-row">
-                    <button className="primary" disabled={busy || !reg.url.trim() || (reg.ownToken && !reg.token)} onClick={() => void submit(null, reg)}>
+                    <button className="primary" disabled={busy || !reg.url.trim() || (effective(reg).ownToken && !reg.token)} onClick={() => void submit(null, effective(reg))}>
                       Import
                     </button>
                   </div>
@@ -271,9 +296,9 @@ export function ImportPanel({ onImported }: { onImported: () => Promise<void> })
               <input aria-label="Destination folder" className="mono" value={dest} onChange={(e) => { setDest(e.target.value); setDestEdited(true) }} placeholder="~/dev/repo" />
             </label>
           </div>
-          {detected && <RegistrationFields reg={reg} set={set} fixedRemote />}
+          {detected && <RegistrationFields reg={effective({ ...reg, host: detected.host })} set={set} fixedRemote hostTokenSet={hostTokenSet(detected.host)} />}
           <div className="form-row">
-            <button className="primary" disabled={busy || !detected || !dest.trim() || (reg.ownToken && !reg.token)} onClick={() => void submit(dest, { ...reg, host: detected!.host, url: detected!.url })}>
+            <button className="primary" disabled={busy || !detected || !dest.trim() || (!!detected && effective({ ...reg, host: detected.host }).ownToken && !reg.token)} onClick={() => void submit(dest, effective({ ...reg, host: detected!.host, url: detected!.url }))}>
               Register and clone
             </button>
           </div>
@@ -330,11 +355,11 @@ export function ImportPanel({ onImported }: { onImported: () => Promise<void> })
                   </label>
                 )}
               </div>
-              <RegistrationFields reg={{ ...reg, host: pub.host }} set={set} fixedRemote />
+              <RegistrationFields reg={effective({ ...reg, host: pub.host })} set={set} fixedRemote hostTokenSet={hostTokenSet(pub.host)} />
               <div className="form-row">
                 <button
                   className="primary"
-                  disabled={busy || !pub.name.trim() || (pub.host === 'azuredevops' && (!pub.owner.trim() || !pub.project.trim())) || (reg.ownToken && !reg.token)}
+                  disabled={busy || !pub.name.trim() || (pub.host === 'azuredevops' && (!pub.owner.trim() || !pub.project.trim())) || (effective({ ...reg, host: pub.host }).ownToken && !reg.token)}
                   onClick={() => void publish()}
                 >
                   Create and push

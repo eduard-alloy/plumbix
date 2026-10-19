@@ -1,6 +1,7 @@
 package gitops
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,6 +59,11 @@ func TestFetchWithAuth(t *testing.T) {
 		if strings.Contains(err.Error(), secretToken) {
 			t.Errorf("%s: error leaks the token", name)
 		}
+	}
+	// Without credentials git would prompt; the error says what is missing in plain words (WU-043).
+	err := Open(filepath.Join(t.TempDir(), "m.git"), url).Fetch(ctx)
+	if !errors.Is(err, ErrNoCredentials) || !strings.Contains(err.Error(), "no token for this repository") || strings.Contains(err.Error(), "terminal prompts disabled") {
+		t.Errorf("fetch without a token: %v", err)
 	}
 }
 

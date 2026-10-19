@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { listGroups, verdictColumn, type ListFilters } from './changes'
+import { listGroups, repoName, verdictColumn, type ListFilters } from './changes'
 import { allChanges, approved, closed, fixRequested, needsHuman, NOW, open, repos, running, runsByChange } from '../test/fixtures'
 
 const none: ListFilters = { q: '', repo: 'all', state: 'all' }
@@ -60,3 +60,13 @@ describe('verdictColumn', () => {
     expect(verdictColumn(closed, runsByChange[closed.id], NOW)).toEqual({ text: '1/3 met', blockers: '2 blockers' })
   })
 })
+
+describe('repository names (WU-043)', () => {
+  it('decodes URL encoding in the name and keeps a name that is not valid encoding', () => {
+    const repo = (url: string) => ({ id: 'r_1', host: 'azuredevops' as const, url, protected_branches: ['main'], merge_strategy: 'squash' as const, created_at: '' })
+    expect(repoName(repo('https://dev.azure.com/acme/Easy%20Claim/_git/Easy%20Claim'))).toBe('Easy Claim')
+    expect(repoName(repo('https://github.com/acme/notes.git'))).toBe('notes')
+    expect(repoName(repo('https://dev.azure.com/acme/p/_git/odd%zz'))).toBe('odd%zz')
+  })
+})
+

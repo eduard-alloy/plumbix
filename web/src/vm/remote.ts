@@ -2,6 +2,7 @@
 // (WU-041): the host it belongs to and the URL Plumbix registers, by the
 // same rules as change.DetectRemote on the server.
 import type { Repo } from '../model'
+import { decodeName } from './changes'
 
 export interface DetectedRemote {
   host: Repo['host']
@@ -35,5 +36,5 @@ export function detectRemote(remote: string): DetectedRemote | null {
 
 /** remoteName is the repository's name in a URL: its last path segment without .git. */
 export function remoteName(url: string): string {
-  return url.trim().replace(/\/+$/, '').replace(/\.git$/, '').split(/[/:]/).pop() ?? ''
+  return decodeName(url.trim().replace(/\/+$/, '').replace(/\.git$/, '').split(/[/:]/).pop() ?? '')
 }

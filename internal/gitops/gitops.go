@@ -18,6 +18,9 @@ import (
 // ErrUnknownBranch means the branch doesn't exist in the mirror.
 var ErrUnknownBranch = errors.New("unknown branch")
 
+// ErrNoCredentials means the remote asked for credentials and git had none.
+var ErrNoCredentials = errors.New("no token for this repository: set one on its card on the Repositories page, or the host token in Settings")
+
 // Mirror is a bare mirror of one remote repository.
 type Mirror struct {
 	dir     string

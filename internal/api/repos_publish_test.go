@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,11 +22,13 @@ const publishToken = "ghp_publish_SECRET"
 // publishFixture is an import handler wired to a fake GitHub API; pushes to
 // the created repository land in a local bare repository instead.
 type publishFixture struct {
-	t       *testing.T
-	root    string
-	mux     *http.ServeMux
-	remote  string // where pushes land
-	creates []string
+	t           *testing.T
+	root        string
+	mux         *http.ServeMux
+	remote      string // where pushes land
+	creates     []string
+	handler     *importHandlers
+	realAskpass func() (string, error)
 }
 
 func newPublishFixture(t *testing.T) *publishFixture {
@@ -61,6 +64,7 @@ func newPublishFixture(t *testing.T) *publishFixture {
 		askpass: func() (string, error) { return ap, nil },
 		pushURL: func(string) string { return f.remote }}
 	registerImportRoutes(f.mux, h)
+	f.handler, f.realAskpass = h, h.askpass
 	return f
 }
 
@@ -149,6 +153,16 @@ func TestPublishRefusals(t *testing.T) {
 	if rec0.Code != http.StatusBadRequest || !strings.Contains(problemField(t, rec0.Body.Bytes()), "no commits") || len(f.creates) != 0 {
 		t.Errorf("empty folder: %d %s, creates %v", rec0.Code, rec0.Body.String(), f.creates)
 	}
+	// Credentials for the push are prepared before anything is created online (WU-043).
+	f.handler.askpass = func() (string, error) { return "", errors.New("disk full") }
+	rec1 := f.post("/api/v1/repos/publish", `{"path": "~/dev/app", "host": "github", "name": "app", "token": "`+publishToken+`"}`)
+	if rec1.Code != http.StatusInternalServerError || len(f.creates) != 0 {
+		t.Errorf("askpass failure: %d %s, creates %v", rec1.Code, rec1.Body.String(), f.creates)
+	}
+	if out, _ := exec.Command("git", "-C", filepath.Join(f.root, "dev", "app"), "remote").Output(); strings.TrimSpace(string(out)) != "" {
+		t.Errorf("the folder gained a remote after an askpass failure: %q", out)
+	}
+	f.handler.askpass = f.realAskpass
 	// A rejected token creates nothing and changes nothing in the folder.
 	rec := f.post("/api/v1/repos/publish", `{"path": "~/dev/app", "host": "github", "name": "app", "token": "wrong"}`)
 	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "create_failed") || strings.Contains(rec.Body.String(), "wrong") {

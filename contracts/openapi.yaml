@@ -537,7 +537,7 @@ paths:
         with token, or the host token when token is empty; the token is sent only in headers and never echoed.
         The folder then gains origin and every branch is pushed, never forced. Registering the repository is a
         separate POST /repos. Code create_failed means nothing was created or changed; push_failed means the
-        repository exists online and the folder's origin is set, and the message says so.
+        repository exists online, and the message says so; the folder may or may not have gained origin.
       requestBody:
         required: true
         content:

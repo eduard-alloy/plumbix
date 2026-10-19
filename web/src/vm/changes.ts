@@ -38,7 +38,16 @@ export function repoName(repo: Repo | undefined, fallback = ''): string {
   if (!repo) return fallback
   const trimmed = repo.url.replace(/\/+$/, '').replace(/\.git$/, '')
   const seg = trimmed.split(/[/:]/).pop()
-  return seg || repo.id
+  return seg ? decodeName(seg) : repo.id
+}
+
+/** decodeName reads URL encoding in a name (Azure DevOps writes spaces as %20), keeping text that is not valid encoding (WU-043). */
+export function decodeName(s: string): string {
+  try {
+    return decodeURIComponent(s)
+  } catch {
+    return s
+  }
 }
 
 /** latestRun is the newest run, by iteration order. */
