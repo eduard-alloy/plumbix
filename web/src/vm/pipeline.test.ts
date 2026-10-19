@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as fx from '../test/fixtures'
 import type { PipelineFile } from '../model'
-import { addStep, bands, diffSummary, find, fromApi, groupSteps, levels, mergeSteps, needOptions, removeSteps, renameStep, saveDefaults, setField, toggleExternal, toYaml, toggleValidator, yamlDiff, yamlStr, type PModel } from './pipeline'
+import { addStep, bands, CW, MIN_CW, diffSummary, find, fromApi, groupSteps, levels, mergeSteps, needOptions, removeSteps, renameStep, saveDefaults, setField, toggleExternal, toYaml, toggleValidator, yamlDiff, yamlStr, type PModel } from './pipeline'
 
 const sampleFile = fx.pipelineFile
 
@@ -262,6 +262,52 @@ describe('external validators in the editor (WU-023 round trip)', () => {
     expect(block.some((l) => l.startsWith('    run:'))).toBe(false)
     expect(find(m, 'test')!.external).toBe(false)
     expect(lines).toContain('    image: node:24')
+  })
+})
+
+describe('stage cards fit the width they are given (WU-038)', () => {
+  const chain = () => groupSteps(model(), ['build', 'test', 'contract', 'deploy-check'], 'all')
+  const at = (b: ReturnType<typeof bands>[number], id: string) => b.cards.find((c) => c.id === id)!
+
+  it('keeps the natural layout when it fits or when no width is known', () => {
+    for (const width of [undefined, 2000]) {
+      const cb = bands(chain(), new Set(), width)[0]
+      expect(cb.cardW).toBe(CW)
+      expect([at(cb, 'deploy-check').x, at(cb, 'deploy-check').y]).toEqual([800, 0])
+      expect(cb.w).toBe(1160)
+    }
+  })
+
+  it('wraps a chain onto new rows at the columns that fit, narrowing cards to share the width', () => {
+    const cb = bands(chain(), new Set(), 700)[0]
+    // 700 px fits two cards of at least MIN_CW with a gap: each is (700 - 40) / 2 wide.
+    expect(cb.cardW).toBe(330)
+    expect(cb.w).toBeLessThanOrEqual(700)
+    expect([at(cb, 'build').x, at(cb, 'build').y]).toEqual([0, 0])
+    expect([at(cb, 'test').x, at(cb, 'test').y]).toEqual([370, 0])
+    expect([at(cb, 'contract').x, at(cb, 'contract').y]).toEqual([370, 84])
+    // deploy-check would be the third column: it starts a new row at the first one. Fitted rows are WRAP_GY apart.
+    expect([at(cb, 'deploy-check').x, at(cb, 'deploy-check').y]).toEqual([0, 168])
+    expect(cb.h).toBe(3 * 60 + 2 * 24)
+    // Lines into the wrapped card come down from the bottom of each card it needs to its top.
+    const down = cb.edges.filter((e) => e.ey === 168 - 3)
+    expect(down).toHaveLength(2)
+    expect(down.every((e) => e.ex === 330 / 2)).toBe(true)
+    expect(cb.edges).toHaveLength(4)
+  })
+
+  it('fills rows with loose steps at the fitted column count and never goes below one column or the minimum width', () => {
+    const flat: PModel = { steps: ['a', 'b', 'c', 'd'].map((id) => ({ ...find(model(), 'build')!, id, needs: [], group: null })), stageOrder: [] }
+    const fb = bands(flat, new Set(), 700)[0]
+    expect(fb.cards.map((c) => [c.x, c.y])).toEqual([
+      [0, 0],
+      [370, 0],
+      [0, 84],
+      [370, 84],
+    ])
+    const tiny = bands(flat, new Set(), 100)[0]
+    expect(tiny.cardW).toBe(MIN_CW)
+    expect(tiny.cards.map((c) => c.x)).toEqual([0, 0, 0, 0])
   })
 })
 

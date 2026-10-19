@@ -236,4 +236,37 @@ describe('Pipelines page', () => {
     expect(screen.getByText('line 1: version: must be 1, got 2')).toBeTruthy()
     expect(screen.queryByRole('toolbar')).toBeNull()
   })
+
+  it('lays stage cards out to the measured canvas, narrower while the inspector is open (WU-038)', async () => {
+    // jsdom has no layout: the canvas reports 820 px and the observer fires once on observe.
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('pipe-canvas') ? 820 : 0
+    })
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(private cb: () => void) {}
+      observe() { this.cb() }
+      disconnect() {}
+    })
+    try {
+      await open()
+      const fits = () => {
+        for (const grid of Array.from(document.querySelectorAll<HTMLElement>('.band-grid'))) {
+          const gw = parseFloat(grid.style.width)
+          for (const c of Array.from(grid.querySelectorAll<HTMLElement>('.card'))) expect(parseFloat(c.style.left) + parseFloat(c.style.width)).toBeLessThanOrEqual(gw)
+          expect(gw).toBeLessThanOrEqual(820 - 58)
+        }
+      }
+      // 820 - 58 = 762 px for a grid: two columns, each card capped at the full 360 px.
+      await waitFor(() => expect(parseFloat(card('build').style.width)).toBe(360))
+      fits()
+      // The inspector takes 352 px: 410 px left, one column of 410 capped to 360.
+      fireEvent.click(card('test'))
+      await screen.findByRole('complementary')
+      expect(card('contract').style.left).toBe('0px')
+      expect(parseFloat(card('contract').style.top)).toBeGreaterThan(0)
+      fits()
+    } finally {
+      width.mockRestore()
+    }
+  })
 })

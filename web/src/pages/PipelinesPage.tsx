@@ -7,7 +7,7 @@ import type { Change, PipelineFile, Repo, ReviewerProfile } from '../model'
 import { useRoute } from '../router'
 import { useStore } from '../store'
 import {
-  addStep, bands, CH, CW, toggleExternal, dependents, diffSummary, find, fromApi, groupSteps, mergeSteps, needOptions, plain, removeSteps, renameStep,
+  addStep, bands, CH, toggleExternal, dependents, diffSummary, find, fromApi, groupSteps, mergeSteps, needOptions, plain, removeSteps, renameStep,
   renderYaml, saveDefaults, setField, toggleValidator, yamlDiff, fmtSeconds, type Band, type PModel, type PStep,
 } from '../vm/pipeline'
 import './pipeline.css'
@@ -20,6 +20,11 @@ interface Loaded {
   file: PipelineFile
   base: PModel | null
 }
+
+/** What the canvas takes from its width before a stage's grid: its padding (2 × 16), the band's padding (2 × 12) and border (2 × 1). */
+const CANVAS_CHROME = 58
+/** The inspector floats over the canvas's right side: its width and margin, kept clear so cards reflow beside it. */
+const INSPECTOR_SPACE = 352
 
 export function PipelinesPage({ repoId }: { repoId?: string }) {
   const { state } = useStore()
@@ -92,7 +97,19 @@ export function PipelinesPage({ repoId }: { repoId?: string }) {
   }
 
   const selSet = useMemo(() => new Set(sel), [sel])
-  const bandList: Band[] = useMemo(() => (cur ? bands(cur, selSet) : []), [cur, selSet])
+  // The canvas is measured so a stage's cards fit across it (WU-038); 0 until measured, which keeps the natural layout.
+  const [canvas, setCanvas] = useState<HTMLDivElement | null>(null)
+  const [canvasW, setCanvasW] = useState(0)
+  useEffect(() => {
+    if (!canvas) return
+    setCanvasW(canvas.clientWidth)
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => setCanvasW(canvas.clientWidth))
+    ro.observe(canvas)
+    return () => ro.disconnect()
+  }, [canvas])
+  const gridW = canvasW > 0 ? canvasW - CANVAS_CHROME - (sel.length ? INSPECTOR_SPACE : 0) : undefined
+  const bandList: Band[] = useMemo(() => (cur ? bands(cur, selSet, gridW) : []), [cur, selSet, gridW])
   const summary = useMemo(() => (cur && base ? diffSummary(base, cur) : []), [cur, base])
   const dirty = summary.length > 0
   const one = sel.length === 1 && cur ? find(cur, sel[0]) : undefined
@@ -219,8 +236,8 @@ export function PipelinesPage({ repoId }: { repoId?: string }) {
             <span className="hint">{hint}</span>
           </div>
           {view === 'visual' ? (
-            <div className="pipe-canvas" onClick={() => setSel([])}>
-              <div className={`bands${sel.length ? ' with-panel' : ''}`}>
+            <div className="pipe-canvas" ref={setCanvas} onClick={() => setSel([])}>
+              <div className="bands">
                 {bandList.map((b, i) => (
                   <div key={b.key} className="band-wrap">
                     {i > 0 && <div className="band-link" />}
@@ -241,7 +258,7 @@ export function PipelinesPage({ repoId }: { repoId?: string }) {
                           ))}
                         </svg>
                         {b.cards.map((c) => (
-                          <button key={c.id} className={`card${c.sel ? ' sel' : ''}`} style={{ left: c.x, top: c.y, width: CW, height: CH }} aria-pressed={c.sel} aria-label={c.id} title={`${c.id} · ${c.image} · ${c.last}`} onClick={(e) => pick(c.id, e)}>
+                          <button key={c.id} className={`card${c.sel ? ' sel' : ''}`} style={{ left: c.x, top: c.y, width: b.cardW, height: CH }} aria-pressed={c.sel} aria-label={c.id} title={`${c.id} · ${c.image} · ${c.last}`} onClick={(e) => pick(c.id, e)}>
                             <span className="l1">
                               <span className="name mono">{c.id}</span>
                               <span className="image mono">{c.image}</span>
@@ -583,7 +600,8 @@ function Inspector({ cur, sel, mutate, close, setSel, groupName, setGroupName, p
               ))}
               {s.reviewer && !fitting.some((p) => p.name === s.reviewer) && (
                 <option value={s.reviewer}>
-                  {s.reviewer} · {profiles.some((p) => p.name === s.reviewer) ? (s.external ? 'runs in the pipeline, not for an external step' : 'the review loop\'s, not for a pipeline step') : 'not defined in Settings'}
+                  {/* No mark until the profiles have loaded, so a valid reviewer never flashes as undefined. */}
+                  {!profiles.length ? s.reviewer : `${s.reviewer} · ${profiles.some((p) => p.name === s.reviewer) ? (s.external ? 'runs in the pipeline, not for an external step' : "the review loop's, not for a pipeline step") : 'not defined in Settings'}`}
                 </option>
               )}
             </select>

@@ -17,11 +17,10 @@
 .pipe-toolbar .hint { margin-left: auto; font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .pipe-canvas { position: relative; flex: 1; min-height: 320px; overflow: auto; padding: 16px; background: var(--surface); }
-.bands { display: flex; flex-direction: column; min-width: max-content; }
-.bands.with-panel .band-grid { margin-right: 360px; }
+.bands { display: flex; flex-direction: column; }
 .band-wrap { display: flex; flex-direction: column; }
 .band-link { width: 2px; height: 18px; margin-left: 22px; background: var(--border-strong); }
-.band { width: max-content; min-width: 100%; box-sizing: border-box; padding: 10px 12px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.band { box-sizing: border-box; padding: 10px 12px 12px; border: 1px solid var(--border); border-radius: 8px; }
 .band-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .band-n { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; background: var(--band-chip); color: var(--band-fg); font: 600 12px var(--mono); }
 .band-name { font: 600 13px var(--mono); }

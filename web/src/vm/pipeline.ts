@@ -462,9 +462,13 @@ export function saveDefaults(repoName: string, summary: string[]): { branch: str
 // ---- band layout (design 2a) ----
 
 export const CW = 360
+/** MIN_CW is the narrowest a card gets before a stage wraps onto more rows (WU-038). */
+export const MIN_CW = 240
 export const CH = 60
 export const BGX = 40
 export const BGY = 10
+/** WRAP_GY is the row gap of a fitted stage, tall enough for a line to drop visibly to a wrapped card (WU-038). */
+export const WRAP_GY = 24
 const HUES = [200, 330, 70, 150, 250, 20]
 
 export interface Hue {
@@ -524,6 +528,8 @@ export interface Band {
   hue: Hue
   w: number
   h: number
+  /** cardW is the width of this band's cards: CW, or less when the stage is fitted to a narrow window (WU-038). */
+  cardW: number
   edges: Edge[]
   cards: Card[]
   validators: boolean
@@ -535,9 +541,10 @@ interface Placed {
   lp: string[]
 }
 
-/** layoutBand places a band's steps on the grid: chains on one row, forks on new rows, loose steps in the gaps. */
-export function layoutBand(members: PStep[], sel: Set<string>, chainAll: boolean): { place: Record<string, Placed>; edges: Edge[]; w: number; h: number; est: number } {
+/** layoutBand places a band's steps on the grid: chains on one row, forks on new rows, loose steps in the gaps. With maxCols a step that would pass the last column starts a new row at the first (WU-038); cw is the card width. */
+export function layoutBand(members: PStep[], sel: Set<string>, chainAll: boolean, maxCols = Infinity, cw = CW): { place: Record<string, Placed>; edges: Edge[]; w: number; h: number; est: number } {
   const ids = new Set(members.map((s) => s.id))
+  const gy = Number.isFinite(maxCols) ? WRAP_GY : BGY
   const place: Record<string, Placed> = {}
   const occ: Set<number>[] = []
   const edges: Edge[] = []
@@ -554,7 +561,8 @@ export function layoutBand(members: PStep[], sel: Set<string>, chainAll: boolean
       if (place[k.id] || !LP[k.id].every((n) => place[n])) continue
       const col = 1 + Math.max(...LP[k.id].map((n) => place[n].col))
       const pr = place[LP[k.id][0]].row
-      put(k.id, col, occ[pr].has(col) ? occ.length : pr)
+      if (col >= maxCols) put(k.id, 0, occ.length)
+      else put(k.id, col, occ[pr].has(col) ? occ.length : pr)
       walk(k.id)
     }
   }
@@ -568,11 +576,11 @@ export function layoutBand(members: PStep[], sel: Set<string>, chainAll: boolean
   for (const s of members) {
     if (!place[s.id] && LP[s.id].length) {
       const col = 1 + Math.max(0, ...LP[s.id].filter((n) => place[n]).map((n) => place[n].col))
-      put(s.id, col, occ.length)
+      put(s.id, col >= maxCols ? 0 : col, occ.length)
       walk(s.id)
     }
   }
-  const width = Math.max(GRID, ...Object.values(place).map((q) => q.col + 1))
+  const width = Math.min(maxCols, Math.max(GRID, ...Object.values(place).map((q) => q.col + 1)))
   for (const s of roots) {
     if (place[s.id]) continue
     let r = 0
@@ -594,14 +602,23 @@ export function layoutBand(members: PStep[], sel: Set<string>, chainAll: boolean
   }
   for (const s of members) {
     const q = place[s.id]
-    const x = q.col * (CW + BGX)
-    const y = q.row * (CH + BGY)
+    const x = q.col * (cw + BGX)
+    const y = q.row * (CH + gy)
     for (const n of q.lp) {
       const a = place[n]
-      const ax = a.col * (CW + BGX) + CW
-      const ay = a.row * (CH + BGY) + CH / 2
-      const by = y + CH / 2
       const hot = sel.has(s.id) || sel.has(n)
+      if (q.col <= a.col) {
+        // A wrapped step sits below and left of what it needs: the line comes down from that card's bottom to its top.
+        const sx = a.col * (cw + BGX) + cw / 2
+        const sy = a.row * (CH + gy) + CH
+        const ex = x + cw / 2
+        const ey = y - 3
+        edges.push({ d: `M${sx} ${sy} C${sx} ${sy + 16} ${ex} ${ey - 16} ${ex} ${ey}`, hot, ex, ey })
+        continue
+      }
+      const ax = a.col * (cw + BGX) + cw
+      const ay = a.row * (CH + gy) + CH / 2
+      const by = y + CH / 2
       edges.push({ d: ay === by ? `M${ax} ${ay} L${x - 3} ${by}` : `M${ax} ${ay} C${ax + 24} ${ay} ${x - 24} ${by} ${x - 3} ${by}`, hot, ex: x - 3, ey: by })
     }
   }
@@ -609,13 +626,13 @@ export function layoutBand(members: PStep[], sel: Set<string>, chainAll: boolean
   const memo: Record<string, number> = {}
   const chain = (id: string): number => (memo[id] ??= (members.find((x) => x.id === id)!.last || 0) + (place[id].lp.length ? Math.max(...place[id].lp.map(chain)) : 0))
   const est = members.length ? Math.max(...members.map((s) => chain(s.id))) : 0
-  return { place, edges, w: Math.max(1, cols) * (CW + BGX) - BGX, h: Math.max(1, occ.length) * (CH + BGY) - BGY, est }
+  return { place, edges, w: Math.max(1, cols) * (cw + BGX) - BGX, h: Math.max(1, occ.length) * (CH + gy) - gy, est }
 }
 
 const approxWidth = (t: string) => t.length * 6.7 + 16
 
 /** cardOf builds a card with the chips that fit; the rest collapse into +N. */
-function cardOf(s: PStep, q: Placed, bandOf: Record<string, number>, sel: Set<string>): Card {
+function cardOf(s: PStep, q: Placed, bandOf: Record<string, number>, sel: Set<string>, cw: number, gy: number): Card {
   const plainChip = (t: string): Chip => ({ t, fg: 'var(--text-2)', bc: 'var(--border)', bg: 'transparent' })
   const chips: Chip[] = []
   if (!s.validator) {
@@ -638,7 +655,8 @@ function cardOf(s: PStep, q: Placed, bandOf: Record<string, number>, sel: Set<st
   if (s.cache.length) chips.push(plainChip(`${s.cache.length} cache${s.cache.length > 1 ? 's' : ''}`))
   const secrets = s.env.filter((e) => e.secret).length
   if (secrets) chips.push(plainChip(`${secrets} secret${secrets > 1 ? 's' : ''}`))
-  const budget = 210
+  // Chips get what the name, image and timing leave: 210 px on a full-width card.
+  const budget = Math.max(60, cw - 150)
   const shown: Chip[] = []
   let used = 0
   chips.forEach((c, i) => {
@@ -655,8 +673,8 @@ function cardOf(s: PStep, q: Placed, bandOf: Record<string, number>, sel: Set<st
   }
   return {
     id: s.id,
-    x: q.col * (CW + BGX),
-    y: q.row * (CH + BGY),
+    x: q.col * (cw + BGX),
+    y: q.row * (CH + gy),
     image: s.image,
     cmd: s.run.length ? `$ ${s.run[0]}${s.run.length > 1 ? `  +${s.run.length - 1}` : ''}` : '',
     hasLast: s.last != null,
@@ -668,8 +686,8 @@ function cardOf(s: PStep, q: Placed, bandOf: Record<string, number>, sel: Set<st
   }
 }
 
-/** bands groups steps into stage bands: named stages and unnamed waves ordered by first wave, validators last. */
-export function bands(p: PModel, sel: Set<string>): Band[] {
+/** bands groups steps into stage bands: named stages and unnamed waves ordered by first wave, validators last. width is what a band's grid may take; when the natural layout of any band is wider, every band is fitted to it (WU-038). */
+export function bands(p: PModel, sel: Set<string>, width?: number): Band[] {
   const L = levels(p)
   const ord = ordered(plain(p), L)
   const bmap: Record<string, PStep[]> = {}
@@ -686,10 +704,21 @@ export function bands(p: PModel, sel: Set<string>): Band[] {
   })
   const bandOf: Record<string, number> = {}
   keys.forEach((k, i) => bmap[k].forEach((s) => (bandOf[s.id] = i)))
+  // Fit: when any band's natural layout is wider than the width given, every band takes the columns that fit
+  // at MIN_CW or more, cards sharing the width up to CW, so stages line up and nothing scrolls sideways.
+  const vals0 = validators(p)
+  const natural = Math.max(0, ...keys.map((k) => layoutBand(bmap[k], sel, false).w), vals0.length ? layoutBand(vals0, sel, true).w : 0)
+  const fit = { cols: Infinity, cw: CW, gy: BGY }
+  if (width && width > 0 && natural > width) {
+    fit.cols = Math.max(1, Math.floor((width + BGX) / (MIN_CW + BGX)))
+    fit.cw = Math.max(MIN_CW, Math.min(CW, Math.floor((width - (fit.cols - 1) * BGX) / fit.cols)))
+    fit.gy = WRAP_GY
+  }
+  const fitted = (members: PStep[], chainAll: boolean) => layoutBand(members, sel, chainAll, fit.cols, fit.cw)
   const out: Band[] = keys.map((k, i) => {
     const members = bmap[k]
     const hue = hueOf(i)
-    const lay = layoutBand(members, sel, false)
+    const lay = fitted(members, false)
     const after = Array.from(new Set(members.flatMap((s) => s.needs.filter((n) => bandOf[n] !== i && bandOf[n] != null).map((n) => bandOf[n] + 1)))).sort((a, b) => a - b)
     const named = k.startsWith('g:')
     return {
@@ -701,14 +730,15 @@ export function bands(p: PModel, sel: Set<string>): Band[] {
       hue,
       w: lay.w,
       h: lay.h,
+      cardW: fit.cw,
       edges: lay.edges,
-      cards: members.map((s) => cardOf(s, lay.place[s.id], bandOf, sel)),
+      cards: members.map((s) => cardOf(s, lay.place[s.id], bandOf, sel, fit.cw, fit.gy)),
       validators: false,
     }
   })
   const vals = validators(p)
   if (vals.length) {
-    const lay = layoutBand(vals, sel, true)
+    const lay = fitted(vals, true)
     out.push({
       key: 'validators',
       n: 'V',
@@ -718,8 +748,9 @@ export function bands(p: PModel, sel: Set<string>): Band[] {
       hue: VALIDATOR_HUE,
       w: lay.w,
       h: lay.h,
+      cardW: fit.cw,
       edges: lay.edges,
-      cards: vals.map((s) => cardOf(s, lay.place[s.id], bandOf, sel)),
+      cards: vals.map((s) => cardOf(s, lay.place[s.id], bandOf, sel, fit.cw, fit.gy)),
       validators: true,
     })
   }

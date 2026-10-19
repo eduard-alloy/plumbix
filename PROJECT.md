@@ -113,9 +113,10 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-032 | Images page, inspect layer: every referenced image with status and users; the shipped two with a version check and a build from embedded sources | F-002, F-004 | ✅ |
 | WU-033 | Images page, own images: a Dockerfile written on the page, built on the server, named in pipelines; edited, rebuilt when stale, deleted | F-002, F-004 | ✅ |
 | WU-034 | Reasoning effort for API reviewers: per profile and per validator step, sent as reasoning_effort, reasoning tokens in the usage | F-003, F-004 | ✅ |
-| WU-037 | The editor can make a validator external: an External switch, reviewer profiles filtered by step kind | F-004 | ✅ |
-| WU-036 | The pipeline editor keeps the file's text: edits applied to the served YAML with comments and formatting kept, byte-identical when unchanged | F-004 | ✅ |
 | WU-035 | Containerised Claude Code validator image: `plumbix-claude-code-validator` runs Claude Code inside the pipeline on a `claude setup-token` token, through the runner the loop uses; kind `claude-code-image` | F-003, F-004 | ✅ |
+| WU-036 | The pipeline editor keeps the file's text: edits applied to the served YAML with comments and formatting kept, byte-identical when unchanged | F-004 | ✅ |
+| WU-037 | The editor can make a validator external: an External switch, reviewer profiles filtered by step kind | F-004 | ✅ |
+| WU-038 | Stage cards fit the window width: columns follow the measured canvas, cards narrow to a minimum, chains wrap; no horizontal scroll | F-004 | ✅ |
 
 ## Milestone 2 candidates
 
