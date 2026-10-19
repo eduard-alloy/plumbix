@@ -1,14 +1,3 @@
-# Plumbix's own pipeline. Every change to this repository is validated by
-# Plumbix itself: four independent steps run in parallel, then two
-# validators judge the change against its intent. The deterministic
-# validator must approve; the AI review alone is never enough (A12).
-# The AI review is an external step (A26): a reviewer loop on the
-# owner's machine, plumbix review --watch, answers it with Claude Code.
-# The Go and npm steps keep their module, build and package caches between
-# runs (WU-029, A30), per repository and step, under the server's data
-# directory. ai-grok asks the grok-4 reviewer profile from inside the
-# pipeline and is advisory (WU-030, A31): its verdict is recorded beside
-# the Claude review for comparison and never counted.
 version: 1
 steps:
   - name: build
@@ -21,11 +10,11 @@ steps:
     cache: [/go/pkg/mod, /root/.cache/go-build]
   - name: lint
     image: golang:1.27
-    run: go vet ./... && test -z "$(gofmt -l .)"
+    run: "go vet ./... && test -z \"$(gofmt -l .)\""
     cache: [/go/pkg/mod, /root/.cache/go-build]
   - name: web
     image: node:24-alpine
-    run: cd web && npm ci --no-audit --no-fund && npm test -- --reporter=dot && npm run build
+    run: "cd web && npm ci --no-audit --no-fund && npm test -- --reporter=dot && npm run build"
     cache: [/root/.npm]
   - name: validate
     image: plumbix-reference-validator:dev
@@ -35,13 +24,14 @@ steps:
     validator: true
     external: true
     needs: [build, test, lint, web]
-    timeout: 30m
+    timeout: 30m0s
+    reviewer: claude-code-container
   - name: ai-grok
     image: plumbix-ai-validator:dev
     validator: true
+    needs: [build, test, lint, web]
     reviewer: grok-4
     advisory: true
     effort: medium
-    needs: [build, test, lint, web]
 stages:
   checks: [build, test, lint, web]
