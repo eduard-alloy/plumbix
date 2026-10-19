@@ -39,6 +39,25 @@ export interface Repo {
   created_at: string
 }
 
+/** RepoInput registers a repository (POST /repos). */
+export interface RepoInput {
+  host: Repo['host']
+  url: string
+  protected_branches?: string[]
+  merge_strategy?: Repo['merge_strategy']
+}
+
+/** RepoFolder is a local working tree and the registration it suggests (WU-041). */
+export interface RepoFolder {
+  path: string
+  remote: string
+  default_branch: string
+  has_pipeline: boolean
+  host: '' | Repo['host']
+  url: string
+  problem: string
+}
+
 export interface Criterion {
   id: string
   text: string

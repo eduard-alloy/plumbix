@@ -56,3 +56,4 @@
 | 2026-10-19 | WU-038 | ✅ | Stage cards fit the measured canvas: columns follow the width, cards narrow to 240 px, chains wrap with a dropping line, the inspector reflows the cards; checked by screenshot at 900 and 1280 px in both themes. WU-037's three review notes folded in. |
 | 2026-10-19 | WU-039 | ✅ | Container validators' logs end with the verdict notes like external steps; usage records cache reads and writes for Anthropic, OpenAI-compatible and Claude Code; the loop keeps the owner's local setup. |
 | 2026-10-19 | WU-040 | ✅ | Repositories page shows two-line cards instead of a table; A35 recorded for the three import modes that follow. |
+| 2026-10-19 | WU-041 | ✅ | Import panel on the Repositories page (local folder with a remote; clone a remote), inspect and clone routes inside the home directory, remote detection with SSH-to-HTTPS; WU-040's review notes folded in. |

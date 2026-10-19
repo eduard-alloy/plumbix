@@ -1,6 +1,6 @@
 // The API client. Every call goes to the same origin with the session
 // cookie; a 401 anywhere means the browser is not signed in.
-import type { PipelineFile, Alert, Change, Diff, Repo, RepoSettings, Run, SecretCheck, SettingsView, Reviewer, ReviewerInput, ImagesView, ImageBuild } from './model'
+import type { PipelineFile, Alert, Change, Diff, Repo, RepoFolder, RepoInput, RepoSettings, Run, SecretCheck, SettingsView, Reviewer, ReviewerInput, ImagesView, ImageBuild } from './model'
 
 export class ApiError extends Error {
   constructor(
@@ -100,6 +100,9 @@ export const api = {
   imageBuild: (id: string) => request<ImageBuild>('GET', `/api/v1/images/builds/${encodeURIComponent(id)}`),
   repoSettings: (id: string) => request<RepoSettings>('GET', `/api/v1/repos/${encodeURIComponent(id)}/settings`),
   updateRepoSettings: (id: string, guidance: string) => request<RepoSettings>('PUT', `/api/v1/repos/${encodeURIComponent(id)}/settings`, { guidance }),
+  registerRepo: (input: RepoInput) => request<Repo>('POST', '/api/v1/repos', input),
+  inspectFolder: (path: string) => request<RepoFolder>('POST', '/api/v1/repos/inspect', { path }),
+  cloneRepo: (id: string, dest: string) => request<{ path: string }>('POST', `/api/v1/repos/${encodeURIComponent(id)}/clone`, { dest }),
   setRepoToken: (id: string, value: string) => request<void>('PUT', `/api/v1/repos/${encodeURIComponent(id)}/token`, { value }),
   removeRepoToken: (id: string) => request<void>('DELETE', `/api/v1/repos/${encodeURIComponent(id)}/token`),
   checkRepoToken: (id: string) => request<SecretCheck>('POST', `/api/v1/repos/${encodeURIComponent(id)}/token/check`),

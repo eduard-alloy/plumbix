@@ -51,6 +51,7 @@ func (approvingRunner) Run(_ context.Context, job runner.Job) (runner.Result, er
 }
 
 type runAPI struct {
+	root string // the import root (WU-041)
 	*testAPI
 	repoID string
 	db     *store.DB
@@ -84,9 +85,10 @@ func newRunAPI(t *testing.T) *runAPI {
 	db.OnEvent(hub.Publish)
 	t.Cleanup(hub.Close)
 	docker := &fakeDockerImages{known: map[string]bool{}}
-	h := NewHandler(Deps{Version: "dev", Token: testToken, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub, Settings: settings.New(db), Secrets: sec, Hosts: host.Live(sec.Values),
+	root := t.TempDir()
+	h := NewHandler(Deps{ImportRoot: root, Version: "dev", Token: testToken, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub, Settings: settings.New(db), Secrets: sec, Hosts: host.Live(sec.Values),
 		Images: images.New(docker, "dev", filepath.Join(t.TempDir(), "images"))})
-	return &runAPI{testAPI: &testAPI{t: t, h: h}, repoID: repoID, db: db, repo: repo, hub: hub, docker: docker}
+	return &runAPI{testAPI: &testAPI{t: t, h: h}, repoID: repoID, db: db, repo: repo, hub: hub, docker: docker, root: root}
 }
 
 func TestRunStepsCarryRetriesAllowancesReasonsAndStages(t *testing.T) {

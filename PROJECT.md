@@ -119,6 +119,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-038 | Stage cards fit the window width: columns follow the measured canvas, cards narrow to a minimum, chains wrap; no horizontal scroll | F-004 | ✅ |
 | WU-039 | Verdict notes in every validator log; cached input tokens recorded in usage for all reviewers | F-003, F-004 | ✅ |
 | WU-040 | Repositories as two-line cards: name, host, changes and merge on top; URL, protected branches and token below | F-004 | ✅ |
+| WU-041 | Import a repository from the Repositories page: a local folder with a remote, or a remote cloned into a local folder, with a token choice and an access check | F-001, F-004 | ✅ |
 
 ## Milestone 2 candidates
 

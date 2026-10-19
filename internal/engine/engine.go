@@ -229,8 +229,18 @@ func (e *Engine) launch(key string, r run.Run, work func(context.Context) ([]run
 // mirror returns the repo's mirror, authenticated when the host has a token.
 func (e *Engine) mirror(repo change.Repo) (*gitops.Mirror, error) {
 	m := gitops.Open(filepath.Join(e.cfg.DataDir, mirrorsDir, repo.ID+".git"), repo.URL)
+	auth, err := e.auth(repo)
+	if err != nil || auth == nil {
+		return m, err
+	}
+	return m.WithAuth(*auth, e.askpass), nil
+}
+
+// auth is the repository's credentials (its own token, else the host's),
+// with the askpass script ready; nil when git needs none.
+func (e *Engine) auth(repo change.Repo) (*gitops.Auth, error) {
 	if e.cfg.Hosts == nil {
-		return m, nil
+		return nil, nil
 	}
 	h, err := e.cfg.Hosts.Hosts().For(repo)
 	if err != nil {
@@ -238,13 +248,31 @@ func (e *Engine) mirror(repo change.Repo) (*gitops.Mirror, error) {
 	}
 	auth, ok := h.Auth(repo)
 	if !ok {
-		return m, nil
+		return nil, nil
 	}
 	e.askOnce.Do(func() { e.askpass, e.askErr = gitops.EnsureAskpass(e.cfg.DataDir) })
 	if e.askErr != nil {
 		return nil, e.askErr
 	}
-	return m.WithAuth(auth, e.askpass), nil
+	return &auth, nil
+}
+
+// CloneRepo clones a registered repository into dest, a folder that does
+// not exist or is empty, with the repository's credentials (WU-041). The
+// caller has checked that dest may be written.
+func (e *Engine) CloneRepo(ctx context.Context, repoID, dest string) error {
+	repo, err := e.store.GetRepo(ctx, repoID)
+	if err != nil {
+		return err
+	}
+	auth, err := e.auth(repo)
+	if err != nil {
+		return err
+	}
+	if err := gitops.Clone(ctx, repo.URL, dest, auth, e.askpass); err != nil {
+		return fmt.Errorf("clone %s: %w", repo.URL, err)
+	}
+	return nil
 }
 
 // fetch updates the repo's mirror. Fetches of one repo never overlap.

@@ -1,7 +1,7 @@
 // A fake server for page tests: fetch answers from fixtures, EventSource is
 // a hand-driven stub. Tests mutate `db` and call `emit` to simulate change.
 import { vi } from 'vitest'
-import type { Alert, Change, Diff, PipelineFile, PlumbixEvent, Repo, Run, Reviewer, ReviewerProfile, ReviewerInput, SettingsView, SecretStatus, ImageInfo, ImageBuild } from '../model'
+import type { Alert, Change, Diff, PipelineFile, PlumbixEvent, Repo, Run, Reviewer, ReviewerProfile, ReviewerInput, SettingsView, SecretStatus, ImageInfo, ImageBuild, RepoFolder, RepoInput } from '../model'
 import * as fx from './fixtures'
 
 export interface FakeDB {
@@ -34,6 +34,9 @@ export interface FakeDB {
   /** proposals records every pipeline change the page posted. */
   proposals: { repo: string; branch: string; title: string; intent: string; content: string; target_branch?: string }[]
   proposeResult: 'ok' | 'branch_exists' | 'push_denied'
+  /** folders answers POST /repos/inspect by the path typed (WU-041); clones records POST /repos/{id}/clone. */
+  folders: Record<string, RepoFolder>
+  clones: Record<string, string>
 }
 
 const KNOWN_SECRETS = [
@@ -102,6 +105,8 @@ export function freshDB(): FakeDB {
     pipelines: structuredClone(fx.pipelineFiles),
     proposals: [],
     proposeResult: 'ok',
+    folders: {},
+    clones: {},
   }
 }
 
@@ -180,7 +185,26 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       db.signedIn = false
       return new Response(null, { status: 204 })
     }
+    if (path === '/api/v1/repos' && method === 'POST') {
+      const body = JSON.parse(String(init?.body)) as RepoInput
+      if (db.repos.some((r) => r.url === body.url)) return error(409, 'conflict', `conflict: repo ${body.url} is already registered`)
+      const repo: Repo = { id: `r_new${String(db.repos.length).padStart(9, '0')}`, host: body.host, url: body.url, protected_branches: body.protected_branches?.length ? body.protected_branches : ['main'], merge_strategy: body.merge_strategy ?? 'squash', created_at: new Date().toISOString() }
+      db.repos.push(repo)
+      return json(201, repo)
+    }
     if (path === '/api/v1/repos') return json(200, { repos: db.repos })
+    if (path === '/api/v1/repos/inspect' && method === 'POST') {
+      const { path: p } = JSON.parse(String(init?.body)) as { path: string }
+      const f = db.folders[p]
+      if (!f) return json(400, { error: { code: 'invalid_request', message: 'the path cannot be imported', details: { problems: [{ field: 'path', message: `${p} does not exist` }] } } })
+      return json(200, f)
+    }
+    const clone = path.match(/^\/api\/v1\/repos\/([^/]+)\/clone$/)
+    if (clone && method === 'POST') {
+      const { dest } = JSON.parse(String(init?.body)) as { dest: string }
+      db.clones[clone[1]] = dest
+      return json(200, { path: dest.replace(/^~/, '/Users/me') })
+    }
     if (path === '/api/v1/images' && method === 'GET') return json(200, { images: db.images, version: '9ffe6c6' })
     const imageBuild = path.match(/^\/api\/v1\/images\/([^/]+)\/build$/)
     if (imageBuild && method === 'POST') {

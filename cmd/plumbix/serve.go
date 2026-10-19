@@ -126,11 +126,22 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		Sessions: auth.NewSessions(db), Origin: "http://" + ln.Addr().String(),
 		Web:      web.Handler(web.Dist()),
 		Settings: prefs, Secrets: secretStore, Hosts: hosts,
-		Images: images.New(docker.Client(), version, filepath.Join(cfg.DataDir, "images")),
+		Images:     images.New(docker.Client(), version, filepath.Join(cfg.DataDir, "images")),
+		ImportRoot: importRoot(),
 	}
 	if err := api.Run(ctx, ln, api.NewHandler(deps), logger, config.DefaultShutdownTimeout); err != nil {
 		logger.Error("server stopped with error", "err", err)
 		return 1
 	}
 	return 0
+}
+
+// importRoot is the folder the Repositories page may read and clone into
+// (WU-041, A35): the server user's home directory, or none when unknown.
+func importRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
 }

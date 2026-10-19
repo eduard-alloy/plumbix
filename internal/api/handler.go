@@ -41,6 +41,10 @@ type Deps struct {
 	Hosts    host.Source
 	// Images enables the Images page's routes (WU-032); needs Engine and Changes.
 	Images *images.Service
+	// ImportRoot is the folder local paths must lie in for importing and
+	// cloning repositories (WU-041, A35): the server user's home directory.
+	// Empty leaves those routes out; they also need Engine.
+	ImportRoot string
 }
 
 // NewHandler returns the HTTP handler for the public API.
@@ -60,6 +64,9 @@ func NewHandler(d Deps) http.Handler {
 			registerRunRoutes(protected, &runHandlers{changeHandlers: ch, engine: d.Engine, runs: d.Runs})
 			registerPipelineRoutes(protected, &pipelineHandlers{svc: d.Changes, engine: d.Engine, runs: d.Runs, log: logger})
 			registerReviewRoutes(protected, &reviewHandlers{changeHandlers: ch})
+			if d.ImportRoot != "" {
+				registerImportRoutes(protected, &importHandlers{changeHandlers: ch, root: d.ImportRoot})
+			}
 			if d.Images != nil {
 				registerImageRoutes(protected, &imageHandlers{images: d.Images, svc: d.Changes, engine: d.Engine, log: logger})
 			}

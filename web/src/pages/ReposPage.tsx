@@ -1,11 +1,12 @@
-// Repositories: read-only in this release; registration happens in the CLI.
-// Each row can open its review guidance, the one thing set here.
+// Repositories: one card per repository, with its token and review guidance
+// (WU-040), and the import panel (WU-041) for bringing in another one.
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../api'
 import { agoLong, minutesBetween } from '../format'
 import type { Repo } from '../model'
 import { useStore } from '../store'
 import { repoName } from '../vm/changes'
+import { ImportPanel } from './ImportPanel'
 
 function GuidanceEditor({ repo }: { repo: Repo }) {
   const [text, setText] = useState<string | null>(null)
@@ -127,7 +128,8 @@ function TokenEditor({ repo, onChanged }: { repo: Repo; onChanged: (set: boolean
 }
 
 export function ReposPage() {
-  const { state } = useStore()
+  const { state, actions } = useStore()
+  const [importing, setImporting] = useState(false)
   const changes = Object.values(state.changes)
   const [open, setOpen] = useState<{ id: string; what: 'guidance' | 'token' } | null>(null)
   const [ownToken, setOwnToken] = useState<Record<string, boolean>>({})
@@ -151,12 +153,17 @@ export function ReposPage() {
         <div className="page-header">
           <h1>Repositories</h1>
           <span className="count mono">{state.loaded ? state.repos.length : ''}</span>
+          <span className="spacer" />
+          <button className={importing ? 'secondary small' : 'primary'} aria-expanded={importing} onClick={() => setImporting(!importing)}>
+            Import
+          </button>
         </div>
       </div>
+      {importing && <ImportPanel onImported={actions.reloadAll} />}
       {state.loaded && state.repos.length === 0 && (
         <div className="empty">
           <h2>No repositories yet</h2>
-          <p>In this release, repositories are registered from the terminal. They appear here as soon as you add one.</p>
+          <p>Import one from a local folder or clone a remote with the Import button, or register it from the terminal:</p>
           <pre>
             <span className="dim">$ </span>plumbix repo add --host github --url https://github.com/you/repo
           </pre>
@@ -204,7 +211,7 @@ export function ReposPage() {
             })}
           </ul>
           <p className="footnote">
-            Read-only. Register and edit repositories from the terminal with <span className="mono dim2">plumbix repo</span>.
+            Import a repository from a local folder or a remote with the Import button above, or with <span className="mono dim2">plumbix repo add</span> in the terminal.
           </p>
         </div>
       )}

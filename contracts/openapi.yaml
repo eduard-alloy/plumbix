@@ -494,6 +494,78 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /repos/inspect:
+    post:
+      operationId: inspectFolder
+      summary: Read a local folder's git metadata before importing it.
+      description: >
+        WU-041, A35. The path must resolve, symlinks included, inside the server user's home directory; ~ stands
+        for it. The folder must be a git working tree. Plumbix reads it through git only and changes nothing.
+        The suggested host and URL come from the folder's origin remote (else its first remote): GitHub and Azure
+        DevOps SSH remotes become their HTTPS form so a token applies. problem says why the remote cannot be
+        registered as it is.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [path]
+              properties:
+                path:
+                  type: string
+      responses:
+        "200":
+          description: The folder and the registration it suggests.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoFolder"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /repos/{id}/clone:
+    post:
+      operationId: cloneRepo
+      summary: Clone a registered repository into a local folder.
+      description: >
+        WU-041, A35. dest must resolve inside the server user's home directory, under an existing parent, and must
+        not exist or be empty. The clone uses the repository's own token or the host token through git's askpass,
+        never the URL or the arguments. Code clone_failed carries git's message when the remote refuses.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [dest]
+              properties:
+                dest:
+                  type: string
+      responses:
+        "200":
+          description: Where the clone is.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoClone"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Code clone_failed, the remote refused or could not be reached.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /repos/{id}/settings:
     get:
       operationId: getRepoSettings
@@ -1926,6 +1998,38 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SecretStatus"
+    RepoFolder:
+      type: object
+      additionalProperties: false
+      required: [path, remote, default_branch, has_pipeline, host, url, problem]
+      properties:
+        path:
+          description: The folder, resolved.
+          type: string
+        remote:
+          description: The remote's URL as the folder has it; empty without one.
+          type: string
+        default_branch:
+          type: string
+        has_pipeline:
+          description: Whether .plumbix/pipeline.yaml is in the folder's HEAD.
+          type: boolean
+        host:
+          description: The host to register with; empty when problem is set.
+          type: string
+          enum: ["", github, azuredevops, git]
+        url:
+          description: The URL to register; empty when problem is set.
+          type: string
+        problem:
+          type: string
+    RepoClone:
+      type: object
+      additionalProperties: false
+      required: [path]
+      properties:
+        path:
+          type: string
     ReviewerProfile:
       type: object
       additionalProperties: false
