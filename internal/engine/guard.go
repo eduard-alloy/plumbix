@@ -128,9 +128,9 @@ func (e *Engine) approveMerged(ctx context.Context, m *gitops.Mirror, repo chang
 
 // raiseUnrecorded tells a person that a merge's pipeline files were not
 // recorded as approved, so their runs on the target will get no secrets.
-func (e *Engine) raiseUnrecorded(ctx context.Context, repo change.Repo, changeID, branch string, cause error) {
+func (e *Engine) raiseUnrecorded(ctx context.Context, repo change.Repo, changeID, branch string) {
 	a := alert.Alert{Kind: alert.PipelineUnapproved, Key: repo.ID + ":merge:" + changeID, RepoID: repo.ID, CreatedAt: e.now().UTC(),
-		Message: fmt.Sprintf("Change %s merged into %s, but its pipeline files were not recorded as approved (%v): their runs on %s get no secrets until they are approved again.", changeID, branch, cause, branch),
+		Message: fmt.Sprintf("Change %s merged into %s, but its pipeline files were not recorded as approved: their runs on %s get no secrets until they are approved again. The server log has the cause.", changeID, branch, branch),
 		Details: map[string]any{"change_id": changeID, "branch": branch}}
 	if _, _, err := e.store.Raise(ctx, a); err != nil {
 		e.log.Warn("raise pipeline_unapproved alert", "repo", repo.ID, "change", changeID, "err", err)

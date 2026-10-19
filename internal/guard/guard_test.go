@@ -120,10 +120,10 @@ func TestIsPipelineFile(t *testing.T) {
 // TestOtherStepChangesAreNamed (WU-051 review): env, cache, needs and path
 // changes are reported per step, never hidden behind a generic line.
 func TestOtherStepChangesAreNamed(t *testing.T) {
-	before := "version: 1\nsteps:\n  - {name: a, image: x, run: x}\n  - {name: b, image: x, run: x, env: {URL: https://a}}\n"
-	after := "version: 1\nsteps:\n  - {name: a, image: x, run: x}\n  - {name: b, image: x, run: x, needs: [a], env: {URL: https://b}, cache: [/c], when: {paths: [\"s/**\"]}}\n"
+	before := "version: 1\nsteps:\n  - {name: a, image: x, run: x}\n  - {name: b, image: x, run: x, env: {URL: https://a}}\n  - {name: v, image: x, validator: true, needs: [a, b]}\n"
+	after := "version: 1\nsteps:\n  - {name: a, image: x, run: x}\n  - {name: b, image: x, run: x, needs: [a], env: {URL: https://b}, cache: [/c], when: {paths: [\"s/**\"]}}\n  - {name: v, image: x, validator: true, needs: [a, b], advisory: true, effort: low}\n"
 	got := messages(Review(Input{Files: []File{{Path: ".plumbix/pipeline.yaml", Before: []byte(before), After: []byte(after)}}}))
-	has(t, got, "env changed: b", "needs, caches or conditions changed: b")
+	has(t, got, "env changed: b", "needs, caches or conditions changed: b, v")
 	if strings.Contains(got, "formatting") {
 		t.Errorf("a real change was summarised as formatting:\n%s", got)
 	}

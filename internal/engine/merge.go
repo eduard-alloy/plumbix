@@ -86,7 +86,7 @@ func (e *Engine) Merge(ctx context.Context, changeID string) (change.Change, err
 		// The merge is on the host; without the record, runs of the new
 		// pipeline files on the target get no secrets until approved again.
 		e.log.Error("merged, but the pipeline files were not recorded as approved", "change", c.ID, "err", err)
-		e.raiseUnrecorded(ctx, repo, c.ID, c.TargetBranch, err)
+		e.raiseUnrecorded(ctx, repo, c.ID, c.TargetBranch)
 	}
 	if err := e.store.SetChangeState(ctx, c.ID, change.Approved, change.Merged, now); err != nil {
 		// The change was closed while the merge ran. The code is on the

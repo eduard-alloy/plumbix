@@ -158,7 +158,7 @@ func summary(after, before *pipeline.Pipeline) []string {
 				envChanged = append(envChanged, st.Name)
 			}
 			if !slices.Equal(old.Needs, st.Needs) || !slices.Equal(old.Cache, st.Cache) || !slices.Equal(old.OnlyPaths, st.OnlyPaths) ||
-				old.Validator != st.Validator || old.External != st.External || old.Reviewer != st.Reviewer {
+				old.Validator != st.Validator || old.External != st.External || old.Reviewer != st.Reviewer || old.Effort != st.Effort || old.Advisory != st.Advisory {
 				otherChanged = append(otherChanged, st.Name)
 			}
 		}
