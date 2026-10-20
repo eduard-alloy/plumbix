@@ -30,6 +30,7 @@ func TestImportPreviewEndpoint(t *testing.T) {
 			Steps    []struct {
 				Name   string `json:"name"`
 				Reason string `json:"reason"`
+				File   string `json:"file"`
 				Line   int    `json:"line"`
 			} `json:"steps"`
 		} `json:"pipelines"`
@@ -44,7 +45,7 @@ func TestImportPreviewEndpoint(t *testing.T) {
 		t.Fatalf("view = %+v", v)
 	}
 	p := v.Pipelines[0]
-	if p.Name != "azure-pipelines" || !p.Disabled || p.Blockers["task"] != 1 || len(p.Steps) != 2 || p.Steps[1].Reason != "task" || p.Steps[0].Line == 0 {
+	if p.Name != "azure-pipelines" || !p.Disabled || p.Blockers["task"] != 1 || len(p.Steps) != 2 || p.Steps[1].Reason != "task" || p.Steps[0].Line == 0 || p.Steps[0].File != "azure-pipelines.yml" {
 		t.Errorf("pipeline = %+v", p)
 	}
 	if len(v.Problems) != 1 || v.Problems[0].SourceFile != "azure-pipelines-broken.yml" {

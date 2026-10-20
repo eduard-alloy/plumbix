@@ -23,9 +23,33 @@ type Source interface {
 	Name() string
 	// Detect reports whether a repository file is one of its pipelines.
 	Detect(path string, content []byte) bool
-	// Convert turns one pipeline file into a Plumbix pipeline. Name and
-	// File of the result are set by Preview.
-	Convert(path string, content []byte) (Converted, error)
+	// Convert turns one pipeline file into a Plumbix pipeline, reading
+	// templates through look. Name and File of the result are set by Preview.
+	Convert(path string, content []byte, look Lookup) (Converted, error)
+}
+
+// Lookup is what a source may read beside the file it converts (WU-047).
+type Lookup struct {
+	// Files are the repository's YAML files at the previewed commit.
+	Files map[string][]byte
+	// Repos returns another repository's YAML files; nil when no other
+	// repository can be read.
+	Repos func(RepoRef) (Tree, error)
+}
+
+// RepoRef names another repository the way the source system does.
+type RepoRef struct {
+	Kind string // the source system's repository type, such as git or github
+	Name string // such as Project/repo or owner/repo
+	Ref  string // a branch or ref; empty for the repository's default
+}
+
+// Tree is another repository's YAML files at one commit.
+type Tree struct {
+	Files map[string][]byte
+	// Label names the repository and commit for notes, such as
+	// orders-infra at 1a2b3c4.
+	Label string
 }
 
 // Converted is one source pipeline as a Plumbix pipeline.
@@ -45,7 +69,10 @@ type Step struct {
 	Name   string
 	Reason string // empty when the step runs
 	Note   string
-	Line   int
+	// File and Line say where the source job is defined: the pipeline file,
+	// or a template (path@alias for another repository's).
+	File string
+	Line int
 }
 
 // Problem is a source file that could not be converted.
@@ -60,10 +87,11 @@ type Result struct {
 	Problems  []Problem
 }
 
-// Preview converts every file src detects, in path order, naming each
-// pipeline after its file and keeping names unique. A conversion that fails,
-// or produces a file Plumbix cannot parse, is a problem.
-func Preview(src Source, files map[string][]byte) Result {
+// Preview converts every file of look src detects, in path order, naming
+// each pipeline after its file and keeping names unique. A conversion that
+// fails, or produces a file Plumbix cannot parse, is a problem.
+func Preview(src Source, look Lookup) Result {
+	files := look.Files
 	paths := make([]string, 0, len(files))
 	for p := range files {
 		paths = append(paths, p)
@@ -75,7 +103,7 @@ func Preview(src Source, files map[string][]byte) Result {
 		if strings.HasPrefix(p, ".plumbix/") || !src.Detect(p, files[p]) {
 			continue
 		}
-		c, err := src.Convert(p, files[p])
+		c, err := src.Convert(p, files[p], look)
 		if err != nil {
 			r.Problems = append(r.Problems, Problem{SourceFile: p, Message: err.Error()})
 			continue

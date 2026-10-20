@@ -37,6 +37,7 @@ type importedStep struct {
 	Name   string `json:"name"`
 	Reason string `json:"reason,omitempty"`
 	Note   string `json:"note,omitempty"`
+	File   string `json:"file"`
 	Line   int    `json:"line"`
 }
 
@@ -84,7 +85,7 @@ func (h *pipelineHandlers) importPreview(w http.ResponseWriter, r *http.Request)
 			one.Disabled, one.Blockers = p.Disabled(), p.Blockers()
 		}
 		for _, s := range c.Steps {
-			one.Steps = append(one.Steps, importedStep{Name: s.Name, Reason: s.Reason, Note: s.Note, Line: s.Line})
+			one.Steps = append(one.Steps, importedStep{Name: s.Name, Reason: s.Reason, Note: s.Note, File: s.File, Line: s.Line})
 		}
 		out.Pipelines = append(out.Pipelines, one)
 	}

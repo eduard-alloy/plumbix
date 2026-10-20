@@ -2623,7 +2623,7 @@ components:
                 items:
                   type: object
                   additionalProperties: false
-                  required: [name, line]
+                  required: [name, file, line]
                   properties:
                     name:
                       type: string
@@ -2632,8 +2632,11 @@ components:
                       type: string
                     note:
                       type: string
+                    file:
+                      description: The file defining the source job, the pipeline file or a template (path@alias for another repository's, WU-047).
+                      type: string
                     line:
-                      description: The source job's line.
+                      description: The source job's line in that file.
                       type: integer
               notes:
                 description: What did not carry over, such as dropped excludes or the pr trigger.

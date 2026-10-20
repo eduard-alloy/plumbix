@@ -29,8 +29,8 @@ var _ importer.Source = Source{}
 // Name implements importer.Source.
 func (Source) Name() string { return "azure" }
 
-// Detect implements importer.Source: a YAML file with stages, jobs or steps
-// at the top and a trigger, pool, container, resources or schedule beside
+// Detect implements importer.Source: a YAML file with stages, jobs, steps or
+// extends at the top and a trigger, pool, container, resources or schedule beside
 // them; templates (under a templates folder, or without any of those) are
 // not pipelines of their own.
 func (Source) Detect(p string, content []byte) bool {
@@ -42,7 +42,7 @@ func (Source) Detect(p string, content []byte) bool {
 		return strings.HasPrefix(path.Base(p), "azure-pipelines")
 	}
 	root := doc.Content[0]
-	body := get(root, "stages") != nil || get(root, "jobs") != nil || get(root, "steps") != nil
+	body := get(root, "stages") != nil || get(root, "jobs") != nil || get(root, "steps") != nil || get(root, "extends") != nil
 	// A template runs only inside another pipeline: it lives under a
 	// templates folder, or has nothing that starts or places a run.
 	if slices.Contains(strings.Split(path.Dir(p), "/"), "templates") {
@@ -80,6 +80,10 @@ type conv struct {
 	summaries  []importer.Step
 	stages     []stageOut
 	taken      map[string]bool // step names handed out so far
+	x          *expander
+	// varTemplates are variable templates that could not be read; a $(name)
+	// may come from them.
+	varTemplates []string
 }
 
 type stageOut struct {
@@ -87,8 +91,10 @@ type stageOut struct {
 	steps []string
 }
 
-// Convert implements importer.Source.
-func (Source) Convert(file string, content []byte) (importer.Converted, error) {
+// Convert implements importer.Source. Templates are inlined and ${{ }}
+// expressions evaluated first (WU-047); if the root's own expressions
+// cannot be, it is converted as written.
+func (Source) Convert(file string, content []byte, look importer.Lookup) (importer.Converted, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(content, &doc); err != nil {
 		return importer.Converted{}, fmt.Errorf("not valid YAML: %v", err)
@@ -96,8 +102,16 @@ func (Source) Convert(file string, content []byte) (importer.Converted, error) {
 	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
 		return importer.Converted{}, fmt.Errorf("not an Azure pipeline: the top level is not a mapping")
 	}
-	root := doc.Content[0]
-	c := &conv{file: file, vars: map[string]string{}, containers: map[string]string{}, taken: map[string]bool{}}
+	orig := doc.Content[0]
+	c := &conv{file: file, vars: map[string]string{}, containers: map[string]string{}, taken: map[string]bool{}, x: newExpander(look, file, orig)}
+	on := c.triggers(orig)
+	root := orig
+	rs := &scope{params: c.rootParams(get(orig, "parameters")), vars: inlineVars(get(orig, "variables"))}
+	if exp, err := c.x.expandRoot(orig, rs); err != nil {
+		c.notes = append(c.notes, "template expressions not expanded: "+err.Error())
+	} else {
+		root = exp
+	}
 	if res := get(root, "resources"); res != nil {
 		for _, ct := range items(get(res, "containers")) {
 			if alias, image := scalar(get(ct, "container")), scalar(get(ct, "image")); alias != "" && image != "" {
@@ -106,9 +120,12 @@ func (Source) Convert(file string, content []byte) (importer.Converted, error) {
 		}
 	}
 	c.readVariables(get(root, "variables"), c.vars)
-	on := c.triggers(root)
 
 	switch {
+	case root == orig && get(root, "extends") != nil:
+		tpl := firstOf(get(root, "extends"), "template")
+		c.add(outStep{Name: c.unique(importer.Slug(templateName(tpl), "template")),
+			Disabled: &outDisabled{Reason: "template", Note: "extends template " + tpl}}, get(root, "extends"), "template", "extends template "+tpl)
 	case get(root, "stages") != nil:
 		c.convertStages(root)
 	case get(root, "jobs") != nil:
@@ -119,6 +136,7 @@ func (Source) Convert(file string, content []byte) (importer.Converted, error) {
 	if len(c.steps) == 0 {
 		return importer.Converted{}, fmt.Errorf("no jobs found")
 	}
+	c.notes = append(c.notes, c.x.repoNotes()...)
 	for _, g := range c.groups {
 		c.notes = append(c.notes, fmt.Sprintf("variable group %s: its values are not imported; steps that may use them are disabled (secrets)", g))
 	}
@@ -200,14 +218,65 @@ func (c *conv) triggers(root *yaml.Node) outOn {
 	if get(root, "schedules") != nil {
 		c.off = append(c.off, "schedules")
 	}
-	if ps := items(get(root, "parameters")); len(ps) > 0 {
-		var names []string
-		for _, p := range ps {
-			names = append(names, scalar(get(p, "name")))
-		}
-		c.off = append(c.off, "manual parameters: "+strings.Join(names, ", "))
-	}
 	return on
+}
+
+// rootParams returns the run-time parameters' defaults (WU-047): a run of
+// the imported pipeline always uses them. One without a default disables
+// the pipeline.
+func (c *conv) rootParams(decl *yaml.Node) map[string]any {
+	out := map[string]any{}
+	var none, defaults []string
+	for _, p := range items(decl) {
+		name, def := scalar(get(p, "name")), get(p, "default")
+		if def == nil {
+			none = append(none, name)
+			continue
+		}
+		v, err := paramValue(name, strings.ToLower(scalar(get(p, "type"))), def)
+		if err != nil {
+			none = append(none, name)
+			continue
+		}
+		out[name] = v
+		if str, err := toString(v); err == nil {
+			defaults = append(defaults, name+"="+str)
+		} else {
+			defaults = append(defaults, name)
+		}
+	}
+	if len(none) > 0 {
+		c.off = append(c.off, "manual parameters without a default: "+strings.Join(none, ", "))
+	}
+	if len(defaults) > 0 {
+		c.notes = append(c.notes, "run-time parameters take their defaults, as every run of the imported pipeline will: "+strings.Join(defaults, ", "))
+	}
+	return out
+}
+
+// inlineVars are the root's inline variables, which ${{ variables.x }}
+// can read.
+func inlineVars(n *yaml.Node) map[string]string {
+	out := map[string]string{}
+	if n != nil && n.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			out[n.Content[i].Value] = n.Content[i+1].Value
+		}
+	}
+	for _, v := range items(n) {
+		if name := scalar(get(v, "name")); name != "" {
+			out[name] = scalar(get(v, "value"))
+		}
+	}
+	return out
+}
+
+// failure says why a template reference was not inlined, if it was tried.
+func (c *conv) failure(n *yaml.Node) string {
+	if msg, ok := c.x.failed[n]; ok {
+		return " not inlined: " + msg
+	}
+	return ""
 }
 
 func mapBranches(in []string) []string {
@@ -258,7 +327,11 @@ func (c *conv) readVariables(n *yaml.Node, vars map[string]string) {
 		case get(v, "name") != nil:
 			vars[scalar(get(v, "name"))] = scalar(get(v, "value"))
 		case get(v, "template") != nil:
-			c.notes = append(c.notes, "variable template "+scalar(get(v, "template"))+" not read")
+			tpl := scalar(get(v, "template"))
+			if !slices.Contains(c.varTemplates, tpl) {
+				c.varTemplates = append(c.varTemplates, tpl)
+				c.notes = append(c.notes, "variable template "+tpl+cmpOr(c.failure(v), " not read"))
+			}
 		}
 	}
 }
@@ -267,11 +340,13 @@ func (c *conv) readVariables(n *yaml.Node, vars map[string]string) {
 // one unless dependsOn says otherwise.
 func (c *conv) convertStages(root *yaml.Node) {
 	byStage := map[string][]string{}
+	stageTaken := map[string]bool{}
 	prev := ""
 	for _, s := range items(get(root, "stages")) {
 		if tpl := scalar(get(s, "template")); tpl != "" {
-			name := importer.Slug(strings.TrimSuffix(path.Base(strings.Split(tpl, "@")[0]), path.Ext(tpl)), "template")
-			c.add(outStep{Name: c.unique(name), Disabled: &outDisabled{Reason: "template", Note: "stage template " + tpl}}, s, "template", "stage template "+tpl)
+			name := importer.Slug(templateName(tpl), "template")
+			note := "stage template " + tpl + c.failure(s)
+			c.add(outStep{Name: c.unique(name), Disabled: &outDisabled{Reason: "template", Note: clip(note)}}, s, "template", note)
 			continue
 		}
 		name := scalar(get(s, "stage"))
@@ -289,13 +364,18 @@ func (c *conv) convertStages(root *yaml.Node) {
 			needs = append(needs, byStage[d]...)
 		}
 		before := len(c.steps)
-		c.convertJobs(importer.Slug(name, "stage"), items(get(s, "jobs")), root, s, needs)
+		slug := importer.Slug(name, "stage")
+		for i := 2; stageTaken[slug]; i++ {
+			slug = fmt.Sprintf("%s-%d", importer.Slug(name, "stage"), i)
+		}
+		stageTaken[slug] = true
+		c.convertJobs(slug, items(get(s, "jobs")), root, s, needs)
 		var names []string
 		for _, st := range c.steps[before:] {
 			names = append(names, st.Name)
 		}
 		byStage[name] = names
-		c.stages = append(c.stages, stageOut{name: importer.Slug(name, "stage"), steps: names})
+		c.stages = append(c.stages, stageOut{name: slug, steps: names})
 		prev = name
 	}
 }
@@ -354,9 +434,16 @@ func jobKey(j *yaml.Node) string {
 		}
 	}
 	if tpl := scalar(get(j, "template")); tpl != "" {
-		return strings.TrimSuffix(path.Base(strings.Split(tpl, "@")[0]), path.Ext(strings.Split(tpl, "@")[0]))
+		return templateName(tpl)
 	}
 	return "build"
+}
+
+// templateName is a template reference's file name without folder,
+// extension or @alias.
+func templateName(tpl string) string {
+	p, _, _ := strings.Cut(tpl, "@")
+	return strings.TrimSuffix(path.Base(p), path.Ext(p))
 }
 
 // job converts one job, or one matrix entry of it, into a step.
@@ -379,7 +466,7 @@ func (c *conv) job(name string, j, root, stageNode *yaml.Node, needs []string, e
 	}
 
 	if tpl := scalar(get(j, "template")); tpl != "" {
-		note("template", "job template "+tpl)
+		note("template", "job template "+tpl+c.failure(j))
 	}
 	if get(j, "deployment") != nil {
 		env := scalar(get(j, "environment"))
@@ -451,6 +538,10 @@ func (c *conv) job(name string, j, root, stageNode *yaml.Node, needs []string, e
 			switch {
 			case workspaceVars[v]:
 				return "/workspace"
+			case strings.Contains(vars[v], "$["):
+				// set by a runtime expression: not known at import
+				unresolved = append(unresolved, v)
+				return m
 			case hasKey(vars, v):
 				if asEnv || !envNameRe.MatchString(v) || strings.HasPrefix(v, "PLUMBIX_") {
 					if asEnv {
@@ -461,7 +552,7 @@ func (c *conv) job(name string, j, root, stageNode *yaml.Node, needs []string, e
 				}
 				st.Env[v] = vars[v]
 				return "${" + v + "}"
-			case strings.Contains(v, "."), len(c.groups) > 0:
+			case strings.Contains(v, "."), len(c.groups) > 0, len(c.varTemplates) > 0:
 				unresolved = append(unresolved, v)
 				return m
 			}
@@ -499,7 +590,7 @@ func (c *conv) job(name string, j, root, stageNode *yaml.Node, needs []string, e
 		case get(s, "task") != nil:
 			note("task", scalar(get(s, "task")))
 		case get(s, "template") != nil:
-			note("template", "step template "+scalar(get(s, "template")))
+			note("template", "step template "+scalar(get(s, "template"))+c.failure(s))
 		default:
 			key := "a step"
 			if len(s.Content) > 0 {
@@ -521,9 +612,12 @@ func (c *conv) job(name string, j, root, stageNode *yaml.Node, needs []string, e
 	}
 	sort.Strings(unresolved)
 	for _, v := range slices.Compact(unresolved) {
-		if len(c.groups) > 0 && !strings.Contains(v, ".") {
+		switch {
+		case len(c.groups) > 0 && !strings.Contains(v, "."):
 			note("secrets", "$("+v+") may come from variable group "+strings.Join(c.groups, ", "))
-		} else {
+		case len(c.varTemplates) > 0 && !strings.Contains(v, "."):
+			note("variables", "$("+v+") may come from variable template "+strings.Join(c.varTemplates, ", "))
+		default:
 			note("variables", "$("+v+")")
 		}
 	}
@@ -557,9 +651,13 @@ func (c *conv) job(name string, j, root, stageNode *yaml.Node, needs []string, e
 func (c *conv) add(st outStep, n *yaml.Node, reason, note string) {
 	raw, _ := yaml.Marshal(n)
 	sum := sha256.Sum256(raw)
-	st.Source = outSource{File: c.file, Line: n.Line, Hash: hex.EncodeToString(sum[:])}
+	file := c.file
+	if o, ok := c.x.origin[n]; ok {
+		file = o
+	}
+	st.Source = outSource{File: file, Line: n.Line, Hash: hex.EncodeToString(sum[:])}
 	c.steps = append(c.steps, st)
-	c.summaries = append(c.summaries, importer.Step{Name: st.Name, Reason: reason, Note: note, Line: n.Line})
+	c.summaries = append(c.summaries, importer.Step{Name: st.Name, Reason: reason, Note: note, File: file, Line: n.Line})
 }
 
 // unique returns name, or name-2, name-3 when taken, and reserves it.

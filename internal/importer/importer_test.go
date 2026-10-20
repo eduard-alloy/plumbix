@@ -23,7 +23,7 @@ type fakeSource struct{}
 
 func (fakeSource) Name() string                      { return "fake" }
 func (fakeSource) Detect(path string, _ []byte) bool { return strings.HasSuffix(path, ".yml") }
-func (fakeSource) Convert(path string, src []byte) (Converted, error) {
+func (fakeSource) Convert(path string, src []byte, _ Lookup) (Converted, error) {
 	if string(src) == "bad" {
 		return Converted{}, errString("cannot read it")
 	}
@@ -37,12 +37,12 @@ func (e errString) Error() string { return string(e) }
 // TestPreviewNamesSortsAndChecks (WU-046): names are unique, files sorted,
 // failures become problems, and every pipeline is checked to parse.
 func TestPreviewNamesSortsAndChecks(t *testing.T) {
-	r := Preview(fakeSource{}, map[string][]byte{
+	r := Preview(fakeSource{}, Lookup{Files: map[string][]byte{
 		"b/ci.yml":  []byte("ok"),
 		"a/ci.yml":  []byte("ok"),
 		"bad.yml":   []byte("bad"),
 		"notes.txt": []byte("ok"),
-	})
+	}})
 	var names []string
 	for _, p := range r.Pipelines {
 		names = append(names, p.Name+"="+p.SourceFile+"->"+p.File)

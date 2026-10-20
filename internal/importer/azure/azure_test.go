@@ -17,7 +17,7 @@ func convert(t *testing.T, name string) (importer.Converted, *pipeline.Pipeline)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := Source{}.Convert("pipelines/"+name, src)
+	c, err := Source{}.Convert("pipelines/"+name, src, importer.Lookup{Files: map[string][]byte{"pipelines/" + name: src}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,13 +108,16 @@ func TestCIPipeline(t *testing.T) {
 	}
 }
 
-// TestDeployPipeline (WU-046): tags and parameters disable the pipeline;
-// checkout of another repository, deployment jobs, templates and variable
-// groups disable their steps.
+// TestDeployPipeline (WU-046): tags disable the pipeline, and a parameter
+// with a default is noted (WU-047); checkout of another repository,
+// deployment jobs, templates and variable groups disable their steps.
 func TestDeployPipeline(t *testing.T) {
 	c, p := convert(t, "deploy.yml")
-	if p.Off == nil || p.Off.Reason != "trigger" || !strings.Contains(p.Off.Note, "tags") || !strings.Contains(p.Off.Note, "parameters") {
+	if p.Off == nil || p.Off.Reason != "trigger" || !strings.Contains(p.Off.Note, "tags") || strings.Contains(p.Off.Note, "parameters") {
 		t.Errorf("pipeline off = %+v", p.Off)
+	}
+	if !strings.Contains(strings.Join(c.Notes, "\n"), "target=test") {
+		t.Errorf("notes = %v", c.Notes)
 	}
 	if p.On.Push != nil || !p.On.Manual {
 		t.Errorf("on = %+v; a tag-only trigger has no branch push", p.On)
@@ -170,7 +173,7 @@ func TestDetect(t *testing.T) {
 // as they are handed out, not only once steps exist.
 func TestJobsWithTheSameSlugGetUniqueNames(t *testing.T) {
 	src := "trigger: none\njobs:\n  - job: Build_App\n    container: x\n    steps:\n      - script: a\n  - job: build-app\n    container: x\n    steps:\n      - script: b\n"
-	c, err := Source{}.Convert("p.yml", []byte(src))
+	c, err := Source{}.Convert("p.yml", []byte(src), importer.Lookup{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +190,7 @@ func TestJobsWithTheSameSlugGetUniqueNames(t *testing.T) {
 // jobs with one name, still give one step each.
 func TestRepeatedJobKeys(t *testing.T) {
 	src := "trigger: none\njobs:\n  - template: jobs/notify.yml\n  - template: jobs/notify.yml\n"
-	c, err := Source{}.Convert("p.yml", []byte(src))
+	c, err := Source{}.Convert("p.yml", []byte(src), importer.Lookup{})
 	if err != nil {
 		t.Fatal(err)
 	}
