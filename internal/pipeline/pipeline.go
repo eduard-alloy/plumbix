@@ -31,8 +31,11 @@ type Pipeline struct {
 	// change pipeline, which changes and pushes start.
 	On *Triggers
 	// Off disables the whole pipeline (WU-045), beside any disabled step.
-	Off   *Disabled
-	order []string
+	Off *Disabled
+	// Imported says which source pipeline an import made this one from
+	// (WU-048); nil for a pipeline a person wrote.
+	Imported *Imported
+	order    []string
 }
 
 // Stage is a named group of steps, for display and run evidence.
@@ -94,6 +97,18 @@ type Source struct {
 	File string
 	Line int
 	Hash string // SHA-256 of the source job, hex
+	// Written is a SHA-256 of the step as the import wrote it, without its
+	// source (WU-048); a step that no longer matches was edited by a person.
+	Written string
+}
+
+// Imported is an imported pipeline's origin (WU-048).
+type Imported struct {
+	System string // the CI system, such as azure
+	File   string // the source pipeline file
+	// Written is a SHA-256 of the pipeline's own fields as the import wrote
+	// them: everything except steps, stages and source.
+	Written string
 }
 
 // Script turns a list of commands into one shell script that stops at the
@@ -202,6 +217,12 @@ func parse(src []byte, triggered bool) (*Pipeline, error) {
 				continue
 			}
 			p.Off = ps.disabled("disabled", val, PipelineReasons)
+		case "source":
+			if !triggered {
+				ps.add("source", key.Line, "is only for pipelines under .plumbix/pipelines/: the import writes it there")
+				continue
+			}
+			p.Imported = ps.imported(val)
 		default:
 			ps.add(key.Value, key.Line, "unknown field")
 		}

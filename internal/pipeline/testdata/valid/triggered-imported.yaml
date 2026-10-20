@@ -3,13 +3,14 @@ on:
   push:
     branches: [main]
   manual: true
+source: {system: azure, file: pipelines/ci.yml, written: 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0}
 steps:
   - name: build-api
     image: golang:1.27
     run:
       - "# Build"
       - go build ./...
-    source: {file: pipelines/ci.yml, line: 14, hash: 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0}
+    source: {file: pipelines/ci.yml, line: 14, hash: 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0, written: 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0}
   - name: publish
     needs: [build-api]
     disabled: {reason: variables, note: "$(Build.BuildId)"}

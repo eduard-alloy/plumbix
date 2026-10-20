@@ -741,7 +741,9 @@ paths:
         protected branch), finds the source system's pipelines and converts
         each into a triggered pipeline under .plumbix/pipelines/. Every job is
         kept; what Plumbix cannot run yet is disabled with a reason, and a
-        pipeline with any disabled step is disabled. Nothing is written.
+        pipeline with any disabled step is disabled. files is the plan over
+        the imported pipelines already on the branch (WU-048), what POST
+        /repos/{id}/import/changes would commit. Nothing is written.
       parameters:
         - $ref: "#/components/parameters/RepoID"
         - name: source
@@ -767,6 +769,63 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /repos/{id}/import/changes:
+    post:
+      operationId: proposePipelineImport
+      summary: Import or re-check a CI system's pipelines as a change (WU-048).
+      description: >
+        Plans the import at the head of the target branch (default: the first
+        protected branch) over the imported pipelines already there: new
+        source pipelines are added; what the import wrote and nobody edited is
+        replaced by the new conversion; steps and pipeline fields a person
+        edited, and steps a person added, are kept; a gone source pipeline's
+        file is removed when untouched. Every added, updated and removed file
+        is committed in one commit on a new branch (default
+        plumbix/import-<head>), pushed with the repository's credentials
+        without forcing, and opened as a change whose intent lists the plan.
+        Because it edits .plumbix/, the change ends in needs_human.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [source]
+              properties:
+                source:
+                  type: string
+                  enum: [azure]
+                target_branch:
+                  type: string
+                branch:
+                  description: The new branch; default plumbix/import-<first 12 characters of the target head>.
+                  type: string
+                title:
+                  description: Default "Import pipelines from <system>", or "Re-check pipelines imported from <system>" when any file was imported before.
+                  type: string
+                  maxLength: 200
+      responses:
+        "201":
+          description: The change that was opened, and the plan it commits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportChange"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Codes up_to_date (the import would write nothing), branch_exists (the host already has the branch) and push_denied (the host refused the credentials; set a token for the repository).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /repos/{id}/pipelines/{name}/runs:
     post:
       operationId: runTriggeredPipeline
@@ -2586,7 +2645,7 @@ components:
     ImportPreview:
       type: object
       additionalProperties: false
-      required: [branch, sha, source, pipelines, problems]
+      required: [branch, sha, source, pipelines, problems, files]
       properties:
         branch:
           type: string
@@ -2594,6 +2653,11 @@ components:
           type: string
         source:
           type: string
+        files:
+          description: The plan over the imported pipelines already on the branch (WU-048).
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportFile"
         pipelines:
           type: array
           items:
@@ -2654,6 +2718,42 @@ components:
                 type: string
               message:
                 type: string
+    ImportFile:
+      description: One pipeline file of an import plan (WU-048).
+      type: object
+      additionalProperties: false
+      required: [path, source_file, status, notes]
+      properties:
+        path:
+          type: string
+        source_file:
+          type: string
+        status:
+          description: >
+            added (a new source pipeline), updated, removed (its source
+            pipeline is gone and nobody edited the file), unchanged, or kept
+            (left as it is; the notes say why).
+          type: string
+          enum: [added, updated, removed, unchanged, kept]
+        content:
+          description: The file as it would be written; only for added and updated.
+          type: string
+        notes:
+          description: What changed and what was kept, per step and for the pipeline's own fields.
+          type: array
+          items:
+            type: string
+    ImportChange:
+      type: object
+      additionalProperties: false
+      required: [change, files]
+      properties:
+        change:
+          $ref: "#/components/schemas/Change"
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportFile"
     TriggeredPipelines:
       type: object
       additionalProperties: false

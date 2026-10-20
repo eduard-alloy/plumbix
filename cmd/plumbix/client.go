@@ -269,24 +269,32 @@ func runPipeline(args []string, stdout, stderr io.Writer) int {
 	return usageError(stderr, "usage: plumbix pipeline list <repo-id> [--branch <b>] | plumbix pipeline run <repo-id> <name> [--branch <b>]")
 }
 
-// runImport handles "plumbix import preview" (WU-046): what importing a
-// repository's CI pipelines would write.
+// runImport handles "plumbix import preview|submit" (WU-046, WU-048): what
+// importing a repository's CI pipelines would write, and the change that
+// writes it.
 func runImport(args []string, stdout, stderr io.Writer) int {
 	c := newClientCmd("import", stdout, stderr)
-	branch := c.fs.String("branch", "", "branch head to read (default: the first protected branch)")
+	branch := c.fs.String("branch", "", "preview: branch head to read (default: the first protected branch)")
+	target := c.fs.String("target", "", "submit: branch to read and build on (default: the first protected branch)")
+	newBranch := c.fs.String("new-branch", "", "submit: the branch to push (default: plumbix/import-<head>)")
+	title := c.fs.String("title", "", "submit: the change title")
 	source := c.fs.String("source", "azure", "the CI system to import from")
 	pos, ok := c.parse(args)
 	if !ok {
 		return 2
 	}
-	if len(pos) == 2 && pos[0] == "preview" {
+	switch {
+	case len(pos) == 2 && pos[0] == "preview":
 		q := url.Values{"source": {*source}}
 		if *branch != "" {
 			q.Set("branch", *branch)
 		}
 		return c.call(http.MethodGet, "/api/v1/repos/"+url.PathEscape(pos[1])+"/import?"+q.Encode(), nil)
+	case len(pos) == 2 && pos[0] == "submit":
+		body, _ := json.Marshal(map[string]string{"source": *source, "target_branch": *target, "branch": *newBranch, "title": *title})
+		return c.call(http.MethodPost, "/api/v1/repos/"+url.PathEscape(pos[1])+"/import/changes", body)
 	}
-	return usageError(stderr, "usage: plumbix import preview <repo-id> [--branch <b>] [--source azure]")
+	return usageError(stderr, "usage: plumbix import preview <repo-id> [--branch <b>] [--source azure] | plumbix import submit <repo-id> [--target <b>] [--new-branch <b>] [--title <t>] [--source azure]")
 }
 
 // runAlert handles "plumbix alert list|resolve".

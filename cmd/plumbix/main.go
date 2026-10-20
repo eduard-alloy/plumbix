@@ -23,7 +23,8 @@ commands:
                         read, close, revalidate or merge changes
   run show|log          read a run, or a step's log
   pipeline list|run     list a repo's triggered pipelines, or run one by hand
-  import preview        show what importing a repo's Azure pipelines would write
+  import preview|submit show what importing a repo's Azure pipelines would write,
+                        or open the change that writes it
   alert list|resolve    bypass commits and token warnings
   events                follow the event stream as JSON lines
   review --watch|--once answer external reviews with Claude Code on this machine

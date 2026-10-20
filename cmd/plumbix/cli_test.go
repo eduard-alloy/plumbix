@@ -282,6 +282,7 @@ func TestCLIUsageErrors(t *testing.T) {
 		{"pipeline", "list"},
 		{"import"},
 		{"import", "preview"},
+		{"import", "submit"},
 	} {
 		if code, _, _ := c.run("", args...); code != 2 {
 			t.Errorf("plumbix %v: exit %d, want 2", args, code)
@@ -371,5 +372,14 @@ func TestImportPreviewCommand(t *testing.T) {
 	ps := v["pipelines"].([]any)
 	if v["source"] != "azure" || len(ps) != 1 || ps[0].(map[string]any)["file"] != ".plumbix/pipelines/azure-pipelines.yaml" {
 		t.Errorf("preview = %v", v)
+	}
+	// WU-048: submit opens the change.
+	out := c.mustRun("", "import", "submit", repoID, "--target", "main", "--new-branch", "plumbix/import-ci", "--title", "Import CI")
+	ch := out["change"].(map[string]any)
+	if ch["source_branch"] != "plumbix/import-ci" || ch["title"] != "Import CI" || len(out["files"].([]any)) != 1 {
+		t.Errorf("submit = %v", out)
+	}
+	if code, _, errOut := c.run("", "import", "submit", repoID, "--new-branch", "plumbix/import-ci"); code != 1 || !strings.Contains(errOut, "branch_exists") {
+		t.Errorf("same branch: exit %d, %q", code, errOut)
 	}
 }

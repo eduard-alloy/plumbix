@@ -182,3 +182,48 @@ func TestListTree(t *testing.T) {
 		t.Errorf("files = %v", got)
 	}
 }
+
+// TestReadBlobs (WU-048): many files in one git process, in order.
+func TestReadBlobs(t *testing.T) {
+	r := gittest.New(t)
+	head := r.Commit("main", map[string]string{"a.yml": "abc\n", "b.yml": "-", "c.yml": "line\nwith\nnewlines\n"}, "files")
+	m := Open(filepath.Join(t.TempDir(), "mirror.git"), r.Remote)
+	if err := m.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	files, err := m.ListTree(ctx, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var objects []string
+	want := map[string]string{"a.yml": "abc\n", "b.yml": "-", "c.yml": "line\nwith\nnewlines\n"}
+	var wantInOrder []string
+	for _, f := range files {
+		if _, ok := want[f.Path]; !ok {
+			continue
+		}
+		if len(f.Object) != 40 && len(f.Object) != 64 {
+			t.Fatalf("object of %s = %q", f.Path, f.Object)
+		}
+		objects = append(objects, f.Object)
+		wantInOrder = append(wantInOrder, want[f.Path])
+	}
+	blobs, err := m.ReadBlobs(ctx, objects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blobs) != len(wantInOrder) {
+		t.Fatalf("blobs = %d", len(blobs))
+	}
+	for i := range blobs {
+		if string(blobs[i]) != wantInOrder[i] {
+			t.Errorf("blob %d = %q, want %q", i, blobs[i], wantInOrder[i])
+		}
+	}
+	if blobs, err := m.ReadBlobs(ctx, nil); err != nil || len(blobs) != 0 {
+		t.Errorf("no objects = %v %v", blobs, err)
+	}
+	if _, err := m.ReadBlobs(ctx, []string{strings.Repeat("0", 40)}); err == nil {
+		t.Error("a missing object was read")
+	}
+}

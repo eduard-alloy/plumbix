@@ -326,3 +326,38 @@ func TestMergeBranchesMergesAndReportsConflicts(t *testing.T) {
 		t.Errorf("merging an ancestor: err = %v, want ErrNotContained", err)
 	}
 }
+
+// TestCommitFilesWritesAndRemoves (WU-048): one commit adding, replacing
+// and removing several files.
+func TestCommitFilesWritesAndRemoves(t *testing.T) {
+	r := gittest.New(t)
+	base := r.Commit("main", map[string]string{"keep.txt": "k\n", ".plumbix/pipelines/old.yaml": "old\n", ".plumbix/pipelines/ci.yaml": "v1\n"}, "base")
+	m := mirrorOf(t, r.Remote)
+	sha, err := m.CommitFiles(ctx, base, map[string][]byte{
+		".plumbix/pipelines/ci.yaml":  []byte("v2\n"),
+		".plumbix/pipelines/new.yaml": []byte("new\n"),
+		".plumbix/pipelines/old.yaml": nil,
+	}, "Import pipelines")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := m.ChangedFiles(ctx, base, sha)
+	if err != nil || strings.Join(files, ",") != ".plumbix/pipelines/ci.yaml,.plumbix/pipelines/new.yaml,.plumbix/pipelines/old.yaml" {
+		t.Errorf("changed files = %v %v", files, err)
+	}
+	if got, ok, _ := m.Show(ctx, sha, ".plumbix/pipelines/ci.yaml"); !ok || string(got) != "v2\n" {
+		t.Errorf("ci = %q", got)
+	}
+	if _, ok, _ := m.Show(ctx, sha, ".plumbix/pipelines/old.yaml"); ok {
+		t.Error("old.yaml was not removed")
+	}
+	if _, ok, _ := m.Show(ctx, sha, "keep.txt"); !ok {
+		t.Error("keep.txt is gone")
+	}
+	if _, err := m.CommitFiles(ctx, base, map[string][]byte{"a": []byte("x"), "../b": []byte("x")}, "bad"); err == nil {
+		t.Error("a path outside the tree was accepted")
+	}
+	if _, err := m.CommitFiles(ctx, base, nil, "empty"); err == nil {
+		t.Error("an empty commit was accepted")
+	}
+}

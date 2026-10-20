@@ -43,6 +43,13 @@ func (ps *parser) source(p string, n *yaml.Node) *Source {
 				}
 				s.Hash = v
 			}
+		case "written":
+			if v, ok := ps.str(fp, val); ok {
+				if !hashRe.MatchString(v) {
+					ps.add(fp, val.Line, "must be 64 hex characters (SHA-256)")
+				}
+				s.Written = v
+			}
 		default:
 			ps.add(fp, key.Line, "unknown field")
 		}
@@ -50,6 +57,48 @@ func (ps *parser) source(p string, n *yaml.Node) *Source {
 	for _, req := range []string{"file", "line", "hash"} {
 		if !seen[req] {
 			ps.add(p+"."+req, n.Line, "is required")
+		}
+	}
+	return s
+}
+
+// imported parses a pipeline's import origin (WU-048).
+func (ps *parser) imported(n *yaml.Node) *Imported {
+	if n.Kind != yaml.MappingNode {
+		ps.add("source", n.Line, "must be a mapping with system and file")
+		return nil
+	}
+	s := &Imported{}
+	seen := map[string]bool{}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		key, val := n.Content[i], n.Content[i+1]
+		fp := "source." + key.Value
+		seen[key.Value] = true
+		switch key.Value {
+		case "system", "file":
+			if v, ok := ps.str(fp, val); ok {
+				if v == "" {
+					ps.add(fp, val.Line, "must not be empty")
+				}
+				if key.Value == "system" {
+					s.System = v
+				} else {
+					s.File = v
+				}
+			}
+		case "written":
+			if v, ok := ps.str(fp, val); ok && !hashRe.MatchString(v) {
+				ps.add(fp, val.Line, "must be 64 hex characters (SHA-256)")
+			} else if ok {
+				s.Written = v
+			}
+		default:
+			ps.add(fp, key.Line, "unknown field")
+		}
+	}
+	for _, req := range []string{"system", "file"} {
+		if !seen[req] {
+			ps.add("source."+req, n.Line, "is required")
 		}
 	}
 	return s
