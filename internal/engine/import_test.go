@@ -174,9 +174,12 @@ func TestImportPropose(t *testing.T) {
 		t.Errorf("re-check with nothing new: %v", err)
 	}
 	h.repo.Commit("main", map[string]string{"azure-pipelines.yml": "trigger: [main]\ncontainer: node:22\nsteps:\n  - script: npm test\n"}, "newer node")
-	p, err = h.eng.ImportPropose(ctx, h.repoID, ImportRequest{TargetBranch: "main", Branch: "plumbix/recheck", Message: "Re-check"}, azure.Source{})
+	p, err = h.eng.ImportPropose(ctx, h.repoID, ImportRequest{TargetBranch: "main", Branch: "plumbix/recheck", Message: "Import", RecheckMessage: "Re-check"}, azure.Source{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if msg := h.remote("log", "-1", "--format=%s", p.Commit); msg != "Re-check" {
+		t.Errorf("re-check commit message = %q", msg)
 	}
 	got := h.remote("show", p.Commit+":.plumbix/pipelines/azure-pipelines.yaml")
 	if !strings.Contains(got, "node:22") || len(p.Plan.Files) != 2 || p.Plan.Files[0].Status != importer.StatusUpdated || p.Plan.Files[1].Status != importer.StatusUnchanged {

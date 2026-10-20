@@ -215,6 +215,10 @@ func TestRecheckNames(t *testing.T) {
 	if f.Path != ".plumbix/pipelines/my-ci.yaml" || f.Status != StatusUpdated {
 		t.Errorf("renamed = %+v", f)
 	}
+	two := recheck(t, src, map[string]string{".plumbix/pipelines/a.yaml": string(imported(t)), ".plumbix/pipelines/b.yaml": string(imported(t))})
+	if len(two.Files) != 2 || two.Files[1].Path != ".plumbix/pipelines/b.yaml" || two.Files[1].Status != StatusKept || !strings.Contains(notes(two.Files[1]), ".plumbix/pipelines/a.yaml is the import of ci.yml") {
+		t.Errorf("two files for one source = %+v", two.Files)
+	}
 	own := "version: 1\non: {manual: true}\nsteps:\n  - {name: a, image: x, run: x}\n"
 	f = only(t, recheck(t, src, map[string]string{".plumbix/pipelines/ci.yaml": own}))
 	if f.Path != ".plumbix/pipelines/ci-2.yaml" || f.Status != StatusAdded {

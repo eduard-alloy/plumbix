@@ -70,13 +70,17 @@ type ImportRequest struct {
 	TargetBranch string // read, and built on
 	Branch       string // the new branch; empty means plumbix/import-<head>
 	Message      string
+	// RecheckMessage, when set, is the commit message instead of Message
+	// once any file was imported before.
+	RecheckMessage string
 }
 
 // ImportProposal is an import pushed as a new branch.
 type ImportProposal struct {
 	ImportView
-	Branch string
-	Commit string
+	Branch  string
+	Commit  string
+	Message string // the commit message used
 }
 
 // ImportPropose plans an import on the target branch head and commits every
@@ -109,7 +113,11 @@ func (e *Engine) ImportPropose(ctx context.Context, repoID string, req ImportReq
 	if _, err := m.Head(ctx, branch); err == nil {
 		return ImportProposal{}, fmt.Errorf("%w: %s", gitops.ErrBranchExists, branch)
 	}
-	sha, err := m.CommitFiles(ctx, v.SHA, v.Plan.Writes(), req.Message)
+	msg := req.Message
+	if req.RecheckMessage != "" && v.Plan.Recheck() {
+		msg = req.RecheckMessage
+	}
+	sha, err := m.CommitFiles(ctx, v.SHA, v.Plan.Writes(), msg)
 	if err != nil {
 		return ImportProposal{}, fmt.Errorf("commit the import: %w", err)
 	}
@@ -117,7 +125,7 @@ func (e *Engine) ImportPropose(ctx context.Context, repoID string, req ImportReq
 		return ImportProposal{}, err
 	}
 	e.log.Info("proposed import", "repo", repo.ID, "branch", branch, "commit", sha, "files", len(v.Plan.Writes()))
-	return ImportProposal{ImportView: v, Branch: branch, Commit: sha}, nil
+	return ImportProposal{ImportView: v, Branch: branch, Commit: sha, Message: msg}, nil
 }
 
 // yamlFiles reads the YAML files of a commit in one git process, reporting

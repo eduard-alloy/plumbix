@@ -175,11 +175,11 @@ func (h *pipelineHandlers) importChange(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	label := importLabels[body.Source]
-	title := body.Title
-	if title == "" {
-		title = "Import pipelines from " + label
+	req := engine.ImportRequest{TargetBranch: body.TargetBranch, Branch: body.Branch, Message: body.Title}
+	if body.Title == "" {
+		req.Message, req.RecheckMessage = "Import pipelines from "+label, "Re-check pipelines imported from "+label
 	}
-	p, err := h.engine.ImportPropose(r.Context(), repo.ID, engine.ImportRequest{TargetBranch: body.TargetBranch, Branch: body.Branch, Message: title}, src)
+	p, err := h.engine.ImportPropose(r.Context(), repo.ID, req, src)
 	if errors.Is(err, engine.ErrUpToDate) {
 		writeError(w, http.StatusConflict, "up_to_date", err.Error())
 		return
@@ -188,9 +188,7 @@ func (h *pipelineHandlers) importChange(w http.ResponseWriter, r *http.Request) 
 		h.fail(w, err)
 		return
 	}
-	if body.Title == "" && !allAdded(p.Plan) {
-		title = "Re-check pipelines imported from " + label
-	}
+	title := p.Message
 	c, err := h.svc.Submit(r.Context(), change.ChangeInput{
 		RepoID: repo.ID, SourceBranch: p.Branch, TargetBranch: body.TargetBranch, Title: title, Intent: importIntent(label, p),
 		AcceptanceCriteria: append(pipelineCriteria(), change.Criterion{Text: "Every job of each source pipeline is kept; a job Plumbix cannot run is disabled with a reason, and so is its pipeline"}),
@@ -207,15 +205,6 @@ func (h *pipelineHandlers) importChange(w http.ResponseWriter, r *http.Request) 
 		c = fresh
 	}
 	writeJSON(w, http.StatusCreated, importChange{Change: c, Files: planFiles(p.Plan)})
-}
-
-func allAdded(p importer.Plan) bool {
-	for _, f := range p.Files {
-		if f.Status != importer.StatusAdded {
-			return false
-		}
-	}
-	return true
 }
 
 // importIntent describes an import for the person approving it: what it

@@ -47,6 +47,16 @@ func (p Plan) Changed() bool {
 	return false
 }
 
+// Recheck reports whether any file of the plan was imported before.
+func (p Plan) Recheck() bool {
+	for _, f := range p.Files {
+		if f.Status != StatusAdded {
+			return true
+		}
+	}
+	return false
+}
+
 // Writes are the files the plan commits: content for added and updated
 // files, nil for removed ones.
 func (p Plan) Writes() map[string][]byte {
@@ -76,6 +86,7 @@ func Recheck(system string, r Result, existing map[string][]byte) Plan {
 	}
 	sort.Strings(paths)
 	owned := map[string]string{} // source file -> path
+	var dups []FilePlan
 	taken := map[string]bool{}
 	for _, p := range paths {
 		taken[p] = true
@@ -85,13 +96,16 @@ func Recheck(system string, r Result, existing map[string][]byte) Plan {
 		}
 		src := get(root, "source")
 		if file := scalar(get(src, "file")); scalar(get(src, "system")) == system && file != "" {
-			if _, dup := owned[file]; !dup {
+			if first, dup := owned[file]; dup {
+				dups = append(dups, FilePlan{Path: p, SourceFile: file, Status: StatusKept,
+					Notes: []string{fmt.Sprintf("%s is the import of %s; this file names the same source and is left as it is", first, file)}})
+			} else {
 				owned[file] = p
 			}
 		}
 	}
 
-	var plan Plan
+	plan := Plan{Files: dups}
 	seen := map[string]bool{}
 	for _, c := range r.Pipelines {
 		seen[c.SourceFile] = true
@@ -197,44 +211,44 @@ func merge(old, fresh []byte) FilePlan {
 	var out []piece
 	for _, ns := range items(get(newRoot, "steps")) {
 		name := scalar(get(ns, "name"))
-		os := oldByName[name]
+		was := oldByName[name]
 		switch {
-		case os == nil:
+		case was == nil:
 			out = append(out, piece{ns, newStage[name]})
 			note("%s: added, a new job in the source", name)
-		case get(os, "source") == nil:
+		case get(was, "source") == nil:
 			allOwned = false
-			out = append(out, piece{os, oldStage[name]})
+			out = append(out, piece{was, oldStage[name]})
 			note("%s: the source has a job of this name; your step is kept and the job is not added", name)
-		case stepWritten(os):
+		case stepWritten(was):
 			out = append(out, piece{ns, newStage[name]})
-			if s := changeNote(os, ns); s != "" {
+			if s := changeNote(was, ns); s != "" {
 				note("%s: %s", name, s)
 			}
 		default:
 			allOwned = false
-			out = append(out, piece{os, oldStage[name]})
-			if hashOf := func(n *yaml.Node) string { return scalar(get(get(n, "source"), "hash")) }; hashOf(os) != hashOf(ns) {
+			out = append(out, piece{was, oldStage[name]})
+			if hashOf := func(n *yaml.Node) string { return scalar(get(get(n, "source"), "hash")) }; hashOf(was) != hashOf(ns) {
 				note("%s: kept as you edited it; its source job changed since the import", name)
 			}
 		}
 		used[name] = true
 	}
 	var dropped []piece
-	for _, os := range oldSteps {
-		name := scalar(get(os, "name"))
+	for _, was := range oldSteps {
+		name := scalar(get(was, "name"))
 		if used[name] {
 			continue
 		}
 		switch {
-		case get(os, "source") == nil:
+		case get(was, "source") == nil:
 			allOwned = false
-			out = append(out, piece{os, oldStage[name]})
-		case stepWritten(os):
-			dropped = append(dropped, piece{os, oldStage[name]})
+			out = append(out, piece{was, oldStage[name]})
+		case stepWritten(was):
+			dropped = append(dropped, piece{was, oldStage[name]})
 		default:
 			allOwned = false
-			out = append(out, piece{os, oldStage[name]})
+			out = append(out, piece{was, oldStage[name]})
 			note("%s: kept as you edited it; its job is gone from the source", name)
 		}
 	}
