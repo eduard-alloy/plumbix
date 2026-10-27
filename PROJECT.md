@@ -122,6 +122,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-041 | Import a repository from the Repositories page: a local folder with a remote, or a remote cloned into a local folder, with a token choice and an access check | F-001, F-004 | ✅ |
 | WU-042 | Publish a local folder with no remote: create the repository on GitHub or Azure DevOps, push every branch, register it | F-001, F-004 | ✅ |
 | WU-043 | Import polish: decoded repository names, a warning when the host has no token, a plain error when git has no credentials | F-001, F-004 | ✅ |
+| WU-053 | Validator model usage on the run result: each validator's reported `usage` on `result.validators`, served by the run endpoints for observers such as Chart-AI; OpenAPI `Usage` schema mirrors the verdict's | F-003, F-004 | ✅ |
 
 ## Roadmap: Pipeline import (Kai workstream TCVR9R)
 

@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -212,5 +213,47 @@ func TestAdvisoryVerdictsAreRecordedButNeverCounted(t *testing.T) {
 	}, []string{"validate"})
 	if r.State != change.NeedsHuman || !strings.Contains(strings.Join(r.Reasons, " "), "required validator validate did not report") {
 		t.Errorf("a required validator marked advisory counted as reported: %+v", r)
+	}
+}
+
+// TestUsageIsCarried (WU-053): a validator's reported model usage is kept
+// on its outcome as the verdict gave it, advisory or not, and is absent,
+// not empty, when the validator reported none.
+func TestUsageIsCarried(t *testing.T) {
+	with := verdict(Approve, allMet)
+	with.Usage = &Usage{Model: "claude-x", InputTokens: 1200, OutputTokens: 300, CacheReadTokens: 8000, CostUSD: 0.0412}
+	adv := verdict(Reject, nil)
+	adv.Usage = &Usage{Model: "grok-y", InputTokens: 1, OutputTokens: 2, Turns: 3}
+	r := combine([]ValidatorResult{
+		{Name: "validate", Verdict: verdict(Approve, allMet)},
+		{Name: "ai-review", Verdict: with},
+		{Name: "ai-grok", Advisory: true, Verdict: adv},
+	}, []string{"validate", "ai-review"})
+	if len(r.Validators) != 3 {
+		t.Fatalf("validators = %+v", r.Validators)
+	}
+	if r.Validators[0].Usage != nil {
+		t.Errorf("a validator that reported no usage has one: %+v", r.Validators[0].Usage)
+	}
+	if u := r.Validators[1].Usage; u == nil || *u != *with.Usage {
+		t.Errorf("ai-review usage = %+v, want %+v", u, with.Usage)
+	}
+	if u := r.Validators[2].Usage; u == nil || *u != *adv.Usage {
+		t.Errorf("advisory usage = %+v, want %+v", u, adv.Usage)
+	}
+	data, err := json.Marshal(r.Validators)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw []map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw[0]["usage"]; ok {
+		t.Errorf("usage key present without usage: %s", raw[0]["usage"])
+	}
+	want := `{"model":"claude-x","input_tokens":1200,"output_tokens":300,"cost_usd":0.0412,"cache_read_tokens":8000}`
+	if got := string(raw[1]["usage"]); got != want {
+		t.Errorf("usage json = %s, want %s", got, want)
 	}
 }

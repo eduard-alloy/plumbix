@@ -174,6 +174,20 @@ export interface ValidatorOutcome {
   outcome?: ValidatorDecision
   summary?: string
   error?: string
+  /** Model usage as the validator's runtime reported it (WU-053); absent when it reported none. */
+  usage?: Usage
+}
+
+/** A validator's model usage, copied from its verdict; cost_usd is the reviewer's own estimate and missing means unknown. */
+export interface Usage {
+  model: string
+  input_tokens: number
+  output_tokens: number
+  turns?: number
+  cost_usd?: number
+  reasoning_tokens?: number
+  cache_read_tokens?: number
+  cache_write_tokens?: number
 }
 
 export interface Result {

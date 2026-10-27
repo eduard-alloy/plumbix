@@ -39,6 +39,11 @@ type ValidatorOutcome struct {
 	Summary  string  `json:"summary,omitempty"`
 	Error    string  `json:"error,omitempty"`    // why there is no verdict
 	Advisory bool    `json:"advisory,omitempty"` // recorded, never counted
+	// Usage is the model usage the validator reported in its verdict
+	// (WU-053), copied as given: Plumbix never computes, converts or
+	// estimates any of it, cost included. Absent when the validator
+	// reported none.
+	Usage *Usage `json:"usage,omitempty"`
 }
 
 // CombinedCriterion is one criterion's status across validators.
@@ -110,7 +115,7 @@ func Combine(criteria []change.Criterion, results []ValidatorResult, required, c
 			continue
 		}
 		v := res.Verdict
-		r.Validators = append(r.Validators, ValidatorOutcome{Name: res.Name, Outcome: v.Outcome, Summary: v.Summary, Advisory: res.Advisory})
+		r.Validators = append(r.Validators, ValidatorOutcome{Name: res.Name, Outcome: v.Outcome, Summary: v.Summary, Advisory: res.Advisory, Usage: v.Usage})
 		if !res.Advisory {
 			switch v.Outcome {
 			case Reject:

@@ -2431,6 +2431,8 @@ components:
                 type: string
               error:
                 type: string
+              usage:
+                $ref: "#/components/schemas/Usage"
         criteria:
           type: array
           items:
@@ -2494,6 +2496,41 @@ components:
           type: array
           items:
             type: string
+    Usage:
+      description: Model usage, for validators that call one (WU-053). Copied from the validator's verdict exactly as its runtime reported it; Plumbix computes, converts and estimates none of it. Absent when the validator reported none, and on runs stored before the field existed. A missing cost_usd means the cost is unknown, never zero.
+      type: object
+      additionalProperties: false
+      required: [model, input_tokens, output_tokens]
+      properties:
+        model:
+          type: string
+          minLength: 1
+        input_tokens:
+          type: integer
+          minimum: 0
+        output_tokens:
+          type: integer
+          minimum: 0
+        turns:
+          description: Agentic turns an external reviewer took.
+          type: integer
+          minimum: 0
+        cost_usd:
+          description: The reviewer's estimated spend, in US dollars.
+          type: number
+          minimum: 0
+        reasoning_tokens:
+          description: Hidden reasoning tokens a reasoning model spent before answering.
+          type: integer
+          minimum: 0
+        cache_read_tokens:
+          description: Input tokens read from the provider's prompt cache; input_tokens counts only uncached input.
+          type: integer
+          minimum: 0
+        cache_write_tokens:
+          description: Input tokens written to the provider's prompt cache.
+          type: integer
+          minimum: 0
     Run:
       type: object
       additionalProperties: false

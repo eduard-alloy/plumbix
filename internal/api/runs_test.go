@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -41,7 +42,8 @@ func (approvingRunner) Run(_ context.Context, job runner.Job) (runner.Result, er
 			continue
 		}
 		v := validation.Verdict{Plumbix: validation.VerdictVersion, Outcome: validation.Approve, Summary: "fine",
-			Criteria: []validation.CriterionVerdict{{ID: "AC-1", Status: validation.Met, Reason: "ok", Evidence: []string{"evidence/test/log.txt"}}}}
+			Criteria: []validation.CriterionVerdict{{ID: "AC-1", Status: validation.Met, Reason: "ok", Evidence: []string{"evidence/test/log.txt"}}},
+			Usage:    &validation.Usage{Model: "test-model", InputTokens: 1200, OutputTokens: 300, CacheReadTokens: 8000, CostUSD: 0.0412}}
 		data, _ := json.Marshal(v)
 		if err := os.WriteFile(filepath.Join(m.Source, validation.VerdictFile), data, 0o644); err != nil {
 			return runner.Result{}, err
@@ -257,4 +259,42 @@ func TestRepoRuns(t *testing.T) {
 			t.Errorf("GET %s = %d, want %d", path, rec.Code, status)
 		}
 	}
+}
+
+// TestRunCarriesValidatorUsage (WU-053): the model usage a validator put in
+// its verdict comes back on the run, through both run endpoints, under the
+// verdict contract's field names, and the responses still match the
+// published schema.
+func TestRunCarriesValidatorUsage(t *testing.T) {
+	o := loadOpenAPI(t)
+	a := newRunAPI(t)
+	c := decode[change.Change](t, a.do(http.MethodPost, "/api/v1/changes", changeBody(a.repoID, "feat")))
+	first := decode[struct{ Runs []run.Run }](t, a.do(http.MethodGet, "/api/v1/changes/"+c.ID+"/runs", "")).Runs[0]
+	a.waitRun(first.ID)
+	want := map[string]any{"model": "test-model", "input_tokens": 1200.0, "output_tokens": 300.0, "cache_read_tokens": 8000.0, "cost_usd": 0.0412}
+
+	one := a.do(http.MethodGet, "/api/v1/runs/"+first.ID, "")
+	o.check("Run", one)
+	if got := validatorUsage(t, decode[map[string]any](t, one)); !reflect.DeepEqual(got, want) {
+		t.Errorf("GET /runs/{id} usage = %v, want %v", got, want)
+	}
+	list := a.do(http.MethodGet, "/api/v1/changes/"+c.ID+"/runs", "")
+	o.check("RunList", list)
+	runs := decode[struct{ Runs []map[string]any }](t, list).Runs
+	if got := validatorUsage(t, runs[0]); !reflect.DeepEqual(got, want) {
+		t.Errorf("GET /changes/{id}/runs usage = %v, want %v", got, want)
+	}
+}
+
+// validatorUsage returns result.validators[0].usage of a run body.
+func validatorUsage(t *testing.T, body map[string]any) map[string]any {
+	t.Helper()
+	result, _ := body["result"].(map[string]any)
+	validators, _ := result["validators"].([]any)
+	if len(validators) == 0 {
+		t.Fatalf("run has no validators: %v", body)
+	}
+	v, _ := validators[0].(map[string]any)
+	usage, _ := v["usage"].(map[string]any)
+	return usage
 }
