@@ -28,6 +28,7 @@ func registerPipelineRoutes(mux *http.ServeMux, h *pipelineHandlers) {
 	mux.HandleFunc("POST /api/v1/repos/{id}/pipeline/changes", h.propose)
 	mux.HandleFunc("GET /api/v1/repos/{id}/pipelines", h.listTriggered)
 	mux.HandleFunc("GET /api/v1/repos/{id}/import", h.importPreview)
+	mux.HandleFunc("POST /api/v1/repos/{id}/import/changes", h.importChange)
 	mux.HandleFunc("POST /api/v1/repos/{id}/pipelines/{name}/runs", h.runTriggered)
 }
 

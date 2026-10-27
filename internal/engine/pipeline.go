@@ -94,12 +94,20 @@ func (e *Engine) ProposeFile(ctx context.Context, repoID string, p Proposal) (st
 	if err != nil {
 		return "", fmt.Errorf("commit %s: %w", p.Path, err)
 	}
-	if err := m.PushBranch(ctx, p.Branch, sha); err != nil {
-		if errors.Is(err, gitops.ErrPushDenied) {
-			return "", fmt.Errorf("%w; set a token for repository %s in Settings and try again", err, repo.ID)
-		}
+	if err := e.pushProposal(ctx, repo, m, p.Branch, sha); err != nil {
 		return "", err
 	}
 	e.log.Info("proposed file", "repo", repo.ID, "branch", p.Branch, "path", p.Path, "commit", sha)
 	return sha, nil
+}
+
+// pushProposal pushes a proposed commit as a new branch, never forcing.
+func (e *Engine) pushProposal(ctx context.Context, repo change.Repo, m *gitops.Mirror, branch, sha string) error {
+	if err := m.PushBranch(ctx, branch, sha); err != nil {
+		if errors.Is(err, gitops.ErrPushDenied) {
+			return fmt.Errorf("%w; set a token for repository %s in Settings and try again", err, repo.ID)
+		}
+		return err
+	}
+	return nil
 }

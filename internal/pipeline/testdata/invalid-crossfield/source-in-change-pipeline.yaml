@@ -1,0 +1,4 @@
+version: 1
+source: {system: azure, file: azure-pipelines.yml}
+steps:
+  - {name: a, image: x, run: x}

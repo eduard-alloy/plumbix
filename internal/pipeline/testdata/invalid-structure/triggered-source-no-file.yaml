@@ -1,0 +1,5 @@
+version: 1
+on: {manual: true}
+source: {system: azure}
+steps:
+  - {name: a, image: x, run: x}

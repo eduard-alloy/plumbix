@@ -3,6 +3,7 @@
 package gitops
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -257,8 +258,9 @@ func (m *Mirror) Show(ctx context.Context, commit, path string) ([]byte, bool, e
 
 // TreeFile is one file at a commit.
 type TreeFile struct {
-	Path string
-	Size int64
+	Path   string
+	Size   int64
+	Object string // the blob's id, for ReadBlobs
 }
 
 // ListTree returns every file at a commit with its size (WU-046).
@@ -279,9 +281,39 @@ func (m *Mirror) ListTree(ctx context.Context, commit string) ([]TreeFile, error
 		if err != nil {
 			continue
 		}
-		files = append(files, TreeFile{Path: file, Size: size})
+		files = append(files, TreeFile{Path: file, Size: size, Object: fields[2]})
 	}
 	return files, nil
+}
+
+// ReadBlobs returns the contents of blobs in the order given, read by one
+// git process (WU-048).
+func (m *Mirror) ReadBlobs(ctx context.Context, objects []string) ([][]byte, error) {
+	if len(objects) == 0 {
+		return nil, nil
+	}
+	out, err := m.run(ctx, strings.NewReader(strings.Join(objects, "\n")+"\n"), nil, "cat-file", "--batch")
+	if err != nil {
+		return nil, err
+	}
+	blobs := make([][]byte, 0, len(objects))
+	for _, want := range objects {
+		header, rest, ok := bytes.Cut(out, []byte("\n"))
+		if !ok {
+			return nil, fmt.Errorf("cat-file: output ends before %s", want)
+		}
+		fields := strings.Fields(string(header))
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("cat-file: %s", header)
+		}
+		size, err := strconv.Atoi(fields[2])
+		if err != nil || size < 0 || size+1 > len(rest) {
+			return nil, fmt.Errorf("cat-file: bad size in %q", header)
+		}
+		blobs = append(blobs, rest[:size])
+		out = rest[size+1:]
+	}
+	return blobs, nil
 }
 
 // ListFiles returns the paths of the files directly in dir at a commit,

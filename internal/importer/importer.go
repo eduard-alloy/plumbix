@@ -88,8 +88,9 @@ type Result struct {
 }
 
 // Preview converts every file of look src detects, in path order, naming
-// each pipeline after its file and keeping names unique. A conversion that
-// fails, or produces a file Plumbix cannot parse, is a problem.
+// each pipeline after its file and keeping names unique, and stamps what
+// it would write as the import's (WU-048). A conversion that fails, or
+// produces a file Plumbix cannot parse, is a problem.
 func Preview(src Source, look Lookup) Result {
 	files := look.Files
 	paths := make([]string, 0, len(files))
@@ -108,6 +109,12 @@ func Preview(src Source, look Lookup) Result {
 			r.Problems = append(r.Problems, Problem{SourceFile: p, Message: err.Error()})
 			continue
 		}
+		stamped, err := stamp(src.Name(), p, c.Content)
+		if err != nil {
+			r.Problems = append(r.Problems, Problem{SourceFile: p, Message: fmt.Sprintf("the converted pipeline is not a YAML mapping: %v", err)})
+			continue
+		}
+		c.Content = stamped
 		if _, err := pipeline.ParseTriggered(c.Content); err != nil {
 			r.Problems = append(r.Problems, Problem{SourceFile: p, Message: fmt.Sprintf("the converted pipeline does not parse: %v", err)})
 			continue

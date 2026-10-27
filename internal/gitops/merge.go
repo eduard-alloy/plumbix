@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 )
@@ -203,9 +204,27 @@ func short(sha string) string {
 // one file replaced or added. Plumbix is author and committer. Nothing moves:
 // the caller decides which branch, if any, points at the commit.
 func (m *Mirror) CommitFile(ctx context.Context, parent, path string, content []byte, message string) (string, error) {
-	if path == "" || strings.HasPrefix(path, "/") || hasDotDotSegment(path) {
-		return "", fmt.Errorf("invalid path %q", path)
+	if content == nil {
+		content = []byte{}
 	}
+	return m.CommitFiles(ctx, parent, map[string][]byte{path: content}, message)
+}
+
+// CommitFiles returns a new commit on parent whose tree is the parent's with
+// each file replaced or added, and removed where its content is nil
+// (WU-048). Plumbix is author and committer, and nothing moves.
+func (m *Mirror) CommitFiles(ctx context.Context, parent string, files map[string][]byte, message string) (string, error) {
+	if len(files) == 0 {
+		return "", errors.New("no files to commit")
+	}
+	paths := make([]string, 0, len(files))
+	for p := range files {
+		if p == "" || strings.HasPrefix(p, "/") || hasDotDotSegment(p) {
+			return "", fmt.Errorf("invalid path %q", p)
+		}
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
 	index, err := os.CreateTemp("", "plumbix-index-")
 	if err != nil {
 		return "", err
@@ -216,12 +235,21 @@ func (m *Mirror) CommitFile(ctx context.Context, parent, path string, content []
 	if _, err := m.run(ctx, nil, env, "read-tree", parent+"^{tree}"); err != nil {
 		return "", err
 	}
-	blob, err := m.run(ctx, bytes.NewReader(content), nil, "hash-object", "-w", "--stdin")
-	if err != nil {
-		return "", err
-	}
-	if _, err := m.run(ctx, nil, env, "update-index", "--add", "--cacheinfo", "100644,"+strings.TrimSpace(string(blob))+","+path); err != nil {
-		return "", err
+	for _, p := range paths {
+		if files[p] == nil {
+			// Mode 0 removes the entry; --force-remove would need a work tree.
+			if _, err := m.run(ctx, strings.NewReader("0 "+strings.Repeat("0", 40)+"\t"+p+"\n"), env, "update-index", "--index-info"); err != nil {
+				return "", err
+			}
+			continue
+		}
+		blob, err := m.run(ctx, bytes.NewReader(files[p]), nil, "hash-object", "-w", "--stdin")
+		if err != nil {
+			return "", err
+		}
+		if _, err := m.run(ctx, nil, env, "update-index", "--add", "--cacheinfo", "100644,"+strings.TrimSpace(string(blob))+","+p); err != nil {
+			return "", err
+		}
 	}
 	tree, err := m.run(ctx, nil, env, "write-tree")
 	if err != nil {

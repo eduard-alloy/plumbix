@@ -1,10 +1,12 @@
 package engine
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/gitops"
 	"github.com/eduard-alloy/plumbix/internal/importer"
 	"github.com/eduard-alloy/plumbix/internal/importer/azure"
 )
@@ -125,5 +127,62 @@ stages:
 	}
 	if steps[1].Reason != "template" || !strings.Contains(steps[1].Note, "not registered") {
 		t.Errorf("resource step = %+v", steps[1])
+	}
+}
+
+// TestImportPropose (WU-048): the plan is committed on a new branch in one
+// commit, the change it opens needs a person, and once the files are on the
+// target a re-check finds nothing to do.
+func TestImportPropose(t *testing.T) {
+	h := newHarness(t, Config{})
+	head := h.repo.Commit("main", map[string]string{
+		"azure-pipelines.yml":    "trigger: [main]\ncontainer: node:20\nsteps:\n  - script: npm test\n",
+		"pipelines/deploy.yml":   "trigger: none\npool: {vmImage: ubuntu-latest}\nsteps:\n  - script: ./deploy.sh\n",
+		"docs/not-a-pipeline.md": "x\n",
+	}, "azure pipelines")
+	v, err := h.eng.ImportPreview(ctx, h.repoID, "main", azure.Source{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Plan.Files) != 2 || v.Plan.Files[0].Status != importer.StatusAdded {
+		t.Fatalf("preview plan = %+v", v.Plan)
+	}
+	p, err := h.eng.ImportPropose(ctx, h.repoID, ImportRequest{TargetBranch: "main", Message: "Import Azure pipelines"}, azure.Source{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Branch != "plumbix/import-"+short(head) || p.SHA != head || p.Commit == "" {
+		t.Fatalf("proposal = %+v", p)
+	}
+	if files := strings.Fields(h.remote("diff", "--name-only", head, p.Commit)); strings.Join(files, ",") != ".plumbix/pipelines/azure-pipelines.yaml,.plumbix/pipelines/deploy.yaml" {
+		t.Fatalf("committed = %v", files)
+	}
+	if _, err := h.eng.ImportPropose(ctx, h.repoID, ImportRequest{TargetBranch: "main", Message: "again"}, azure.Source{}); !errors.Is(err, gitops.ErrBranchExists) {
+		t.Errorf("same branch twice: %v", err)
+	}
+	c := h.submit(p.Branch)
+	if r := h.wait(h.validate(c.ID).ID); r.Outcome != change.NeedsHuman {
+		t.Errorf("outcome = %s, want needs_human", r.Outcome)
+	}
+
+	written := map[string]string{}
+	for _, f := range v.Plan.Files {
+		written[f.Path] = string(f.Content)
+	}
+	h.repo.Commit("main", written, "the import lands")
+	if _, err := h.eng.ImportPropose(ctx, h.repoID, ImportRequest{TargetBranch: "main", Branch: "plumbix/again", Message: "again"}, azure.Source{}); !errors.Is(err, ErrUpToDate) {
+		t.Errorf("re-check with nothing new: %v", err)
+	}
+	h.repo.Commit("main", map[string]string{"azure-pipelines.yml": "trigger: [main]\ncontainer: node:22\nsteps:\n  - script: npm test\n"}, "newer node")
+	p, err = h.eng.ImportPropose(ctx, h.repoID, ImportRequest{TargetBranch: "main", Branch: "plumbix/recheck", Message: "Import", RecheckMessage: "Re-check"}, azure.Source{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg := h.remote("log", "-1", "--format=%s", p.Commit); msg != "Re-check" {
+		t.Errorf("re-check commit message = %q", msg)
+	}
+	got := h.remote("show", p.Commit+":.plumbix/pipelines/azure-pipelines.yaml")
+	if !strings.Contains(got, "node:22") || len(p.Plan.Files) != 2 || p.Plan.Files[0].Status != importer.StatusUpdated || p.Plan.Files[1].Status != importer.StatusUnchanged {
+		t.Errorf("re-check = %+v\n%s", p.Plan, got)
 	}
 }
