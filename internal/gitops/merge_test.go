@@ -173,6 +173,9 @@ func TestPushErrorsAreClassified(t *testing.T) {
 		{"remote: Permission to o/r.git denied to someone.\nfatal: unable to access 'https://github.com/o/r/': The requested URL returned error: 403", ErrPushDenied},
 		{"git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.", ErrPushDenied},
 		{"! [rejected] main -> main (stale info)", ErrPushRejected},
+		// GitHub's rules refused the update: its own error, carrying the rule lines, never a moved branch (WU-059).
+		{"remote: error: GH013: Repository rule violations found for refs/heads/main.\nremote: \nremote: - Required status check \"plumbix/gate\" is expected.\nremote: \n! [remote rejected] main -> main (push declined due to repository rule violations)", ErrPushRefused},
+		{"remote: error: GH006: Protected branch update failed for refs/heads/main.\nremote: error: Required status check \"plumbix/gate\" is expected.\n! [remote rejected] main -> main (protected branch hook declined)", ErrPushRefused},
 	}
 	for _, c := range cases {
 		err := pushError(fmt.Errorf("git push: exit status 128: %s", c.stderr), "main")
@@ -182,6 +185,15 @@ func TestPushErrorsAreClassified(t *testing.T) {
 		if errors.Is(err, ErrPushDenied) && strings.Contains(err.Error(), "github.com") {
 			t.Errorf("%q: the denied error repeats git's output: %v", c.stderr, err)
 		}
+	}
+	if err := pushError(fmt.Errorf("git push: exit status 1: %s", cases[4].stderr), "main"); !strings.Contains(err.Error(), `Required status check "plumbix/gate" is expected`) || errors.Is(err, ErrPushRejected) {
+		t.Errorf("the refusal must carry GitHub's rule lines and not read as a moved branch: %v", err)
+	}
+	// A full capture, as git prints it: only the rule survives, not git's own lines.
+	full := "remote: error: GH013: Repository rule violations found for refs/heads/main.\nremote: \nremote: - Required status check \"plumbix/gate\" is expected.\nremote: \nTo https://github.com/o/r.git\n ! [remote rejected] main -> main (push declined due to repository rule violations)\nerror: failed to push some refs to 'https://github.com/o/r.git'"
+	err := pushError(fmt.Errorf("git push: exit status 1: %s", full), "main")
+	if want := `push refused by the repository's rules: main: Required status check "plumbix/gate" is expected.`; err == nil || err.Error() != want {
+		t.Errorf("full capture: %q, want %q", err, want)
 	}
 	// The runner reports a missing token as ErrNoCredentials (WU-043); a push still reads that as denied.
 	if err := pushError(fmt.Errorf("git push: %w", ErrNoCredentials), "main"); !errors.Is(err, ErrPushDenied) {
@@ -391,5 +403,38 @@ func TestCommitFilesRemovesOnSHA256Repository(t *testing.T) {
 	}
 	if _, ok, _ := m.Show(ctx, sha, "keep.txt"); !ok {
 		t.Error("keep.txt is gone")
+	}
+}
+
+// TestPushRefAndDeleteRef: a holding ref outside refs/heads/ is pushed,
+// forced over an earlier one, and deleted again; the remote's branches
+// never move (WU-059).
+func TestPushRefAndDeleteRef(t *testing.T) {
+	r := gittest.New(t)
+	oldMain := r.Commit("main", map[string]string{"a.txt": "a\n"}, "main work")
+	head := r.Commit("feat", map[string]string{"b.txt": "b\n"}, "feature work")
+	m := mirrorOf(t, r.Remote)
+	const ref = "refs/plumbix/landing/c_abc"
+	if err := m.PushRef(ctx, ref, oldMain); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.PushRef(ctx, ref, head); err != nil {
+		t.Fatalf("second push to the holding ref must replace it: %v", err)
+	}
+	out, err := exec.Command("git", "-C", r.Remote, "rev-parse", ref).Output()
+	if err != nil || strings.TrimSpace(string(out)) != head {
+		t.Fatalf("remote %s = %q, %v; want %s", ref, out, err, head)
+	}
+	if remoteHead(t, m, "main") != oldMain {
+		t.Error("the holding ref moved a branch")
+	}
+	if err := m.DeleteRef(ctx, ref); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "-C", r.Remote, "rev-parse", "--verify", "--quiet", ref).Output(); err == nil {
+		t.Errorf("holding ref still on the remote: %s", out)
+	}
+	if err := m.DeleteRef(ctx, ref); err != nil {
+		t.Errorf("deleting a ref that is already gone must be fine: %v", err)
 	}
 }

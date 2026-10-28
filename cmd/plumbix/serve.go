@@ -115,6 +115,7 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	changes := change.NewService(db)
 	syncer := &pullrequest.Syncer{Hosts: hosts, Store: db, Changes: changes, Engine: eng, Log: logger}
 	publisher := &pullrequest.Publisher{Hosts: hosts, Store: db, Log: logger}
+	eng.SetLanding(&pullrequest.Lander{Hosts: hosts})
 	publishDone := make(chan struct{})
 	go func() { publisher.Run(ctx, hub); close(publishDone) }()
 	defer func() { <-publishDone }()

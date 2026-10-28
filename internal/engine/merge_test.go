@@ -1,13 +1,17 @@
 package engine
 
 import (
+	"context"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/gitops"
+	"github.com/eduard-alloy/plumbix/internal/run"
 )
 
 // approve submits a change on branch and validates it to approval.
@@ -149,4 +153,143 @@ func TestCommitsFetchesFirst(t *testing.T) {
 	if err != nil || len(got) != 2 || got[0].SHA != c || got[1].SHA != b || got[0].Author != "Test" {
 		t.Fatalf("commits = %+v, %v", got, err)
 	}
+}
+
+// fakeLanding stands in for the pull-request package's Lander: it answers
+// whether the gate is required and records what PostGate was asked to
+// post, checking that the holding ref already sits on the remote at that
+// commit when it is called.
+type fakeLanding struct {
+	h               *harness
+	required, known bool
+	err, postErr    error
+	onPost          func() // runs after the gate is recorded, before PostGate returns
+	posted          []string
+	refAtPost       []bool
+}
+
+func (f *fakeLanding) GateRequired(context.Context, change.Repo, string) (bool, bool, error) {
+	return f.required, f.known, f.err
+}
+
+func (f *fakeLanding) PostGate(_ context.Context, _ change.Repo, c change.Change, _ run.Run, sha string) error {
+	f.posted = append(f.posted, sha)
+	out, err := exec.Command("git", "-C", f.h.repo.Remote, "rev-parse", "--verify", "--quiet", "refs/plumbix/landing/"+c.ID).Output()
+	f.refAtPost = append(f.refAtPost, err == nil && strings.TrimSpace(string(out)) == sha)
+	if f.onPost != nil {
+		f.onPost()
+	}
+	return f.postErr
+}
+
+func (h *harness) holdingRef(id string) (string, bool) {
+	out, err := exec.Command("git", "-C", h.repo.Remote, "rev-parse", "--verify", "--quiet", "refs/plumbix/landing/"+id).Output()
+	return strings.TrimSpace(string(out)), err == nil
+}
+
+// TestMergeLandsThroughTheGate: when the target requires plumbix/gate,
+// the merge pushes the landing commit to a holding ref, posts the gate on
+// it, then moves the target and drops the holding ref; when the gate is
+// not required or the requirement is unknown, it pushes as before. A gate
+// that cannot be posted stops the merge before the target moves (WU-059).
+func TestMergeLandsThroughTheGate(t *testing.T) {
+	t.Run("required", func(t *testing.T) {
+		h := newHarnessWith(t, Config{}, "squash")
+		l := &fakeLanding{h: h, required: true, known: true}
+		h.eng.SetLanding(l)
+		c := h.approve("feat")
+		merged, err := h.merge(c.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		newMain := h.remote("rev-parse", "main")
+		if len(l.posted) != 1 || l.posted[0] != newMain || !l.refAtPost[0] {
+			t.Errorf("posted %v (ref present at post: %v); main = %s", l.posted, l.refAtPost, newMain)
+		}
+		if _, ok := h.holdingRef(c.ID); ok {
+			t.Error("the holding ref outlived the merge")
+		}
+		if merged.State != change.Merged || merged.Merge == nil || merged.Merge.Commit != newMain {
+			t.Errorf("merged = %s %+v", merged.State, merged.Merge)
+		}
+	})
+	for name, l := range map[string]*fakeLanding{"not required": {required: false, known: true}, "unknown": {required: false, known: false}, "read failed": {err: errors.New("GitHub status 500")}} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarnessWith(t, Config{}, "squash")
+			l.h = h
+			h.eng.SetLanding(l)
+			c := h.approve("feat")
+			if _, err := h.merge(c.ID); err != nil {
+				t.Fatal(err)
+			}
+			if len(l.posted) != 0 {
+				t.Errorf("gate posted: %v", l.posted)
+			}
+			if _, ok := h.holdingRef(c.ID); ok {
+				t.Error("a holding ref was pushed")
+			}
+		})
+	}
+	t.Run("target refused by rules after the gate was posted", func(t *testing.T) {
+		h := newHarnessWith(t, Config{}, "squash")
+		// The remote refuses branch updates the way GitHub's rulesets do, but lets the holding ref through.
+		hook := filepath.Join(h.repo.Remote, "hooks", "pre-receive")
+		script := "#!/bin/sh\nwhile read old new ref; do\n  case \"$ref\" in refs/heads/main) echo 'error: GH013: Repository rule violations found for refs/heads/main.' >&2; echo '- Required status check \"other/check\" is expected.' >&2; exit 1;; esac\ndone\nexit 0\n"
+		if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		l := &fakeLanding{h: h, required: true, known: true}
+		h.eng.SetLanding(l)
+		oldMain := h.remote("rev-parse", "main")
+		c := h.approve("feat")
+		_, err := h.merge(c.ID)
+		if !errors.Is(err, gitops.ErrPushRefused) || !strings.Contains(err.Error(), `Required status check "other/check" is expected`) || !strings.Contains(err.Error(), "Plumbix posted its gate") {
+			t.Fatalf("err = %v", err)
+		}
+		if len(l.posted) != 1 || !l.refAtPost[0] {
+			t.Errorf("gate posted %v (ref present: %v)", l.posted, l.refAtPost)
+		}
+		if h.remote("rev-parse", "main") != oldMain {
+			t.Error("main moved")
+		}
+		if _, ok := h.holdingRef(c.ID); ok {
+			t.Error("the holding ref was left behind after the refusal")
+		}
+		if got, _ := h.db.GetChange(ctx, c.ID); got.State != change.Approved {
+			t.Errorf("state = %s", got.State)
+		}
+	})
+	t.Run("target moved while the gate was posted", func(t *testing.T) {
+		h := newHarnessWith(t, Config{}, "squash")
+		l := &fakeLanding{h: h, required: true, known: true}
+		l.onPost = func() { h.repo.Commit("main", map[string]string{"late.txt": "late\n"}, "late push to main") }
+		h.eng.SetLanding(l)
+		c := h.approve("feat")
+		if _, err := h.merge(c.ID); !errors.Is(err, gitops.ErrPushRejected) {
+			t.Fatalf("err = %v, want the moved-branch rejection", err)
+		}
+		if _, ok := h.holdingRef(c.ID); ok {
+			t.Error("the holding ref was left behind after the rejection")
+		}
+	})
+	t.Run("gate cannot be posted", func(t *testing.T) {
+		h := newHarnessWith(t, Config{}, "squash")
+		l := &fakeLanding{h: h, required: true, known: true, postErr: errors.New("GitHub status 422")}
+		h.eng.SetLanding(l)
+		oldMain := h.remote("rev-parse", "main")
+		c := h.approve("feat")
+		_, err := h.merge(c.ID)
+		if err == nil || !strings.Contains(err.Error(), "GitHub status 422") {
+			t.Fatalf("err = %v", err)
+		}
+		if h.remote("rev-parse", "main") != oldMain {
+			t.Error("main moved although the gate was not posted")
+		}
+		if _, ok := h.holdingRef(c.ID); ok {
+			t.Error("the holding ref was left behind")
+		}
+		if got, _ := h.db.GetChange(ctx, c.ID); got.State != change.Approved {
+			t.Errorf("state = %s, want approved so the merge can be tried again", got.State)
+		}
+	})
 }

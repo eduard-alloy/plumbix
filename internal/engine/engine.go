@@ -105,6 +105,7 @@ type Engine struct {
 	active     map[string]activeRun // by change ID, or branchKey for plain runs
 	merging    map[string]bool      // changes with a merge in progress
 	beforePush func()               // test hook run between building and pushing a merge
+	landing    Landing              // posts the gate on a landing commit when the target requires it (WU-059); nil pushes as is
 	mirrorLock sync.Map             // repo ID -> *sync.Mutex
 	askpass    string
 	askOnce    sync.Once

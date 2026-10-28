@@ -124,3 +124,17 @@ func TestMergeDeniedByHostIsAClearRefusal(t *testing.T) {
 		t.Errorf("error = %+v", e)
 	}
 }
+
+// TestMergeRefusedByRulesNamesThem: a push the host's rules refused is its
+// own code, carrying the rules, never a moved branch (WU-059).
+func TestMergeRefusedByRulesNamesThem(t *testing.T) {
+	o := loadOpenAPI(t)
+	h := &changeHandlers{log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	rec := httptest.NewRecorder()
+	h.fail(rec, fmt.Errorf("merge: %w: main: Required status check \"plumbix/gate\" is expected.", gitops.ErrPushRefused))
+	o.check("Error", rec)
+	e := decode[apiError](t, rec).Error
+	if rec.Code != http.StatusConflict || e.Code != "push_refused" || !strings.Contains(e.Message, `Required status check "plumbix/gate" is expected`) {
+		t.Errorf("status %d error = %+v", rec.Code, e)
+	}
+}
