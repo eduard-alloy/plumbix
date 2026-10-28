@@ -271,3 +271,28 @@ func TestRefreshEndpoint(t *testing.T) {
 		t.Errorf("unknown: %d", rec.Code)
 	}
 }
+
+// TestRepoWithPullRequests: a repository that gates pull requests reads
+// back with GitHub as its merger, and both shapes match the contract.
+func TestRepoWithPullRequests(t *testing.T) {
+	o := loadOpenAPI(t)
+	a := newTestAPI(t)
+	rec := a.do(http.MethodPost, "/api/v1/repos", `{"host": "github", "url": "https://github.com/a/gated", "pull_requests": true}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	o.check("Repo", rec)
+	r := decode[change.Repo](t, rec)
+	if !r.PullRequests || r.Merger != change.MergerGitHub {
+		t.Errorf("repo = %+v", r)
+	}
+	plain := a.createRepo()
+	if plain.PullRequests || plain.Merger != change.MergerPlumbix {
+		t.Errorf("plain repo = %+v", plain)
+	}
+	bad := a.do(http.MethodPost, "/api/v1/repos", `{"host": "azuredevops", "url": "https://dev.azure.com/o/p/_git/r", "pull_requests": true}`)
+	if bad.Code != http.StatusBadRequest {
+		t.Errorf("pull requests on Azure DevOps: %d %s", bad.Code, bad.Body.String())
+	}
+	o.check("RepoList", a.do(http.MethodGet, "/api/v1/repos", ""))
+}

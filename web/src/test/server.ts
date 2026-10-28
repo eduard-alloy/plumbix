@@ -191,7 +191,7 @@ export function fakeFetch(db: FakeDB): typeof fetch {
     if (path === '/api/v1/repos' && method === 'POST') {
       const body = JSON.parse(String(init?.body)) as RepoInput
       if (db.repos.some((r) => r.url === body.url)) return error(409, 'conflict', `conflict: repo ${body.url} is already registered`)
-      const repo: Repo = { id: `r_new${String(db.repos.length).padStart(9, '0')}`, host: body.host, url: body.url, protected_branches: body.protected_branches?.length ? body.protected_branches : ['main'], merge_strategy: body.merge_strategy ?? 'squash', created_at: new Date().toISOString() }
+      const repo: Repo = { id: `r_new${String(db.repos.length).padStart(9, '0')}`, host: body.host, url: body.url, protected_branches: body.protected_branches?.length ? body.protected_branches : ['main'], merge_strategy: body.merge_strategy ?? 'squash', pull_requests: body.pull_requests, merger: body.merger ?? (body.pull_requests ? 'github' : 'plumbix'), created_at: new Date().toISOString() }
       db.repos.push(repo)
       return json(201, repo)
     }

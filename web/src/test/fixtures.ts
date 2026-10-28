@@ -9,8 +9,8 @@ function at(minutesAgo: number): string {
 }
 
 export const repos: Repo[] = [
-  { id: 'r_plumbix00001', host: 'github', url: 'https://github.com/plumbix/plumbix', protected_branches: ['main'], merge_strategy: 'squash', created_at: at(99999) },
-  { id: 'r_ledgerapi001', host: 'azuredevops', url: 'https://dev.azure.com/northwind/ledger/_git/ledger-api', protected_branches: ['main'], merge_strategy: 'merge', created_at: at(99999) },
+  { id: 'r_plumbix00001', host: 'github', url: 'https://github.com/plumbix/plumbix', protected_branches: ['main'], merge_strategy: 'squash', merger: 'plumbix', created_at: at(99999) },
+  { id: 'r_ledgerapi001', host: 'azuredevops', url: 'https://dev.azure.com/northwind/ledger/_git/ledger-api', protected_branches: ['main'], merge_strategy: 'merge', merger: 'plumbix', created_at: at(99999) },
 ]
 
 function step(name: string, status: Step['status'], ms: number, exit = 0, validator = false): Step {

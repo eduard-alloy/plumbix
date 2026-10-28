@@ -65,8 +65,14 @@ func repoTokens(secrets map[string]string) map[string]string {
 // FromSecrets builds the registry from the secrets file's values.
 func FromSecrets(secrets map[string]string) Registry {
 	perRepo := repoTokens(secrets)
+	gh := &GitHub{Token: secrets[GitHubTokenKey], RepoTokens: perRepo}
+	if secrets[GitHubAppIDKey] != "" || secrets[GitHubAppKeyKey] != "" {
+		// A broken App setting leaves fetches anonymous; the token check
+		// reports the error so the operator sees why.
+		gh.App, gh.AppErr = NewGitHubApp(secrets[GitHubAppIDKey], secrets[GitHubAppKeyKey])
+	}
 	return Registry{
-		change.HostGitHub:      &GitHub{Token: secrets[GitHubTokenKey], RepoTokens: perRepo},
+		change.HostGitHub:      gh,
 		change.HostAzureDevOps: &AzureDevOps{Token: secrets[AzureDevOpsTokenKey], Expires: secrets[AzureDevOpsExpiryKey], RepoTokens: perRepo},
 		change.HostGit:         Plain{},
 	}

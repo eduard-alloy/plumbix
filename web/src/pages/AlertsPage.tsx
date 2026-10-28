@@ -19,6 +19,7 @@ function kindLabel(a: Alert): string {
   if (a.kind === 'bypass_commit') return 'Commits without a verdict'
   if (a.kind === 'no_reviewer') return 'No reviewer is answering external reviews'
   if (a.kind === 'pipeline_unapproved') return 'Pipeline file not approved: runs get no secrets'
+  if (a.kind === 'gate_bypassed') return 'Pull request merged past the gate'
   return /check failed/i.test(a.message) ? 'Token check failed' : 'Token expires soon'
 }
 
@@ -26,6 +27,7 @@ function hint(a: Alert): string {
   if (a.kind === 'bypass_commit') return 'If this was intended, resolve the alert. Otherwise revert the commit and submit it as a change.'
   if (a.kind === 'no_reviewer') return 'Start plumbix review --watch on a machine with Claude Code, or plumbix review install to keep one running. The alert resolves by itself when a reviewer polls.'
   if (a.kind === 'pipeline_unapproved') return 'The file reached a protected branch without a person approving it. Review it, then submit the file as a change: once that merges, its runs get their secrets and the alert resolves by itself.'
+  if (a.kind === 'gate_bypassed') return 'GitHub merged the pull request while its change was not approved, or while plumbix/gate was not a required check on the target. Make plumbix/gate required in branch protection or a ruleset; who overrode it is in GitHub\'s audit log.'
   if (/check failed/i.test(a.message)) return 'Check the token in the secrets file. Plumbix repeats the check daily and resolves this alert when it passes.'
   return 'Create a new token on the git host and put it in the secrets file before then.'
 }

@@ -146,11 +146,15 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 		URL               string     `json:"url"`
 		ProtectedBranches stringList `json:"protected_branches,omitempty"`
 		MergeStrategy     string     `json:"merge_strategy,omitempty"`
+		PullRequests      bool       `json:"pull_requests,omitempty"`
+		Merger            string     `json:"merger,omitempty"`
 	}
 	c.fs.StringVar(&in.Host, "host", "", "github or azuredevops (repo add)")
 	c.fs.StringVar(&in.URL, "url", "", "HTTPS clone URL (repo add)")
 	c.fs.Var(&in.ProtectedBranches, "protected", "protected branch, repeatable (repo add, default main)")
 	c.fs.StringVar(&in.MergeStrategy, "merge-strategy", "", "squash, merge or rebase (repo add, default squash)")
+	c.fs.BoolVar(&in.PullRequests, "pull-requests", false, "gate the repository's GitHub pull requests with check runs (repo add)")
+	c.fs.StringVar(&in.Merger, "merger", "", "who lands changes: plumbix or github (repo add; default github with --pull-requests, else plumbix)")
 	branch := c.fs.String("branch", "", "only runs of this branch (repo runs)")
 	pos, ok := c.parse(args)
 	if !ok {
@@ -169,7 +173,7 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 		}
 		return c.call(http.MethodGet, path, nil)
 	}
-	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> | repo list | repo runs <id> [--branch <b>]")
+	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> [--pull-requests] [--merger plumbix|github] | repo list | repo runs <id> [--branch <b>]")
 }
 
 // runSubmit handles "plumbix submit -f <file|->".

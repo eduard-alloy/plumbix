@@ -161,6 +161,8 @@ func (h *changeHandlers) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "already_current", err.Error())
 	case errors.Is(err, engine.ErrNotPlumbixBranch):
 		writeError(w, http.StatusConflict, "not_plumbix_branch", err.Error())
+	case errors.Is(err, engine.ErrGitHubMerges):
+		writeError(w, http.StatusConflict, "github_merges", err.Error())
 	case errors.Is(err, gitops.ErrMergeConflict):
 		writeError(w, http.StatusConflict, "merge_conflict", err.Error())
 	case errors.Is(err, gitops.ErrPushRejected):

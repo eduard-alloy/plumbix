@@ -145,13 +145,17 @@ func (db *DB) CreateRepo(ctx context.Context, r change.Repo) error {
 	if err != nil {
 		return err
 	}
+	merger := r.Merger
+	if merger == "" {
+		merger = change.MergerPlumbix
+	}
 	_, err = db.sql.ExecContext(ctx,
-		`INSERT INTO repos (id, host, url, protected_branches, merge_strategy, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		r.ID, r.Host, r.URL, string(branches), r.MergeStrategy, formatTime(r.CreatedAt))
+		`INSERT INTO repos (id, host, url, protected_branches, merge_strategy, pull_requests, merger, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID, r.Host, r.URL, string(branches), r.MergeStrategy, r.PullRequests, merger, formatTime(r.CreatedAt))
 	return mapErr(err)
 }
 
-const repoColumns = `id, host, url, protected_branches, merge_strategy, created_at`
+const repoColumns = `id, host, url, protected_branches, merge_strategy, pull_requests, merger, created_at`
 
 // GetRepo returns one repo.
 func (db *DB) GetRepo(ctx context.Context, id string) (change.Repo, error) {
@@ -181,7 +185,7 @@ type scanner interface{ Scan(dest ...any) error }
 func scanRepo(s scanner) (change.Repo, error) {
 	var r change.Repo
 	var branches, created string
-	if err := s.Scan(&r.ID, &r.Host, &r.URL, &branches, &r.MergeStrategy, &created); err != nil {
+	if err := s.Scan(&r.ID, &r.Host, &r.URL, &branches, &r.MergeStrategy, &r.PullRequests, &r.Merger, &created); err != nil {
 		return change.Repo{}, mapErr(err)
 	}
 	if err := json.Unmarshal([]byte(branches), &r.ProtectedBranches); err != nil {
@@ -202,22 +206,29 @@ func (db *DB) CreateChange(ctx context.Context, c change.Change) error {
 	if err != nil {
 		return err
 	}
+	var prNumber int
+	var prURL string
+	var prPayload *events.PullRequestPayload
+	if c.PullRequest != nil {
+		prNumber, prURL = c.PullRequest.Number, c.PullRequest.URL
+		prPayload = &events.PullRequestPayload{Number: prNumber, URL: prURL}
+	}
 	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO changes (id, repo_id, source_branch, target_branch, title, intent, acceptance_criteria, constraints, submitted_by, state, created_at, updated_at, plumbix_branch)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO changes (id, repo_id, source_branch, target_branch, title, intent, acceptance_criteria, constraints, submitted_by, state, created_at, updated_at, plumbix_branch, pr_number, pr_url)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			c.ID, c.RepoID, c.SourceBranch, c.TargetBranch, c.Title, c.Intent, string(criteria), string(constraints),
-			c.SubmittedBy, string(c.State), formatTime(c.CreatedAt), formatTime(c.UpdatedAt), c.PlumbixBranch); err != nil {
+			c.SubmittedBy, string(c.State), formatTime(c.CreatedAt), formatTime(c.UpdatedAt), c.PlumbixBranch, prNumber, prURL); err != nil {
 			return mapErr(err)
 		}
 		_, err := emit(events.Event{Type: events.ChangeSubmitted, Time: c.CreatedAt, RepoID: c.RepoID, ChangeID: c.ID,
-			Payload: events.ChangeSubmittedPayload{SourceBranch: c.SourceBranch, TargetBranch: c.TargetBranch, Title: c.Title, SubmittedBy: c.SubmittedBy}})
+			Payload: events.ChangeSubmittedPayload{SourceBranch: c.SourceBranch, TargetBranch: c.TargetBranch, Title: c.Title, SubmittedBy: c.SubmittedBy, PullRequest: prPayload}})
 		return err
 	})
 }
 
 const changeColumns = `c.id, c.repo_id, c.source_branch, c.target_branch, c.title, c.intent, c.acceptance_criteria, c.constraints, c.submitted_by, c.state, c.created_at, c.updated_at,
-	m.commit_sha, m.previous_sha, m.strategy, m.run_id, m.merged_at, COALESCE(b.head, ''), c.approved_reason, c.approved_head, c.approved_at, c.plumbix_branch`
+	m.commit_sha, m.previous_sha, m.strategy, m.run_id, m.merged_by, m.merged_at, COALESCE(b.head, ''), c.approved_reason, c.approved_head, c.approved_at, c.plumbix_branch, c.pr_number, c.pr_url`
 
 // changeFrom joins each change with its merge, if any, and the last head
 // the poller saw on its source branch.
@@ -226,6 +237,12 @@ const changeFrom = ` FROM changes c LEFT JOIN merges m ON m.change_id = c.id LEF
 // GetChange returns one change.
 func (db *DB) GetChange(ctx context.Context, id string) (change.Change, error) {
 	return scanChange(db.sql.QueryRowContext(ctx, `SELECT `+changeColumns+changeFrom+` WHERE c.id = ?`, id))
+}
+
+// ChangeByPullRequest returns the open (not merged or closed) change that
+// mirrors a repository's pull request; change.ErrNotFound when none does.
+func (db *DB) ChangeByPullRequest(ctx context.Context, repoID string, number int) (change.Change, error) {
+	return scanChange(db.sql.QueryRowContext(ctx, `SELECT `+changeColumns+changeFrom+` WHERE c.repo_id = ? AND c.pr_number = ? AND c.state NOT IN ('merged', 'closed') ORDER BY c.created_at DESC LIMIT 1`, repoID, number))
 }
 
 // ListChanges returns matching changes, oldest first.
@@ -313,14 +330,19 @@ func (db *DB) ApproveByPerson(ctx context.Context, id string, from change.State,
 func scanChange(s scanner) (change.Change, error) {
 	var c change.Change
 	var criteria, constraints, state, created, updated string
-	var mCommit, mPrevious, mStrategy, mRun, mAt sql.NullString
+	var mCommit, mPrevious, mStrategy, mRun, mBy, mAt sql.NullString
 	var apReason, apHead, apAt string
+	var prNumber int
+	var prURL string
 	if err := s.Scan(&c.ID, &c.RepoID, &c.SourceBranch, &c.TargetBranch, &c.Title, &c.Intent,
 		&criteria, &constraints, &c.SubmittedBy, &state, &created, &updated,
-		&mCommit, &mPrevious, &mStrategy, &mRun, &mAt, &c.SourceHead, &apReason, &apHead, &apAt, &c.PlumbixBranch); err != nil {
+		&mCommit, &mPrevious, &mStrategy, &mRun, &mBy, &mAt, &c.SourceHead, &apReason, &apHead, &apAt, &c.PlumbixBranch, &prNumber, &prURL); err != nil {
 		return change.Change{}, mapErr(err)
 	}
 	c.State = change.State(state)
+	if prNumber > 0 {
+		c.PullRequest = &change.PullRequestRef{Number: prNumber, URL: prURL}
+	}
 	if apAt != "" {
 		at, err := parseTime(apAt)
 		if err != nil {
@@ -333,7 +355,7 @@ func scanChange(s scanner) (change.Change, error) {
 		if err != nil {
 			return change.Change{}, err
 		}
-		c.Merge = &change.Merge{Commit: mCommit.String, Previous: mPrevious.String, Strategy: mStrategy.String, RunID: mRun.String, MergedAt: at}
+		c.Merge = &change.Merge{Commit: mCommit.String, Previous: mPrevious.String, Strategy: mStrategy.String, RunID: mRun.String, MergedBy: mBy.String, MergedAt: at}
 	}
 	if err := json.Unmarshal([]byte(criteria), &c.AcceptanceCriteria); err != nil {
 		return change.Change{}, fmt.Errorf("change %s: criteria: %w", c.ID, err)
@@ -379,4 +401,17 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// UpdateRepoMerging sets whether Plumbix watches a repository's pull
+// requests and who merges them (WU-054).
+func (db *DB) UpdateRepoMerging(ctx context.Context, id string, pullRequests bool, merger string) error {
+	res, err := db.sql.ExecContext(ctx, `UPDATE repos SET pull_requests = ?, merger = ? WHERE id = ?`, pullRequests, merger, id)
+	if err != nil {
+		return mapErr(err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return change.ErrNotFound
+	}
+	return nil
 }

@@ -20,19 +20,31 @@ const (
 	gitHubExpiryFmt = "2006-01-02 15:04:05 MST"
 )
 
-// GitHub authenticates with a personal access token.
+// GitHub authenticates with a personal access token, or as a GitHub App
+// when no token applies (WU-054).
 type GitHub struct {
 	Token      string
 	APIBase    string            // empty means https://api.github.com
 	RepoTokens map[string]string // a repository's own token, by repository id
+	App        *GitHubApp        // nil when no App is configured
+	// AppErr says why the configured App is unusable (a malformed key or a
+	// missing id); reported by TokenExpiry when no token applies.
+	AppErr error
 }
 
 // Kind implements Host.
 func (g *GitHub) Kind() string { return change.HostGitHub }
 
-// Auth implements Host.
+// Auth implements Host: the repository's own token, else the host token,
+// else an installation token of the App. A failed mint leaves the fetch
+// anonymous and is reported by TokenExpiry.
 func (g *GitHub) Auth(repo change.Repo) (gitops.Auth, bool) {
 	token := tokenFor(repo, g.Token, g.RepoTokens)
+	if token == "" && g.App != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), apiTimeout)
+		defer cancel()
+		token, _ = g.apiToken(ctx, repo)
+	}
 	if token == "" {
 		return gitops.Auth{}, false
 	}
@@ -49,8 +61,25 @@ func (g *GitHub) AuthWith(token string) (gitops.Auth, bool) {
 }
 
 // TokenExpiry reads the expiry GitHub reports on any authenticated call.
+// Without a token it checks the App instead, whose installation tokens
+// renew themselves: it reports no expiry, or why the last mint failed.
 func (g *GitHub) TokenExpiry(ctx context.Context) (time.Time, bool, error) {
 	if g.Token == "" {
+		if g.AppErr != nil {
+			return time.Time{}, false, fmt.Errorf("GitHub App: %w", g.AppErr)
+		}
+		if g.App == nil {
+			return time.Time{}, false, nil
+		}
+		if err := g.App.Check(ctx, g.base()); err != nil {
+			return time.Time{}, false, err
+		}
+		g.App.mu.Lock()
+		err := g.App.lastErr
+		g.App.mu.Unlock()
+		if err != nil {
+			return time.Time{}, false, fmt.Errorf("GitHub App: %w", err)
+		}
 		return time.Time{}, false, nil
 	}
 	base := g.APIBase

@@ -55,11 +55,19 @@ type Config struct {
 	Interval time.Duration
 }
 
+// PullRequests brings a repository's pull requests in line with its
+// changes (WU-054): new ones opened, closed ones closed, GitHub's merges
+// recorded, review approvals taken.
+type PullRequests interface {
+	Sync(ctx context.Context, repo change.Repo) error
+}
+
 // Poller polls every registered repo.
 type Poller struct {
 	store  Store
 	engine Engine
 	hosts  host.Source
+	prs    PullRequests // nil skips pull requests
 	cfg    Config
 	log    *slog.Logger
 	now    func() time.Time
@@ -68,6 +76,14 @@ type Poller struct {
 // New returns a poller. hosts may be nil, which skips token expiry checks.
 func New(store Store, engine Engine, hosts host.Source, cfg Config, log *slog.Logger) *Poller {
 	return &Poller{store: store, engine: engine, hosts: hosts, cfg: cfg, log: log, now: time.Now}
+}
+
+// WithPullRequests makes every poll of a repository that watches pull
+// requests sync them first, so GitHub's merges are on record before the
+// target branch's move is judged.
+func (p *Poller) WithPullRequests(s PullRequests) *Poller {
+	p.prs = s
+	return p
 }
 
 // Run polls until ctx ends, and checks host tokens once a day.
@@ -108,6 +124,13 @@ func (p *Poller) PollOnce(ctx context.Context) error {
 }
 
 func (p *Poller) pollRepo(ctx context.Context, repo change.Repo) error {
+	if repo.PullRequests && p.prs != nil {
+		// A failing sync does not stop the branch poll: the heads are the
+		// ground truth, pull requests the view GitHub adds.
+		if err := p.prs.Sync(ctx, repo); err != nil {
+			p.log.Warn("sync pull requests", "repo", repo.ID, "err", err)
+		}
+	}
 	heads, err := p.engine.ListHeads(ctx, repo)
 	if err != nil {
 		return err

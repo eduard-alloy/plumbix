@@ -36,6 +36,10 @@ export interface Repo {
   url: string
   protected_branches: string[]
   merge_strategy: 'squash' | 'merge' | 'rebase'
+  /** Plumbix gates the repository's GitHub pull requests with check runs (WU-054). */
+  pull_requests?: boolean
+  /** Who lands changes: Plumbix pushes, or GitHub merges pull requests and Plumbix records it. */
+  merger: 'plumbix' | 'github'
   created_at: string
 }
 
@@ -45,6 +49,8 @@ export interface RepoInput {
   url: string
   protected_branches?: string[]
   merge_strategy?: Repo['merge_strategy']
+  pull_requests?: boolean
+  merger?: Repo['merger']
 }
 
 /** PublishInput creates a repository online for a folder with no remote and pushes it (WU-042). */
@@ -86,8 +92,12 @@ export interface Criterion {
 export interface Merge {
   commit: string
   previous: string
+  /** squash, merge or rebase for Plumbix's own merges; github when GitHub merged the pull request. */
   strategy: string
+  /** Empty when GitHub merged before any run had started. */
   run_id: string
+  /** The GitHub login that merged the pull request. */
+  merged_by?: string
   merged_at: string
 }
 
@@ -101,6 +111,8 @@ export interface Change {
   acceptance_criteria: Criterion[]
   constraints: string[]
   submitted_by?: string
+  /** The GitHub pull request the change mirrors (WU-054). */
+  pull_request?: { number: number; url: string }
   state: ChangeState
   merge?: Merge
   /** Set while a person's approval stands; a new run clears it. */
@@ -229,7 +241,7 @@ export interface Reviewer {
 
 export interface Alert {
   id: string
-  kind: 'bypass_commit' | 'token_expiry' | 'no_reviewer' | 'pipeline_unapproved'
+  kind: 'bypass_commit' | 'token_expiry' | 'no_reviewer' | 'pipeline_unapproved' | 'gate_bypassed'
   key: string
   repo_id?: string
   message: string

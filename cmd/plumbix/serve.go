@@ -19,6 +19,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/host"
 	"github.com/eduard-alloy/plumbix/internal/images"
 	"github.com/eduard-alloy/plumbix/internal/poller"
+	"github.com/eduard-alloy/plumbix/internal/pullrequest"
 	"github.com/eduard-alloy/plumbix/internal/runner"
 	"github.com/eduard-alloy/plumbix/internal/secrets"
 	"github.com/eduard-alloy/plumbix/internal/settings"
@@ -108,8 +109,17 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		defer cancel()
 		eng.Shutdown(stopCtx)
 	}()
+	// The pull-request face of GitHub (WU-054): the syncer turns pull
+	// requests into changes (from the poller and the webhook), the
+	// publisher posts check runs as events arrive.
+	changes := change.NewService(db)
+	syncer := &pullrequest.Syncer{Hosts: hosts, Store: db, Changes: changes, Engine: eng, Log: logger}
+	publisher := &pullrequest.Publisher{Hosts: hosts, Store: db, Log: logger}
+	publishDone := make(chan struct{})
+	go func() { publisher.Run(ctx, hub); close(publishDone) }()
+	defer func() { <-publishDone }()
 	if cfg.Poller.Enabled {
-		p := poller.New(db, eng, hosts, poller.Config{Interval: cfg.Poller.Interval}, logger)
+		p := poller.New(db, eng, hosts, poller.Config{Interval: cfg.Poller.Interval}, logger).WithPullRequests(syncer)
 		pollDone := make(chan struct{})
 		go func() { p.Run(ctx); close(pollDone) }()
 		defer func() { <-pollDone }()
@@ -122,12 +132,13 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	// Browsers must use the bound address: login links point there and
 	// cookie requests must carry it as Host.
 	deps := api.Deps{
-		Version: version, Token: token, Changes: change.NewService(db), Engine: eng, Runs: db, Alerts: db, Events: hub, Logger: logger,
+		Version: version, Token: token, Changes: changes, Engine: eng, Runs: db, Alerts: db, Events: hub, Logger: logger,
 		Sessions: auth.NewSessions(db), Origin: "http://" + ln.Addr().String(),
 		Web:      web.Handler(web.Dist()),
 		Settings: prefs, Secrets: secretStore, Hosts: hosts,
-		Images:     images.New(docker.Client(), version, filepath.Join(cfg.DataDir, "images")),
-		ImportRoot: importRoot(),
+		Images:        images.New(docker.Client(), version, filepath.Join(cfg.DataDir, "images")),
+		ImportRoot:    importRoot(),
+		GitHubWebhook: &pullrequest.Webhook{Secret: func() string { v, _ := secretStore.Get(host.GitHubWebhookSecretKey); return v }, Syncer: syncer, Repos: db, Log: logger},
 	}
 	if err := api.Run(ctx, ln, api.NewHandler(deps), logger, config.DefaultShutdownTimeout); err != nil {
 		logger.Error("server stopped with error", "err", err)

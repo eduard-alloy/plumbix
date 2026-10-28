@@ -71,7 +71,7 @@
       ]
     },
     {
-      "description": "Plumbix landed the change on its target branch; run_id is the approved run that merged.",
+      "description": "The change landed on its target branch: Plumbix pushed it (run_id is the approved run that merged) or GitHub merged the pull request (strategy github; run_id is the latest run, absent when none had started).",
       "properties": {
         "type": {
           "const": "change.merged"
@@ -82,8 +82,7 @@
       },
       "required": [
         "repo_id",
-        "change_id",
-        "run_id"
+        "change_id"
       ]
     },
     {
@@ -385,6 +384,24 @@
         },
         "submitted_by": {
           "type": "string"
+        },
+        "pull_request": {
+          "description": "The GitHub pull request the change mirrors (WU-054).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "number",
+            "url"
+          ],
+          "properties": {
+            "number": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "url": {
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -427,12 +444,18 @@
           "type": "string"
         },
         "strategy": {
+          "description": "github: GitHub merged the pull request and Plumbix recorded it (WU-054).",
           "type": "string",
           "enum": [
             "squash",
             "merge",
-            "rebase"
+            "rebase",
+            "github"
           ]
+        },
+        "merged_by": {
+          "description": "The GitHub login that merged the pull request; absent for Plumbix's own merges.",
+          "type": "string"
         }
       }
     },
@@ -628,7 +651,8 @@
             "bypass_commit",
             "token_expiry",
             "no_reviewer",
-            "pipeline_unapproved"
+            "pipeline_unapproved",
+            "gate_bypassed"
           ]
         },
         "key": {
@@ -657,7 +681,8 @@
             "bypass_commit",
             "token_expiry",
             "no_reviewer",
-            "pipeline_unapproved"
+            "pipeline_unapproved",
+            "gate_bypassed"
           ]
         },
         "key": {

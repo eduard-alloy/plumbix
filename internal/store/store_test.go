@@ -27,7 +27,7 @@ func openTemp(t *testing.T) (*DB, string) {
 var t0 = time.Date(2026, 10, 16, 9, 30, 0, 123456789, time.UTC)
 
 func sampleRepo(id, url string) change.Repo {
-	return change.Repo{ID: id, Host: "github", URL: url, ProtectedBranches: []string{"main", "release"}, MergeStrategy: "squash", CreatedAt: t0}
+	return change.Repo{ID: id, Host: "github", URL: url, ProtectedBranches: []string{"main", "release"}, MergeStrategy: "squash", Merger: change.MergerPlumbix, CreatedAt: t0}
 }
 
 func sampleChange(id, repoID, branch string) change.Change {

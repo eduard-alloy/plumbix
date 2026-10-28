@@ -65,18 +65,27 @@ type (
 		TargetBranch string `json:"target_branch"`
 		Title        string `json:"title"`
 		SubmittedBy  string `json:"submitted_by,omitempty"`
+		// PullRequest is the GitHub pull request the change mirrors (WU-054).
+		PullRequest *PullRequestPayload `json:"pull_request,omitempty"`
+	}
+	// PullRequestPayload names a pull request by number and URL.
+	PullRequestPayload struct {
+		Number int    `json:"number"`
+		URL    string `json:"url"`
 	}
 	// StateChangedPayload: a change moved from one state to another.
 	StateChangedPayload struct {
 		From string `json:"from"`
 		To   string `json:"to"`
 	}
-	// ChangeMergedPayload: Plumbix landed the change on its target branch.
+	// ChangeMergedPayload: the change landed on its target branch, pushed by
+	// Plumbix or, with strategy github, merged by GitHub (WU-054).
 	ChangeMergedPayload struct {
 		Branch   string `json:"branch"`
 		Commit   string `json:"commit"`
 		Previous string `json:"previous"`
 		Strategy string `json:"strategy"`
+		MergedBy string `json:"merged_by,omitempty"`
 	}
 	// ApprovedByPersonPayload: a person approved the change at Head, and why.
 	ApprovedByPersonPayload struct {

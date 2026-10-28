@@ -67,7 +67,7 @@ The fix loop runs across the contract. A "fix" verdict goes back to the client, 
 | F-007 | Bypass detection on protected branches | M1 |
 | F-008 | Authentication. M1: a local API token (WU-013). Later: browser login (WU-011), accounts and per-client tokens | M1 / Later |
 | F-009 | Push notifications from git hosts, such as Azure DevOps service hooks, instead of polling | Later |
-| F-010 | Separate Plumbix identity (Entra ID) and host-side branch enforcement | Later |
+| F-010 | Separate Plumbix identity and host-side branch enforcement. First slice (WU-054): a GitHub App identity, pull requests gated through check runs, the hold as a required check, GitHub merging. Later: Entra ID, Azure DevOps PR statuses and policies | M2 / Later |
 | F-011 | Kai as a client | Later |
 | F-012 | Runners on several machines | Later |
 | F-013 | Additional git hosts | Later |
@@ -123,6 +123,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-042 | Publish a local folder with no remote: create the repository on GitHub or Azure DevOps, push every branch, register it | F-001, F-004 | ✅ |
 | WU-043 | Import polish: decoded repository names, a warning when the host has no token, a plain error when git has no credentials | F-001, F-004 | ✅ |
 | WU-053 | Validator model usage on the run result: each validator's reported `usage` on `result.validators`, served by the run endpoints for observers such as Chart-AI; OpenAPI `Usage` schema mirrors the verdict's | F-003, F-004 | ✅ |
+| WU-054 | The gate on GitHub pull requests: App identity beside the token, pull requests as changes (polling and webhook), verdicts as `plumbix/<validator>` and `plumbix/gate` check runs with the embedded verdict, review approval as a person's approval, GitHub merges and Plumbix records it, `gate_bypassed` alerts | F-010, F-005 | ✅ |
 
 ## Roadmap: Pipeline import (Kai workstream TCVR9R)
 

@@ -344,3 +344,56 @@ func TestEveryMovedHeadReachesTriggeredPipelines(t *testing.T) {
 		t.Errorf("RunPushed called %d times for one poll, want once per repository", h.eng.calls)
 	}
 }
+
+// syncRecorder records which repositories had their pull requests synced
+// and when relative to the branch poll.
+type syncRecorder struct {
+	mu     sync.Mutex
+	synced []string
+	err    error
+	eng    *fakeEngine
+	before [][]string // what the engine had validated when each sync ran
+}
+
+func (s *syncRecorder) Sync(_ context.Context, repo change.Repo) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.synced = append(s.synced, repo.ID)
+	s.eng.mu.Lock()
+	s.before = append(s.before, append([]string(nil), s.eng.validated...))
+	s.eng.mu.Unlock()
+	return s.err
+}
+
+// TestPullRequestsSyncedBeforeHeads: only repositories that watch pull
+// requests are synced, before their heads are judged, and a failing sync
+// does not stop the poll (WU-054).
+func TestPullRequestsSyncedBeforeHeads(t *testing.T) {
+	h := newHarness(t, "r_1", "r_2")
+	if err := h.db.UpdateRepoMerging(ctx, "r_2", true, change.MergerGitHub); err != nil {
+		t.Fatal(err)
+	}
+	rec := &syncRecorder{eng: h.eng}
+	h.p.WithPullRequests(rec)
+	h.eng.push("r_1", "main", "m1")
+	h.eng.push("r_2", "main", "m1")
+	if err := h.p.PollOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.synced) != 1 || rec.synced[0] != "r_2" {
+		t.Fatalf("synced %v, want r_2 only", rec.synced)
+	}
+	c := h.change(t, "r_2", "feat")
+	h.eng.push("r_2", "feat", "f1")
+	rec.err = errors.New("GitHub is down")
+	if err := h.p.PollOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	validated, _ := h.eng.triggers()
+	if len(validated) != 1 || validated[0] != c.ID {
+		t.Errorf("the push was not validated after a failing sync: %v", validated)
+	}
+	if len(rec.synced) != 2 || len(rec.before[1]) != 0 {
+		t.Errorf("sync ran after the heads were judged: synced %v, engine had validated %v", rec.synced, rec.before[1])
+	}
+}

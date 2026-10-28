@@ -81,6 +81,11 @@ type RepoInput struct {
 	URL               string   `json:"url"`
 	ProtectedBranches []string `json:"protected_branches"`
 	MergeStrategy     string   `json:"merge_strategy"`
+	// PullRequests opts a GitHub repository into pull-request intake; Merger
+	// is plumbix or github and defaults to github when PullRequests is set
+	// (WU-054).
+	PullRequests bool   `json:"pull_requests"`
+	Merger       string `json:"merger"`
 }
 
 // ChangeInput is a change submission request.
@@ -96,6 +101,12 @@ type ChangeInput struct {
 	// PlumbixBranch is set by the server for branches it created; a client
 	// cannot claim it.
 	PlumbixBranch bool `json:"-"`
+	// PullRequest is set by the server for a change it opened from a GitHub
+	// pull request (WU-054); a client cannot claim it. AllowNoCriteria lets
+	// such a change state no criteria when the pull request stated none,
+	// rather than inventing one.
+	PullRequest     *PullRequestRef `json:"-"`
+	AllowNoCriteria bool            `json:"-"`
 }
 
 // normalizeRepo fills defaults and checks every rule.
@@ -123,6 +134,23 @@ func normalizeRepo(in RepoInput) (RepoInput, error) {
 		in.MergeStrategy = DefaultStrategy
 	} else if !mergeStrategies[in.MergeStrategy] {
 		ps.add("merge_strategy", "must be squash, merge or rebase")
+	}
+	if in.PullRequests && in.Host != HostGitHub {
+		ps.add("pull_requests", "only GitHub repositories have pull requests Plumbix can watch")
+	}
+	switch in.Merger {
+	case "":
+		in.Merger = MergerPlumbix
+		if in.PullRequests {
+			in.Merger = MergerGitHub
+		}
+	case MergerPlumbix:
+	case MergerGitHub:
+		if in.Host != HostGitHub {
+			ps.add("merger", "github merges only GitHub repositories")
+		}
+	default:
+		ps.add("merger", "must be plumbix or github")
 	}
 	if len(in.ProtectedBranches) == 0 {
 		in.ProtectedBranches = []string{DefaultBranch}
@@ -176,7 +204,7 @@ func normalizeChange(in ChangeInput) (ChangeInput, error) {
 	}
 
 	switch n := len(in.AcceptanceCriteria); {
-	case n == 0:
+	case n == 0 && !in.AllowNoCriteria:
 		ps.add("acceptance_criteria", "must contain at least one criterion")
 	case n > MaxCriteria:
 		ps.add("acceptance_criteria", "must contain at most %d criteria", MaxCriteria)

@@ -23,6 +23,10 @@ const (
 	// its pipeline file's content is not approved, or a merge could not
 	// record its pipeline files as approved; key is "<repo>:<file>" (WU-051).
 	PipelineUnapproved Kind = "pipeline_unapproved"
+	// GateBypassed: a pull request merged on GitHub while its change was not
+	// approved, or while plumbix/gate was not a required check on the
+	// target; key is "<repo>#<number>" (WU-054).
+	GateBypassed Kind = "gate_bypassed"
 )
 
 // Alert is one open or resolved alert. Kind and Key identify its subject:

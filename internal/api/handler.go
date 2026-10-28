@@ -45,6 +45,10 @@ type Deps struct {
 	// cloning repositories (WU-041, A35): the server user's home directory.
 	// Empty leaves those routes out; they also need Engine.
 	ImportRoot string
+	// GitHubWebhook receives GitHub's deliveries at POST /api/v1/hooks/github
+	// (WU-054). It verifies its own signature, so it sits outside the
+	// bearer-token check; nil leaves the route out.
+	GitHubWebhook http.Handler
 }
 
 // NewHandler returns the HTTP handler for the public API.
@@ -95,6 +99,9 @@ func NewHandler(d Deps) http.Handler {
 	})
 	if d.Sessions != nil {
 		registerSessionRoutes(mux, protected, az, &sessionHandlers{sessions: d.Sessions, origin: d.Origin, authz: az, log: logger})
+	}
+	if d.GitHubWebhook != nil {
+		mux.Handle("POST /api/v1/hooks/github", d.GitHubWebhook)
 	}
 	mux.Handle("/api/", az.wrap(protected))
 	if d.Web != nil {

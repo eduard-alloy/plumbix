@@ -46,6 +46,7 @@ func (s *Service) RegisterRepo(ctx context.Context, in RepoInput) (Repo, error) 
 	r := Repo{
 		ID: NewID("r_"), Host: in.Host, URL: in.URL,
 		ProtectedBranches: in.ProtectedBranches, MergeStrategy: in.MergeStrategy,
+		PullRequests: in.PullRequests, Merger: in.Merger,
 		CreatedAt: s.now().UTC(),
 	}
 	if err := s.store.CreateRepo(ctx, r); err != nil {
@@ -87,7 +88,7 @@ func (s *Service) Submit(ctx context.Context, in ChangeInput) (Change, error) {
 	c := Change{
 		ID: NewID("c_"), RepoID: in.RepoID, SourceBranch: in.SourceBranch, TargetBranch: in.TargetBranch,
 		Title: in.Title, Intent: in.Intent, AcceptanceCriteria: in.AcceptanceCriteria,
-		Constraints: in.Constraints, SubmittedBy: in.SubmittedBy, PlumbixBranch: in.PlumbixBranch,
+		Constraints: in.Constraints, SubmittedBy: in.SubmittedBy, PlumbixBranch: in.PlumbixBranch, PullRequest: in.PullRequest,
 		State: Open, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.store.CreateChange(ctx, c); err != nil {

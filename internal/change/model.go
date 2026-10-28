@@ -40,14 +40,37 @@ func (s State) Final() bool { return s == Merged || s == Closed }
 // to its branch starts nothing (A21).
 func (s State) NeedsPerson() bool { return s == NeedsHuman || s == Escalated || s == Rejected }
 
+// Who lands a change on its target branch (WU-054).
+const (
+	MergerPlumbix = "plumbix" // Plumbix pushes the validated tree
+	MergerGitHub  = "github"  // GitHub merges the pull request; Plumbix records it
+)
+
+// StrategyGitHub is the merge strategy recorded when GitHub merged a pull
+// request: GitHub does not say which of its methods it used.
+const StrategyGitHub = "github"
+
 // Repo is a registered git repository.
 type Repo struct {
-	ID                string    `json:"id"`
-	Host              string    `json:"host"`
-	URL               string    `json:"url"`
-	ProtectedBranches []string  `json:"protected_branches"`
-	MergeStrategy     string    `json:"merge_strategy"`
-	CreatedAt         time.Time `json:"created_at"`
+	ID                string   `json:"id"`
+	Host              string   `json:"host"`
+	URL               string   `json:"url"`
+	ProtectedBranches []string `json:"protected_branches"`
+	MergeStrategy     string   `json:"merge_strategy"`
+	// PullRequests says Plumbix watches the repository's pull requests and
+	// gates them with check runs (WU-054); GitHub only.
+	PullRequests bool `json:"pull_requests,omitempty"`
+	// Merger is who lands a change: MergerPlumbix or MergerGitHub. GitHub
+	// merges only pull requests; a change without one still merges through
+	// Plumbix.
+	Merger    string    `json:"merger"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PullRequestRef ties a change to the pull request it mirrors (WU-054).
+type PullRequestRef struct {
+	Number int    `json:"number"`
+	URL    string `json:"url"`
 }
 
 // Change is a proposed change with its intent and acceptance criteria.
@@ -61,9 +84,11 @@ type Change struct {
 	AcceptanceCriteria []Criterion `json:"acceptance_criteria"`
 	Constraints        []string    `json:"constraints"`
 	SubmittedBy        string      `json:"submitted_by,omitempty"`
-	State              State       `json:"state"`
-	Merge              *Merge      `json:"merge,omitempty"`       // set once merged
-	SourceHead         string      `json:"source_head,omitempty"` // the source branch's head as the poller last saw it
+	// PullRequest is set for a change that mirrors a GitHub pull request.
+	PullRequest *PullRequestRef `json:"pull_request,omitempty"`
+	State       State           `json:"state"`
+	Merge       *Merge          `json:"merge,omitempty"`       // set once merged
+	SourceHead  string          `json:"source_head,omitempty"` // the source branch's head as the poller last saw it
 	// HumanApproval is set when a person approved the change at Head; a
 	// new run clears it.
 	HumanApproval *HumanApproval `json:"human_approval,omitempty"`
@@ -83,10 +108,13 @@ type HumanApproval struct {
 
 // Merge says how a change landed on its target branch.
 type Merge struct {
-	Commit   string    `json:"commit"`   // the commit now at the target's head
-	Previous string    `json:"previous"` // the target's head before the merge
-	Strategy string    `json:"strategy"`
-	RunID    string    `json:"run_id"` // the approved run that was merged
+	Commit   string `json:"commit"`   // the commit now at the target's head
+	Previous string `json:"previous"` // the target's head before the merge
+	Strategy string `json:"strategy"`
+	RunID    string `json:"run_id"` // the approved run that was merged; empty when GitHub merged before any run
+	// MergedBy is the GitHub login that merged a pull request; empty for
+	// Plumbix's own merges.
+	MergedBy string    `json:"merged_by,omitempty"`
 	MergedAt time.Time `json:"merged_at"`
 }
 

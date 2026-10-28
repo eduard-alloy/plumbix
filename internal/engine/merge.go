@@ -32,6 +32,9 @@ func (e *Engine) Merge(ctx context.Context, changeID string) (change.Change, err
 	if err != nil {
 		return change.Change{}, fmt.Errorf("load repo: %w", err)
 	}
+	if repo.Merger == change.MergerGitHub && c.PullRequest != nil {
+		return change.Change{}, fmt.Errorf("%w: merge pull request #%d on GitHub and Plumbix records it", ErrGitHubMerges, c.PullRequest.Number)
+	}
 	m, err := e.fetch(ctx, repo)
 	if err != nil {
 		return change.Change{}, err
