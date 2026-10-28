@@ -357,6 +357,11 @@ func TestRepoSettings(t *testing.T) {
 	if v := decode[merging](t, a.do(http.MethodGet, "/api/v1/repos/"+repo.ID+"/settings", "")); v.Guidance != "Go code needs tests." || v.PullRequests || v.Merger != "plumbix" {
 		t.Errorf("after refused bodies: %+v", v)
 	}
+	// The limit applies to the trimmed text, as the service applies it.
+	rec = a.do(http.MethodPut, "/api/v1/repos/"+repo.ID+"/settings", `{"guidance": "  `+strings.Repeat("x", 4000)+`  "}`)
+	if v := decode[merging](t, rec); rec.Code != http.StatusOK || len(v.Guidance) != 4000 {
+		t.Errorf("guidance at the limit with surrounding spaces: %d, %d characters stored", rec.Code, len(v.Guidance))
+	}
 	if rec := a.do(http.MethodGet, "/api/v1/repos/r_nope/settings", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown repo: %d", rec.Code)
 	}
