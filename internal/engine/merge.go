@@ -162,6 +162,9 @@ func (e *Engine) land(ctx context.Context, m *gitops.Mirror, repo change.Repo, c
 	}
 	ref := LandingRef(c.ID)
 	if err := m.PushRef(ctx, ref, sha); err != nil {
+		// A ref left half-pushed is harmless (the next PushRef forces over
+		// it), but the cleanup matches the post-failure path below.
+		_ = m.DeleteRef(ctx, ref)
 		return false, fmt.Errorf("push the landing commit to %s: %w", ref, err)
 	}
 	if err := landing.PostGate(ctx, repo, c, r, sha); err != nil {
