@@ -207,3 +207,82 @@ func TestGitHubAppRefreshesExpiredTokens(t *testing.T) {
 		t.Fatalf("token near expiry not refreshed: ok=%v mints=%d", ok, srv.mints.Load())
 	}
 }
+
+// TestGitHubAPIPrefersApp (WU-055): REST calls carry the App's
+// installation token when the App is installed on the repository, even
+// with a token set, since only an App may create check runs; git
+// credentials still prefer the token. Without an installation the token
+// serves the API too, and with neither the error names the App.
+func TestGitHubAPIPrefersApp(t *testing.T) {
+	key, pemKey := testKey(t)
+	app := fakeApp(t, key, "1234")
+	var auth []string
+	installed := true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/repos/a/b/pulls":
+			auth = append(auth, r.Header.Get("Authorization"))
+			_, _ = w.Write([]byte(`[]`))
+		case r.URL.Path == "/repos/a/b/installation" && !installed:
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+		default:
+			app.Config.Handler.ServeHTTP(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	ctx := context.Background()
+
+	a, _ := NewGitHubApp("1234", pemKey)
+	g := &GitHub{Token: "pat", App: a, APIBase: srv.URL}
+	if _, err := g.ListPullRequests(ctx, repo, "open"); err != nil {
+		t.Fatal(err)
+	}
+	if len(auth) != 1 || auth[0] != "Bearer inst-tok" {
+		t.Errorf("API call with an installed App used %v, want the installation token", auth)
+	}
+	if au, ok := g.Auth(repo); !ok || au.Token != "pat" {
+		t.Errorf("git auth = %+v, %v; the token still fetches and pushes", au, ok)
+	}
+
+	installed = false
+	a2, _ := NewGitHubApp("1234", pemKey)
+	g = &GitHub{Token: "pat", App: a2, APIBase: srv.URL}
+	if _, err := g.ListPullRequests(ctx, repo, "open"); err != nil {
+		t.Fatal(err)
+	}
+	if len(auth) != 2 || auth[1] != "Bearer pat" {
+		t.Errorf("API call without an installation used %v, want the token", auth)
+	}
+
+	a3, _ := NewGitHubApp("1234", pemKey)
+	g = &GitHub{App: a3, APIBase: srv.URL}
+	_, err := g.ListPullRequests(ctx, repo, "open")
+	if err == nil || !strings.Contains(err.Error(), "App") || strings.Contains(err.Error(), "PRIVATE KEY") {
+		t.Errorf("API call with neither: %v", err)
+	}
+}
+
+// TestGitHubAppCheck (WU-055): AppCheck verifies the App id and key
+// whatever token is set, and says when no App is configured or the one
+// configured is unusable, never echoing the key.
+func TestGitHubAppCheck(t *testing.T) {
+	key, pemKey := testKey(t)
+	srv := fakeApp(t, key, "1234")
+	ctx := context.Background()
+	a, _ := NewGitHubApp("1234", pemKey)
+	if err := (&GitHub{Token: "pat", App: a, APIBase: srv.URL}).AppCheck(ctx); err != nil {
+		t.Errorf("check with a token set: %v", err)
+	}
+	wrong, _ := NewGitHubApp("9999", pemKey)
+	err := (&GitHub{App: wrong, APIBase: srv.URL}).AppCheck(ctx)
+	if err == nil || strings.Contains(err.Error(), "PRIVATE KEY") {
+		t.Errorf("check of a refused App: %v", err)
+	}
+	if err := (&GitHub{Token: "pat"}).AppCheck(ctx); err == nil || !strings.Contains(err.Error(), "no GitHub App") {
+		t.Errorf("check without an App: %v", err)
+	}
+	broken := FromSecrets(map[string]string{GitHubAppIDKey: "1234", GitHubAppKeyKey: "garbage"})[change.HostGitHub].(*GitHub)
+	if err := broken.AppCheck(ctx); err == nil || !strings.Contains(err.Error(), GitHubAppKeyKey) || strings.Contains(err.Error(), "garbage") {
+		t.Errorf("check of a broken App: %v", err)
+	}
+}

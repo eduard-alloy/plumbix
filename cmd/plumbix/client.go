@@ -138,7 +138,7 @@ func usageError(stderr io.Writer, msg string) int {
 	return 2
 }
 
-// runRepo handles "plumbix repo add|list".
+// runRepo handles "plumbix repo add|set|list|runs".
 func runRepo(args []string, stdout, stderr io.Writer) int {
 	c := newClientCmd("repo", stdout, stderr)
 	var in struct {
@@ -153,8 +153,8 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 	c.fs.StringVar(&in.URL, "url", "", "HTTPS clone URL (repo add)")
 	c.fs.Var(&in.ProtectedBranches, "protected", "protected branch, repeatable (repo add, default main)")
 	c.fs.StringVar(&in.MergeStrategy, "merge-strategy", "", "squash, merge or rebase (repo add, default squash)")
-	c.fs.BoolVar(&in.PullRequests, "pull-requests", false, "gate the repository's GitHub pull requests with check runs (repo add)")
-	c.fs.StringVar(&in.Merger, "merger", "", "who lands changes: plumbix or github (repo add; default github with --pull-requests, else plumbix)")
+	c.fs.BoolVar(&in.PullRequests, "pull-requests", false, "gate the repository's GitHub pull requests with check runs (repo add, repo set)")
+	c.fs.StringVar(&in.Merger, "merger", "", "who lands changes: plumbix or github (repo add, repo set; default github with --pull-requests, else plumbix)")
 	branch := c.fs.String("branch", "", "only runs of this branch (repo runs)")
 	pos, ok := c.parse(args)
 	if !ok {
@@ -164,6 +164,22 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 	case len(pos) == 1 && pos[0] == "add":
 		body, _ := json.Marshal(in)
 		return c.call(http.MethodPost, "/api/v1/repos", body)
+	case len(pos) == 2 && pos[0] == "set":
+		// Only the flags given travel; the server leaves the rest as it is.
+		set := map[string]any{}
+		c.fs.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "pull-requests":
+				set["pull_requests"] = in.PullRequests
+			case "merger":
+				set["merger"] = in.Merger
+			}
+		})
+		if len(set) == 0 {
+			return usageError(stderr, "usage: plumbix repo set <id> [--pull-requests[=false]] [--merger plumbix|github]")
+		}
+		body, _ := json.Marshal(set)
+		return c.call(http.MethodPut, "/api/v1/repos/"+url.PathEscape(pos[1])+"/settings", body)
 	case len(pos) == 1 && pos[0] == "list":
 		return c.call(http.MethodGet, "/api/v1/repos", nil)
 	case len(pos) == 2 && pos[0] == "runs":
@@ -173,7 +189,7 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 		}
 		return c.call(http.MethodGet, path, nil)
 	}
-	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> [--pull-requests] [--merger plumbix|github] | repo list | repo runs <id> [--branch <b>]")
+	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> [--pull-requests] [--merger plumbix|github] | repo set <id> [--pull-requests[=false]] [--merger plumbix|github] | repo list | repo runs <id> [--branch <b>]")
 }
 
 // runSubmit handles "plumbix submit -f <file|->".

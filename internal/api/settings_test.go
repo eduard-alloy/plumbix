@@ -1,7 +1,13 @@
 package api
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -314,6 +320,43 @@ func TestRepoSettings(t *testing.T) {
 	if decode[struct{ Guidance string }](t, rec).Guidance != "Go code needs tests." {
 		t.Errorf("after PUT: %s", rec.Body.String())
 	}
+	// Pull requests and the merger live here too (WU-055); a field left out
+	// of the body stays as it is.
+	type merging struct {
+		Guidance     string `json:"guidance"`
+		PullRequests bool   `json:"pull_requests"`
+		Merger       string `json:"merger"`
+	}
+	if v := decode[merging](t, rec); v.PullRequests || v.Merger != "plumbix" {
+		t.Errorf("merging after a guidance PUT: %+v", v)
+	}
+	rec = a.do(http.MethodPut, "/api/v1/repos/"+repo.ID+"/settings", `{"pull_requests": true, "merger": "plumbix"}`)
+	o.check("RepoSettings", rec)
+	if v := decode[merging](t, rec); rec.Code != http.StatusOK || !v.PullRequests || v.Merger != "plumbix" || v.Guidance != "Go code needs tests." {
+		t.Errorf("merging PUT: %d %+v", rec.Code, v)
+	}
+	if rs := decode[struct{ Repos []change.Repo }](t, a.do(http.MethodGet, "/api/v1/repos", "")).Repos; len(rs) != 1 || !rs[0].PullRequests || rs[0].Merger != "plumbix" {
+		t.Errorf("repos after the merging PUT: %+v", rs)
+	}
+	rec = a.do(http.MethodPut, "/api/v1/repos/"+repo.ID+"/settings", `{"pull_requests": false}`)
+	if v := decode[merging](t, rec); rec.Code != http.StatusOK || v.PullRequests || v.Merger != "plumbix" {
+		t.Errorf("pull requests off: %d %+v", rec.Code, v)
+	}
+	rec = a.do(http.MethodPut, "/api/v1/repos/"+repo.ID+"/settings", `{"merger": "gitlab"}`)
+	o.check("Error", rec)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"merger"`) {
+		t.Errorf("unknown merger: %d %s", rec.Code, rec.Body.String())
+	}
+	// A refused body changes nothing, whichever part was wrong.
+	if rec := a.do(http.MethodPut, "/api/v1/repos/"+repo.ID+"/settings", `{"guidance": "Changed anyway?", "merger": "gitlab"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad merger beside guidance: %d", rec.Code)
+	}
+	if rec := a.do(http.MethodPut, "/api/v1/repos/"+repo.ID+"/settings", `{"guidance": "`+strings.Repeat("x", 4001)+`", "pull_requests": true}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad guidance beside merging: %d", rec.Code)
+	}
+	if v := decode[merging](t, a.do(http.MethodGet, "/api/v1/repos/"+repo.ID+"/settings", "")); v.Guidance != "Go code needs tests." || v.PullRequests || v.Merger != "plumbix" {
+		t.Errorf("after refused bodies: %+v", v)
+	}
 	if rec := a.do(http.MethodGet, "/api/v1/repos/r_nope/settings", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown repo: %d", rec.Code)
 	}
@@ -394,5 +437,60 @@ func TestRepoToken(t *testing.T) {
 	}
 	if rec := a.do(http.MethodPut, "/api/v1/repos/r_nope/token", `{"value": "x"}`); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown repo: %d", rec.Code)
+	}
+}
+
+// TestAppSecretCheckChecksTheApp (WU-055): checking the App's id or key
+// verifies the App itself, not the personal token beside it.
+func TestAppSecretCheckChecksTheApp(t *testing.T) {
+	o := loadOpenAPI(t)
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemKey := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	// The App endpoint accepts any JWT; the token endpoint refuses the token.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/app":
+			_, _ = w.Write([]byte(`{"slug":"plumbix"}`))
+		default:
+			http.Error(w, `{"message":"Bad credentials"}`, http.StatusUnauthorized)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "plumbix.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	sec, err := secrets.Open(filepath.Join(dir, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := host.NewGitHubApp("1234", pemKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gh := &host.GitHub{Token: "pat", App: app, APIBase: srv.URL}
+	h := NewHandler(Deps{Version: "dev", Token: testToken, Changes: change.NewService(db), Settings: settings.New(db), Secrets: sec, Hosts: host.Registry{change.HostGitHub: gh}})
+	a := &settingsAPI{testAPI: &testAPI{t: t, h: h}}
+	type check struct {
+		OK      bool   `json:"ok"`
+		Message string `json:"message"`
+	}
+	_ = a.do(http.MethodPut, "/api/v1/settings/secrets/PLUMBIX_GITHUB_TOKEN", `{"value": "pat"}`)
+	_ = a.do(http.MethodPut, "/api/v1/settings/secrets/PLUMBIX_GITHUB_APP_ID", `{"value": "1234"}`)
+	_ = a.do(http.MethodPut, "/api/v1/settings/secrets/PLUMBIX_GITHUB_APP_KEY", `{"value": "`+base64.StdEncoding.EncodeToString([]byte(pemKey))+`"}`)
+	for _, k := range []string{"PLUMBIX_GITHUB_APP_ID", "PLUMBIX_GITHUB_APP_KEY"} {
+		rec := a.do(http.MethodPost, "/api/v1/settings/secrets/"+k+"/check", "")
+		o.check("SecretCheck", rec)
+		if c := decode[check](t, rec); rec.Code != http.StatusOK || !c.OK || !strings.Contains(c.Message, "App") {
+			t.Errorf("%s check: %d %+v", k, rec.Code, c)
+		}
+	}
+	if c := decode[check](t, a.do(http.MethodPost, "/api/v1/settings/secrets/PLUMBIX_GITHUB_TOKEN/check", "")); c.OK {
+		t.Errorf("the token check must still check the token: %+v", c)
 	}
 }

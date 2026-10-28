@@ -115,6 +115,14 @@ func TestCLIFlow(t *testing.T) {
 	if gated["pull_requests"] != true || gated["merger"] != "github" {
 		t.Errorf("gated repo = %v", gated)
 	}
+	// repo set changes the two on a registered repository (WU-055).
+	set := c.mustRun("", "repo", "set", repoID, "--pull-requests", "--merger", "plumbix")
+	if set["pull_requests"] != true || set["merger"] != "plumbix" {
+		t.Errorf("repo set = %v", set)
+	}
+	if unset := c.mustRun("", "repo", "set", repoID, "--pull-requests=false"); unset["pull_requests"] == true || unset["merger"] != "plumbix" {
+		t.Errorf("repo set off = %v", unset)
+	}
 
 	changeJSON := `{"repo_id": "` + repoID + `", "source_branch": "feat", "target_branch": "main", "title": "T", "intent": "I", "acceptance_criteria": [{"text": "works"}]}`
 	file := filepath.Join(t.TempDir(), "change.json")

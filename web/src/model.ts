@@ -343,6 +343,9 @@ export interface RepoSettings {
   guidance: string
   token_set?: boolean
   token_updated_at?: string
+  /** The gating settings (WU-054), settable here after registration (WU-055). */
+  pull_requests?: boolean
+  merger?: 'plumbix' | 'github'
 }
 
 export interface SecretCheck {

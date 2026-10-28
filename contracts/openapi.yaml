@@ -649,7 +649,7 @@ paths:
           $ref: "#/components/responses/NotFound"
     put:
       operationId: updateRepoSettings
-      summary: Set one repository's review guidance; empty clears it.
+      summary: Set one repository's review guidance (empty clears it), and whether Plumbix watches its pull requests and who merges them; a field left out stays as it is.
       parameters:
         - $ref: "#/components/parameters/RepoID"
       requestBody:
@@ -2423,9 +2423,9 @@ components:
         message:
           type: string
     RepoSettings:
+      description: A repository's own settings. A response carries every field; a request may leave fields out, and each one left out stays as it is.
       type: object
       additionalProperties: false
-      required: [guidance]
       properties:
         guidance:
           type: string
@@ -2436,6 +2436,13 @@ components:
         token_updated_at:
           type: string
           format: date-time
+        pull_requests:
+          description: Whether Plumbix watches the repository's GitHub pull requests and gates them with check runs (WU-054). Settable after registration (WU-055), GitHub only.
+          type: boolean
+        merger:
+          description: Who lands changes. Left out of a request it stays as it is; empty in a request it takes the default for pull_requests (github with it, plumbix without). A response always names one.
+          type: string
+          enum: [plumbix, github, ""]
     LoginLink:
       type: object
       additionalProperties: false

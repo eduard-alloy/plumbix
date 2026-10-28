@@ -1,6 +1,7 @@
 package change_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
@@ -53,5 +54,44 @@ func TestSubmitKeepsPullRequest(t *testing.T) {
 	got, err := s.Get(ctx, c.ID)
 	if err != nil || got.PullRequest == nil || got.PullRequest.Number != 12 {
 		t.Fatalf("read back = %+v, %v", got, err)
+	}
+}
+
+// TestSetRepoMerging (WU-055): a registered repository's pull_requests and
+// merger change under the registration rules; an empty merger takes the
+// default for the new pull_requests value.
+func TestSetRepoMerging(t *testing.T) {
+	s := newService(t)
+	r, err := s.RegisterRepo(ctx, change.RepoInput{Host: "github", URL: "https://github.com/a/plain"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.SetRepoMerging(ctx, r.ID, true, "")
+	if err != nil || !got.PullRequests || got.Merger != change.MergerGitHub {
+		t.Fatalf("pull requests on = %+v, %v", got, err)
+	}
+	got, err = s.SetRepoMerging(ctx, r.ID, true, change.MergerPlumbix)
+	if err != nil || !got.PullRequests || got.Merger != change.MergerPlumbix {
+		t.Fatalf("plumbix merges = %+v, %v", got, err)
+	}
+	if stored, err := s.GetRepo(ctx, r.ID); err != nil || stored.PullRequests != got.PullRequests || stored.Merger != got.Merger || stored.URL != r.URL {
+		t.Fatalf("stored = %+v, %v", stored, err)
+	}
+	got, err = s.SetRepoMerging(ctx, r.ID, false, "")
+	if err != nil || got.PullRequests || got.Merger != change.MergerPlumbix {
+		t.Fatalf("pull requests off = %+v, %v", got, err)
+	}
+	az, err := s.RegisterRepo(ctx, change.RepoInput{Host: "azuredevops", URL: "https://dev.azure.com/o/p/_git/r"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetRepoMerging(ctx, az.ID, true, ""); problems(t, err)["pull_requests"] == "" {
+		t.Errorf("azure with pull requests: %v", err)
+	}
+	if _, err := s.SetRepoMerging(ctx, r.ID, false, "gitlab"); problems(t, err)["merger"] == "" {
+		t.Errorf("unknown merger: %v", err)
+	}
+	if _, err := s.SetRepoMerging(ctx, "r_nope", true, ""); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("unknown repo: %v", err)
 	}
 }

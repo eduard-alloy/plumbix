@@ -135,23 +135,7 @@ func normalizeRepo(in RepoInput) (RepoInput, error) {
 	} else if !mergeStrategies[in.MergeStrategy] {
 		ps.add("merge_strategy", "must be squash, merge or rebase")
 	}
-	if in.PullRequests && in.Host != HostGitHub {
-		ps.add("pull_requests", "only GitHub repositories have pull requests Plumbix can watch")
-	}
-	switch in.Merger {
-	case "":
-		in.Merger = MergerPlumbix
-		if in.PullRequests {
-			in.Merger = MergerGitHub
-		}
-	case MergerPlumbix:
-	case MergerGitHub:
-		if in.Host != HostGitHub {
-			ps.add("merger", "github merges only GitHub repositories")
-		}
-	default:
-		ps.add("merger", "must be plumbix or github")
-	}
+	in.Merger = normalizeMerging(in.Host, in.PullRequests, in.Merger, &ps)
 	if len(in.ProtectedBranches) == 0 {
 		in.ProtectedBranches = []string{DefaultBranch}
 	}
@@ -333,4 +317,38 @@ func ValidBranch(name string) bool {
 		}
 	}
 	return true
+}
+
+// normalizeMerging checks a repository's pull_requests and merger against
+// its host and returns the merger to store: the given one, or the default
+// for the pull_requests value (github with pull requests, plumbix without).
+// Registration and the settings update (WU-055) share the rules.
+func normalizeMerging(host string, pullRequests bool, merger string, ps *problems) string {
+	if pullRequests && host != HostGitHub {
+		ps.add("pull_requests", "only GitHub repositories have pull requests Plumbix can watch")
+	}
+	switch merger {
+	case "":
+		if pullRequests {
+			return MergerGitHub
+		}
+		return MergerPlumbix
+	case MergerPlumbix:
+	case MergerGitHub:
+		if host != HostGitHub {
+			ps.add("merger", "github merges only GitHub repositories")
+		}
+	default:
+		ps.add("merger", "must be plumbix or github")
+	}
+	return merger
+}
+
+// CheckRepoMerging reports whether pullRequests and merger are acceptable
+// for a repository on host, without storing anything: what a handler calls
+// before it writes any part of a settings update (WU-055).
+func CheckRepoMerging(host string, pullRequests bool, merger string) error {
+	var ps problems
+	normalizeMerging(host, pullRequests, merger, &ps)
+	return ps.err()
 }

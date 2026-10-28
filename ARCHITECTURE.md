@@ -303,7 +303,7 @@ type Host interface {
 
 Branch heads come from `git ls-remote`, fetches and pushes from `git` with credentials passed through `GIT_ASKPASS`. This works the same on both hosts. Each adapter only knows its URL format, its credential style and how to read token expiry. GitHub reports expiry on every authenticated API call; Azure DevOps reports none, so its adapter reads the date the user recorded in the secrets file.
 
-The GitHub adapter has a second identity beside the token (WU-054): a GitHub App (`PLUMBIX_GITHUB_APP_ID`, `PLUMBIX_GITHUB_APP_KEY`) whose RS256 JWT, signed with the standard library, mints an installation token per repository, cached until a minute before expiry; a token wins when one applies. The same adapter carries the pull-request REST calls the gate needs (pull requests, reviews, check runs, required checks), typed in GitHub's own field names. Azure DevOps PR statuses and policies are the same shape, later.
+The GitHub adapter has a second identity beside the token (WU-054): a GitHub App (`PLUMBIX_GITHUB_APP_ID`, `PLUMBIX_GITHUB_APP_KEY`) whose RS256 JWT, signed with the standard library, mints an installation token per repository, cached until a minute before expiry. The same adapter carries the pull-request REST calls the gate needs (pull requests, reviews, check runs, required checks), typed in GitHub's own field names; those go out as the App whenever it is installed on the repository, since only an App may create check runs, and fall back to the repository's or the host's token (WU-055), while git credentials prefer the token and fall back to the App. `AppCheck` verifies the App on its own for the Settings page. Azure DevOps PR statuses and policies are the same shape, later.
 
 ## 5. Main flows
 
@@ -341,7 +341,7 @@ Independently, every head move, Plumbix's own merges included, goes to `Engine.R
 
 ### 5.5 Pull requests on GitHub (WU-054)
 
-For a GitHub repository registered with `pull_requests`, Plumbix runs beside the pull request (`internal/pullrequest`):
+For a GitHub repository registered with `pull_requests` (at registration, or later through `PUT /repos/{id}/settings` and `plumbix repo set`, WU-055), Plumbix runs beside the pull request (`internal/pullrequest`):
 
 1. **Intake.** The poller syncs pull requests before it judges branch heads; a webhook (`POST /api/v1/hooks/github`, HMAC-SHA256 with `PLUMBIX_GITHUB_WEBHOOK_SECRET`, outside the bearer check) feeds the same `Syncer` with one delivery. An open pull request becomes a change: head and base branches, title, body as intent, criteria from the list under an `Acceptance criteria` heading (none when the body states none, the only case a change may have no criteria), `submitted_by` as the login or `app/<slug>`, `pull_request: {number, url}`. Forks are skipped and logged. A closed pull request closes the change; a merged one records the merge.
 2. **Check runs.** A publisher subscribes to the event hub. On the first `step.started` of a run (the fetch has set the head) it posts `plumbix/gate` as `in_progress`; on `run.finished` it posts one `plumbix/<validator>` per validator outcome, with the validator's verdict rebuilt from the result and embedded between `<!-- plumbix-verdict/v1 -->` markers, and completes the gate with the combined result under `plumbix-result/v1`. On `change.approved_by_person` it posts a green gate on the approved head. `contracts/github-check-runs.md` is the reader's contract.

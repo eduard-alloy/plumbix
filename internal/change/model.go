@@ -157,6 +157,9 @@ type Store interface {
 	CreateRepo(ctx context.Context, r Repo) error         // ErrConflict on a duplicate URL
 	GetRepo(ctx context.Context, id string) (Repo, error) // ErrNotFound
 	ListRepos(ctx context.Context) ([]Repo, error)
+	// UpdateRepoMerging sets a repository's pull_requests and merger
+	// (WU-055). ErrNotFound for an unknown repository.
+	UpdateRepoMerging(ctx context.Context, id string, pullRequests bool, merger string) error
 	CreateChange(ctx context.Context, c Change) error         // ErrConflict if another change is open on the branch
 	GetChange(ctx context.Context, id string) (Change, error) // ErrNotFound
 	ListChanges(ctx context.Context, f Filter) ([]Change, error)

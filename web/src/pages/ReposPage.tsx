@@ -188,6 +188,7 @@ export function ReposPage() {
                       {count} {count === 1 ? 'change' : 'changes'}
                     </span>
                     <span className="dim2">{r.merge_strategy} merge</span>
+                    {r.pull_requests && <span className="host-badge">Pull requests · {r.merger === 'github' ? 'GitHub' : 'Plumbix'} merges</span>}
                     <span className="spacer" />
                     {r.host !== 'git' && (
                       <button className="quiet" aria-expanded={panel === 'token'} onClick={() => toggle('token')}>

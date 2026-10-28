@@ -252,20 +252,43 @@ func isStatus(err error, statuses ...int) bool {
 	return false
 }
 
-// apiToken is the token for API calls on a repository: its own token, the
-// host token, else the App's installation token.
+// apiToken is the token for API calls on a repository: the App's
+// installation token when an App is configured and installed on the
+// repository, since only an App may create check runs (WU-055); else the
+// repository's own token or the host token. With neither, the error says
+// what failed.
 func (g *GitHub) apiToken(ctx context.Context, repo change.Repo) (string, error) {
-	if t := tokenFor(repo, g.Token, g.RepoTokens); t != "" {
-		return t, nil
-	}
+	token := tokenFor(repo, g.Token, g.RepoTokens)
 	if g.App == nil {
-		return "", fmt.Errorf("no GitHub token for repository %s and no App configured", repo.ID)
+		if token == "" {
+			return "", fmt.Errorf("no GitHub token for repository %s and no App configured", repo.ID)
+		}
+		return token, nil
 	}
 	or, err := ownerRepo(repo.URL)
 	if err != nil {
 		return "", err
 	}
-	return g.App.InstallationToken(ctx, g.base(), or)
+	inst, err := g.App.InstallationToken(ctx, g.base(), or)
+	if err != nil {
+		if token == "" {
+			return "", fmt.Errorf("no GitHub token for repository %s and the App minted none: %w", repo.ID, err)
+		}
+		return token, nil
+	}
+	return inst, nil
+}
+
+// AppCheck verifies the configured App's id and key against GitHub,
+// whatever token is set beside it (WU-055).
+func (g *GitHub) AppCheck(ctx context.Context) error {
+	if g.AppErr != nil {
+		return fmt.Errorf("GitHub App: %w", g.AppErr)
+	}
+	if g.App == nil {
+		return errors.New("no GitHub App configured: set " + GitHubAppIDKey + " and " + GitHubAppKeyKey)
+	}
+	return g.App.Check(ctx, g.base())
 }
 
 func (g *GitHub) base() string {

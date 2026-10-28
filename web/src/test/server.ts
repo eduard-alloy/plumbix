@@ -344,8 +344,24 @@ export function fakeFetch(db: FakeDB): typeof fetch {
     if (repoSettings) {
       const id = repoSettings[1]
       if (!db.repos.some((r) => r.id === id)) return error(404, 'not_found', `repo ${id}`)
-      if (method === 'PUT') db.repoGuidance[id] = (JSON.parse(String(init?.body)) as { guidance: string }).guidance.trim()
-      return json(200, { guidance: db.repoGuidance[id] ?? '', token_set: id in db.repoTokens, token_updated_at: id in db.repoTokens ? new Date().toISOString() : undefined })
+      const repo = db.repos.find((r) => r.id === id)!
+      if (method === 'PUT') {
+        const body = JSON.parse(String(init?.body)) as { guidance?: string; pull_requests?: boolean; merger?: 'plumbix' | 'github' | '' }
+        if (body.guidance !== undefined) db.repoGuidance[id] = body.guidance.trim()
+        if (body.pull_requests !== undefined || body.merger !== undefined) {
+          // The server's rules (change.normalizeMerging): a field left out stays; an empty merger takes the default.
+          const pull_requests = body.pull_requests ?? repo.pull_requests ?? false
+          const merger = body.merger === undefined ? repo.merger : body.merger === '' ? (pull_requests ? 'github' : 'plumbix') : body.merger
+          const bad: { field: string; message: string }[] = []
+          if (pull_requests && repo.host !== 'github') bad.push({ field: 'pull_requests', message: 'only GitHub repositories have pull requests Plumbix can watch' })
+          if (merger === 'github' && repo.host !== 'github') bad.push({ field: 'merger', message: 'github merges only GitHub repositories' })
+          else if (merger !== 'plumbix' && merger !== 'github') bad.push({ field: 'merger', message: 'must be plumbix or github' })
+          if (bad.length) return problems(bad)
+          repo.pull_requests = pull_requests
+          repo.merger = merger
+        }
+      }
+      return json(200, { guidance: db.repoGuidance[id] ?? '', token_set: id in db.repoTokens, token_updated_at: id in db.repoTokens ? new Date().toISOString() : undefined, pull_requests: repo.pull_requests ?? false, merger: repo.merger })
     }
     const repoToken = path.match(/^\/api\/v1\/repos\/([^/]+)\/token(\/check)?$/)
     if (repoToken) {

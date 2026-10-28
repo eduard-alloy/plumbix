@@ -279,6 +279,20 @@ func (h *settingsHandlers) checkSecret(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), tokenCheckTimeout)
 	defer cancel()
+	if key == host.GitHubAppIDKey || key == host.GitHubAppKeyKey {
+		// The App is checked as itself, whatever token sits beside it (WU-055).
+		checker, ok := adapter.(interface{ AppCheck(context.Context) error })
+		if !ok {
+			writeJSON(w, http.StatusOK, secretCheck{Message: "no App check for " + kind})
+			return
+		}
+		if err := checker.AppCheck(ctx); err != nil {
+			writeJSON(w, http.StatusOK, secretCheck{Message: "check failed: " + redactSecrets(err.Error(), h.secrets.Values())})
+			return
+		}
+		writeJSON(w, http.StatusOK, secretCheck{OK: true, Message: "App accepted; installation tokens renew themselves"})
+		return
+	}
 	expires, known, err := adapter.TokenExpiry(ctx)
 	switch {
 	case err != nil:
@@ -294,6 +308,10 @@ type repoSettings struct {
 	Guidance       string     `json:"guidance"`
 	TokenSet       bool       `json:"token_set"`
 	TokenUpdatedAt *time.Time `json:"token_updated_at,omitempty"`
+	// PullRequests and Merger are the repository's gating settings
+	// (WU-054), settable here after registration (WU-055).
+	PullRequests bool   `json:"pull_requests"`
+	Merger       string `json:"merger"`
 }
 
 func (h *settingsHandlers) repoView(ctx context.Context, repo change.Repo) (repoSettings, error) {
@@ -301,7 +319,7 @@ func (h *settingsHandlers) repoView(ctx context.Context, repo change.Repo) (repo
 	if err != nil {
 		return repoSettings{}, err
 	}
-	v := repoSettings{Guidance: g.Repository}
+	v := repoSettings{Guidance: g.Repository, PullRequests: repo.PullRequests, Merger: repo.Merger}
 	key := host.RepoTokenKey(repo.ID)
 	if _, set := h.secrets.Get(key); set {
 		v.TokenSet = true
@@ -407,15 +425,47 @@ func (h *settingsHandlers) updateRepo(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
+	// A field left out of the body stays as it is.
 	var body struct {
-		Guidance string `json:"guidance"`
+		Guidance     *string `json:"guidance"`
+		PullRequests *bool   `json:"pull_requests"`
+		Merger       *string `json:"merger"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if err := h.settings.SetRepoGuidance(r.Context(), repo.ID, body.Guidance); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+	// Both parts are checked before either is written, so a refused body
+	// changes nothing.
+	if body.Guidance != nil && len(*body.Guidance) > settings.MaxGuidanceChars {
+		writeError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("guidance is %d characters; the limit is %d", len(*body.Guidance), settings.MaxGuidanceChars))
 		return
+	}
+	merging := body.PullRequests != nil || body.Merger != nil
+	pullRequests, merger := repo.PullRequests, repo.Merger
+	if body.PullRequests != nil {
+		pullRequests = *body.PullRequests
+	}
+	if body.Merger != nil {
+		merger = *body.Merger
+	}
+	if merging {
+		if err := change.CheckRepoMerging(repo.Host, pullRequests, merger); err != nil {
+			h.fail(w, err)
+			return
+		}
+	}
+	if body.Guidance != nil {
+		if err := h.settings.SetRepoGuidance(r.Context(), repo.ID, *body.Guidance); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
+	}
+	if merging {
+		if _, err := h.changes.SetRepoMerging(r.Context(), repo.ID, pullRequests, merger); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.log.Info("repository merging set", "repo", repo.ID, "pull_requests", pullRequests, "merger", merger)
 	}
 	h.getRepo(w, r)
 }

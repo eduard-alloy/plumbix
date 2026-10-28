@@ -67,6 +67,26 @@ func (s *Service) GetRepo(ctx context.Context, id string) (Repo, error) {
 	return r, err
 }
 
+// SetRepoMerging sets whether Plumbix watches a registered repository's
+// pull requests and who merges them, under the registration rules; an
+// empty merger takes the default for the new pull_requests value (WU-055).
+func (s *Service) SetRepoMerging(ctx context.Context, id string, pullRequests bool, merger string) (Repo, error) {
+	r, err := s.GetRepo(ctx, id)
+	if err != nil {
+		return Repo{}, err
+	}
+	var ps problems
+	merger = normalizeMerging(r.Host, pullRequests, merger, &ps)
+	if err := ps.err(); err != nil {
+		return Repo{}, err
+	}
+	if err := s.store.UpdateRepoMerging(ctx, id, pullRequests, merger); err != nil {
+		return Repo{}, err
+	}
+	r.PullRequests, r.Merger = pullRequests, merger
+	return r, nil
+}
+
 // ListRepos returns every repo.
 func (s *Service) ListRepos(ctx context.Context) ([]Repo, error) {
 	return s.store.ListRepos(ctx)
