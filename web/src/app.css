@@ -194,6 +194,7 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 .risk .area { font: 12px var(--mono); color: var(--text-2); padding-top: 1px; }
 .risk .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .risk .by { font: 12px var(--mono); color: var(--text-3); }
+.risk .body .tag { align-self: flex-start; }
 .risk .nohr { font-size: 12px; color: var(--text-3); padding-top: 1px; }
 
 .iteration { position: relative; display: grid; grid-template-columns: 14px 82px 104px minmax(0, 1fr) auto 64px 40px; gap: 12px; align-items: center; width: 100%; min-height: 36px; padding: 6px 8px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); font-size: 13px; text-align: left; }
@@ -210,7 +211,7 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 .step:hover:not(:disabled) { background: var(--hover); }
 .step .name { font: 13px var(--mono); }
 .step .tags { white-space: nowrap; }
-.tag { padding: 1px 5px; border: 1px solid var(--border); border-radius: var(--r-xs); font-size: 11px; color: var(--text-3); width: fit-content; align-self: flex-start; }
+.tag { padding: 1px 5px; border: 1px solid var(--border); border-radius: var(--r-xs); font-size: 11px; color: var(--text-3); width: fit-content; }
 .step .mono { font-size: 12px; }
 .step .log { font-size: 12px; color: var(--accent); text-align: right; }
 .run-error { padding: 8px 0; border-bottom: 1px solid var(--border); font: 12px var(--mono); color: var(--s-violet); }
