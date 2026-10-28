@@ -436,9 +436,11 @@ func (h *settingsHandlers) updateRepo(w http.ResponseWriter, r *http.Request) {
 	}
 	// Both parts are checked before either is written, so a refused body
 	// changes nothing.
-	if body.Guidance != nil && len(strings.TrimSpace(*body.Guidance)) > settings.MaxGuidanceChars {
-		writeError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("guidance is %d characters; the limit is %d", len(strings.TrimSpace(*body.Guidance)), settings.MaxGuidanceChars))
-		return
+	if body.Guidance != nil {
+		if n := len(strings.TrimSpace(*body.Guidance)); n > settings.MaxGuidanceChars {
+			writeError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("guidance is %d characters; the limit is %d", n, settings.MaxGuidanceChars))
+			return
+		}
 	}
 	merging := body.PullRequests != nil || body.Merger != nil
 	pullRequests, merger := repo.PullRequests, repo.Merger
