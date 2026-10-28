@@ -52,8 +52,21 @@ func TestLanderPostsTheGateOnTheLandingCommit(t *testing.T) {
 	if g.HeadSHA != "landing1" || g.Status != "completed" || g.Conclusion != "success" || g.ExternalID != r.ID || g.Output == nil {
 		t.Fatalf("gate = %+v", g)
 	}
-	if !strings.Contains(g.Output.Title, "Landed by Plumbix") || !strings.Contains(g.Output.Summary, "validated1") || !strings.Contains(g.Output.Summary, r.ID) {
+	if g.Output.Title != "Landed by Plumbix: approved by the validators" || !strings.Contains(g.Output.Summary, "validated1") || !strings.Contains(g.Output.Summary, r.ID) {
 		t.Errorf("title %q summary %q", g.Output.Title, g.Output.Summary)
+	}
+	// A change a person approved after a held run lands with that said in
+	// the title, never the held run's own word beside a green check.
+	held := r
+	held.Outcome = change.NeedsHuman
+	held.Result.State = change.NeedsHuman
+	c.HumanApproval = &change.HumanApproval{Head: "validated1", Reason: "reviewed by hand"}
+	if err := l.PostGate(ctx, h.repo, c, held, "landing2"); err != nil {
+		t.Fatal(err)
+	}
+	gates = h.gh.checks(GateName)
+	if len(gates) != 2 || gates[1].Conclusion != "success" || gates[1].Output.Title != "Landed by Plumbix: approved by a person (reviewed by hand)" || strings.Contains(gates[1].Output.Title, "person\n") {
+		t.Errorf("held then approved: %+v", gates[len(gates)-1].Output)
 	}
 	if marker, _, ok := Extract(g.Output.Text); !ok || marker != ResultMarker {
 		t.Errorf("the run's result is not embedded: %q", g.Output.Text)

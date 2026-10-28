@@ -68,8 +68,18 @@ func (l *Lander) PostGate(ctx context.Context, repo change.Repo, c change.Change
 	}
 	gate.HeadSHA = sha
 	gate.Conclusion = "success"
-	gate.Output.Title = "Landed by Plumbix: " + gate.Output.Title
-	gate.Output.Summary = fmt.Sprintf("Plumbix lands the tree validated at %s (run %s, iteration %d) on %s as this commit.\n\n%s", r.Head, r.ID, r.Iteration, c.TargetBranch, gate.Output.Summary)
+	// The merge happens only for an approved change, by the validators or
+	// by a person after a held run; the title says which, not the held
+	// run's own word.
+	approval := "approved by the validators"
+	if r.Result == nil || r.Result.State != change.Approved {
+		approval = "approved by a person"
+		if a := c.HumanApproval; a != nil && a.Reason != "" {
+			approval += " (" + a.Reason + ")"
+		}
+	}
+	gate.Output.Title = "Landed by Plumbix: " + approval
+	gate.Output.Summary = fmt.Sprintf("Plumbix lands the tree validated at %s (run %s, iteration %d), %s, on %s as this commit.\n\n%s", r.Head, r.ID, r.Iteration, approval, c.TargetBranch, gate.Output.Summary)
 	_, err = api.CreateCheckRun(ctx, repo, gate)
 	return err
 }

@@ -189,6 +189,12 @@ func TestPushErrorsAreClassified(t *testing.T) {
 	if err := pushError(fmt.Errorf("git push: exit status 1: %s", cases[4].stderr), "main"); !strings.Contains(err.Error(), `Required status check "plumbix/gate" is expected`) || errors.Is(err, ErrPushRejected) {
 		t.Errorf("the refusal must carry GitHub's rule lines and not read as a moved branch: %v", err)
 	}
+	// A full capture, as git prints it: only the rule survives, not git's own lines.
+	full := "remote: error: GH013: Repository rule violations found for refs/heads/main.\nremote: \nremote: - Required status check \"plumbix/gate\" is expected.\nremote: \nTo https://github.com/o/r.git\n ! [remote rejected] main -> main (push declined due to repository rule violations)\nerror: failed to push some refs to 'https://github.com/o/r.git'"
+	err := pushError(fmt.Errorf("git push: exit status 1: %s", full), "main")
+	if want := `push refused by the repository's rules: main: Required status check "plumbix/gate" is expected.`; err == nil || err.Error() != want {
+		t.Errorf("full capture: %q, want %q", err, want)
+	}
 	// The runner reports a missing token as ErrNoCredentials (WU-043); a push still reads that as denied.
 	if err := pushError(fmt.Errorf("git push: %w", ErrNoCredentials), "main"); !errors.Is(err, ErrPushDenied) {
 		t.Errorf("push without credentials: %v, want push denied", err)

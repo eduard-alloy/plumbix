@@ -97,7 +97,7 @@ func refusedRules(msg string) string {
 		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "remote:"))
 		line = strings.TrimSpace(strings.TrimPrefix(line, "error:"))
 		line = strings.TrimSpace(strings.TrimPrefix(line, "-"))
-		if line == "" || strings.HasPrefix(line, "GH0") || strings.HasPrefix(line, "!") || strings.HasPrefix(line, "git push") {
+		if line == "" || strings.HasPrefix(line, "GH0") || strings.HasPrefix(line, "!") || strings.HasPrefix(line, "git push") || strings.HasPrefix(line, "To ") || strings.HasPrefix(line, "failed to push") {
 			continue
 		}
 		rules = append(rules, line)
