@@ -65,7 +65,8 @@ func TestLanderPostsTheGateOnTheLandingCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	gates = h.gh.checks(GateName)
-	if len(gates) != 2 || gates[1].Conclusion != "success" || gates[1].Output.Title != "Landed by Plumbix: approved by a person (reviewed by hand)" || strings.Contains(gates[1].Output.Title, "person\n") {
+	// The reason is free text, so it goes in the summary, never the title.
+	if len(gates) != 2 || gates[1].Conclusion != "success" || gates[1].Output.Title != "Landed by Plumbix: approved by a person" || !strings.Contains(gates[1].Output.Summary, "Reason: reviewed by hand") {
 		t.Errorf("held then approved: %+v", gates[len(gates)-1].Output)
 	}
 	if marker, _, ok := Extract(g.Output.Text); !ok || marker != ResultMarker {
