@@ -379,3 +379,15 @@ Initial discovery is complete. Results are consolidated in `PROJECT.md` and `CON
 **Answer**: go with secrets only on protected branches and the built-in guard; plan the grants.
 
 **Decision**: A38. This changes existing behaviour: change runs and plain branch runs on unprotected branches no longer give steps their `secrets:`; validators take keys from reviewer profiles. The guard is WU-051, the grants a later task.
+
+## Q22: What Plumbix is for now (2026-10-28)
+
+**User**: "i think the plumbix has just pivoted from CI local replacement to a piece of infrastructure for chart-ai". Then: "its focus now is to provide and integrate as much as possible for/with chart-ai". Then: "the CI replacement will be implemented as initially planned but as an after thought and around the main governance pipeline".
+
+**Assessment given**: a drift, not yet a pivot. PROJECT.md still said "replaces the pull request" and the Kai goal still said "Ship I1", while WU-053, 054, 055, 057 and 058 were all driven by Chart-AI or by the pull-request shape it reads. Two product centres competed with no recorded precedence.
+
+**Options given**: governance as the main line with pipelines as the engine beneath it (recommended, provided Chart-AI is a commitment); CI replacement as the main line with Chart-AI served opportunistically; both as equal lines with an explicit order.
+
+**Answer**: governance for Chart-AI first; the CI replacement stays in the plan in full, built after and around it.
+
+**Decisions**: A40 and its refinement. PROJECT.md's purpose, users and milestone 2 section, the Kai workstream and milestone wording, and CONSTRAINTS follow.
