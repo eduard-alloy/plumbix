@@ -88,10 +88,10 @@ Palette → `color: var(--status-<key>-fg)`, `background: var(--status-<key>-bg)
   - Repository segmented control: 2px padding, `--border`, radius 6. Segments 22px tall, 12/500. Selected segment `--surface-2`. Uses `aria-pressed`.
   - State `<select>` (All states plus the 9 states).
   - A quiet "Clear" button when any filter is active.
-- **Column header:** 28px, 11 `--text-3`: State · Change · Repository · branch · Verdict · Iter · By · Moved.
-- **Row grid:** `116px minmax(120px,1.3fr) minmax(110px,1fr) 136px 28px 48px 44px`, gap 12, **height 36**, padding 0 20, bottom border. Each row is a `<button>`, so the whole row is clickable and focusable. Hover: `--hover`.
+- **Column header:** two 16px lines, 11 `--text-3`, mirroring the rows: State · Change · By · Moved, then Origin · Repository · Branch · Verdict · Iter.
+- **Row:** two lines of 22px with 6px padding above and below (WU-058), bottom border. Each row is a `<button>`, so the whole row is clickable and focusable. Hover: `--hover`. Line 1 grid `116px minmax(120px,1fr) 120px 44px`: state pill, title, by, moved. Line 2 grid `116px minmax(90px,0.5fr) minmax(110px,1fr) minmax(170px,0.8fr) 28px`: origin tag (`PR #n` violet or `API` neutral, WU-057), repository, `src → tgt`, verdict, iteration. Gap 12, padding 0 20. The 116px first column keeps the origin tag under the state pill.
   - Title: 13/500, ellipsis.
-  - Repository and branches: mono 12 `--text-2`, as `repo · src → tgt` with the separators in `--text-3`.
+  - Repository and branches: mono 12 `--text-2`, with the arrow in `--text-3`.
   - Verdict column, mono 12 `--text-2`:
     - running: `step · 1m 12s`, ticking every second
     - open: `waiting to validate`

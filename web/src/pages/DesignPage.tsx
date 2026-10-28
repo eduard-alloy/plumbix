@@ -1,6 +1,7 @@
 // The design-system reference: tokens, type, the state encoding table and
 // the components, in light and dark side by side. Reached by URL only.
 import { ENCODING, StatePill, type PillStatus } from '../ui/StatePill'
+import { OriginTag } from '../ui/OriginTag'
 
 const TOKENS = ['--bg', '--surface', '--surface-2', '--hover', '--border', '--border-strong', '--text', '--text-2', '--text-3', '--accent', '--accent-bg', '--s-neutral', '--s-blue', '--s-green', '--s-amber', '--s-red', '--s-violet', '--diff-add', '--diff-del', '--hit', '--hit-strong']
 
@@ -86,18 +87,26 @@ function Pane({ theme }: { theme: 'light' | 'dark' }) {
           </select>
         </div>
         <div className="ds-box">
-          <div className="row row-grid" style={{ height: 36 }}>
-            <span className="cell">
-              <StatePill status="approved" />
+          <div className="row">
+            <span className="line line-1">
+              <span className="cell">
+                <StatePill status="approved" />
+              </span>
+              <span className="cell title">Retry failed artifact uploads</span>
+              <span className="cell dim2">kai</span>
+              <span className="cell mono dim right">4m</span>
             </span>
-            <span className="cell title">Retry failed artifact uploads</span>
-            <span className="cell mono dim2">
-              plumbix<span className="dim"> · </span>feat/retry-uploads<span className="dim"> → </span>main
+            <span className="line line-2">
+              <span className="cell">
+                <OriginTag origin={{ kind: 'pr', label: 'PR #7', title: 'Opened from pull request #7' }} />
+              </span>
+              <span className="cell mono dim2">plumbix</span>
+              <span className="cell mono dim2">
+                feat/retry-uploads<span className="dim"> → </span>main
+              </span>
+              <span className="cell mono dim2">3/3 met · 0 blockers</span>
+              <span className="cell mono dim right">2</span>
             </span>
-            <span className="cell mono dim2">3/3 met · 0 blockers</span>
-            <span className="cell mono dim right">2</span>
-            <span className="cell dim2">kai</span>
-            <span className="cell mono dim right">4m</span>
           </div>
         </div>
         <div className="ds-box">

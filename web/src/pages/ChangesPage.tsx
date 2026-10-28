@@ -121,28 +121,40 @@ export function ChangesPage() {
             </button>
           )}
         </div>
-        <div className="cols row-grid" aria-hidden="true">
-          <span>State</span>
-          <span>Change</span>
-          <span>Repository · branch</span>
-          <span>Verdict</span>
-          <span className="right">Iter</span>
-          <span>By</span>
-          <span className="right">Moved</span>
+        <div className="cols" aria-hidden="true">
+          <div className="line line-1">
+            <span>State</span>
+            <span>Change</span>
+            <span>By</span>
+            <span className="right">Moved</span>
+          </div>
+          <div className="line line-2">
+            <span>Origin</span>
+            <span>Repository</span>
+            <span>Branch</span>
+            <span>Verdict</span>
+            <span className="right">Iter</span>
+          </div>
         </div>
       </div>
 
       {!state.loaded && (
         <div aria-busy="true" aria-label="Loading changes">
           {skeletonWidths.map((w, i) => (
-            <div key={i} className="row-grid skeleton-row">
-              <span className="bar" style={{ width: 84 }} />
-              <span className="bar" style={{ width: `${w}%` }} />
-              <span className="bar thin" style={{ width: '70%' }} />
-              <span className="bar thin" style={{ width: 90 }} />
-              <span />
-              <span className="bar thin" style={{ width: 32 }} />
-              <span />
+            <div key={i} className="skeleton-row">
+              <div className="line line-1">
+                <span className="bar" style={{ width: 84 }} />
+                <span className="bar" style={{ width: `${w}%` }} />
+                <span className="bar thin" style={{ width: 32 }} />
+                <span />
+              </div>
+              <div className="line line-2">
+                <span className="bar thin" style={{ width: 40 }} />
+                <span className="bar thin" style={{ width: 60 }} />
+                <span className="bar thin" style={{ width: '70%' }} />
+                <span className="bar thin" style={{ width: 90 }} />
+                <span />
+              </div>
             </div>
           ))}
         </div>
@@ -178,28 +190,31 @@ export function ChangesPage() {
                 {g.sub && <span className="sub">{g.sub}</span>}
               </div>
               {g.rows.map((r) => (
-                <button key={r.id} role="listitem" data-row="1" data-id={r.id} className="row row-grid" onClick={() => go({ screen: 'change', id: r.id })}>
-                  <span className="cell">
-                    <StatePill status={r.state} />
+                <button key={r.id} role="listitem" data-row="1" data-id={r.id} className="row" onClick={() => go({ screen: 'change', id: r.id })}>
+                  <span className="line line-1">
+                    <span className="cell">
+                      <StatePill status={r.state} />
+                    </span>
+                    <span className="cell title">{r.title}</span>
+                    <span className="cell dim2">{r.by}</span>
+                    <span className="cell mono dim right">{r.moved}</span>
                   </span>
-                  <span className="cell title">
-                    <OriginTag origin={r.origin} />
-                    {r.title}
+                  <span className="line line-2">
+                    <span className="cell">
+                      <OriginTag origin={r.origin} />
+                    </span>
+                    <span className="cell mono dim2">{r.repo}</span>
+                    <span className="cell mono dim2">
+                      {r.src}
+                      <span className="dim"> → </span>
+                      {r.tgt}
+                    </span>
+                    <span className="cell mono dim2">
+                      {r.verdict}
+                      {r.blockers && <span className="red"> · {r.blockers}</span>}
+                    </span>
+                    <span className="cell mono dim right">{r.iter}</span>
                   </span>
-                  <span className="cell mono dim2">
-                    {r.repo}
-                    <span className="dim"> · </span>
-                    {r.src}
-                    <span className="dim"> → </span>
-                    {r.tgt}
-                  </span>
-                  <span className="cell mono dim2">
-                    {r.verdict}
-                    {r.blockers && <span className="red"> · {r.blockers}</span>}
-                  </span>
-                  <span className="cell mono dim right">{r.iter}</span>
-                  <span className="cell dim2">{r.by}</span>
-                  <span className="cell mono dim right">{r.moved}</span>
                 </button>
               ))}
             </div>
