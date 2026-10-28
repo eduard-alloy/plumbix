@@ -47,6 +47,11 @@ describe('Change page', () => {
     // The advisory validator is tagged in the verdict's list, the evidence rows and its finding (WU-030).
     expect(within(verdict).getByText('ai-grok').closest('.vstep')!.textContent).toContain('advisory')
     expect(screen.getByText('ai-grok', { selector: '.step .name' }).closest('.step')!.textContent).toContain('advisory')
+    // One tag per evidence row: an advisory validator is tagged advisory, a binding one validator (the two overlapped the status before).
+    const grokTags = Array.from(screen.getByText('ai-grok', { selector: '.step .name' }).closest('.step')!.querySelectorAll('.tag')).map((t) => t.textContent)
+    expect(grokTags).toEqual(['advisory'])
+    const reviewTags = Array.from(screen.getByText('ai-review', { selector: '.step .name' }).closest('.step')!.querySelectorAll('.tag')).map((t) => t.textContent)
+    expect(reviewTags).toEqual(['validator'])
     expect(screen.getAllByText('advisory', { selector: '.tag' }).length).toBeGreaterThanOrEqual(3)
     expect(verdict.textContent).toContain('Merge squashes 9f3c1e2 onto main')
     expect(screen.getByText('Backoff ceiling is hard-coded at 8 s; consider a constant')).toBeTruthy()

@@ -708,13 +708,13 @@
           "type": "string"
         },
         "by": {
-         "description": "The person, as the surface knew them: the name given to the Approve action, or the GitHub login of the approving review (WU-060). Absent on events before it.",
-         "type": "string"
+          "description": "The person, as the surface knew them: the name given to the Approve action, or the GitHub login of the approving review (WU-060). Absent on events before it.",
+          "type": "string"
         },
         "source": {
-         "description": "Where the approval came from: plumbix (the Approve action) or github_review.",
-         "type": "string",
-         "enum": ["plumbix", "github_review"]
+          "description": "Where the approval came from: plumbix (the Approve action) or github_review.",
+          "type": "string",
+          "enum": ["plumbix", "github_review"]
         }
       }
     }

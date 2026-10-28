@@ -252,9 +252,8 @@ export function ChangePage({ id }: { id: string }) {
       <>
         <StatePill status={s.status as PillStatus} mode="icon" />
         <span className="name">{s.name}</span>
-        <span>
-          {s.validator && <span className="tag">validator</span>}
-          {s.advisory && <span className="tag advisory">advisory</span>}
+        <span className="tags">
+          {s.advisory ? <span className="tag advisory">advisory</span> : s.validator ? <span className="tag">validator</span> : null}
         </span>
         <span className="status-cell">
           <StatePill status={s.status as PillStatus} mode="text" />

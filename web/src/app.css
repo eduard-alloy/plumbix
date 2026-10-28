@@ -66,9 +66,10 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 /* List */
 /* A list row is two lines (WU-058): state, origin, title, by, moved; then repository, branch, verdict, iteration.
    The second line is indented past the state and origin columns, so it starts under the title. */
-.line { display: grid; gap: 12px; align-items: center; padding: 0 20px; }
-.line-1 { grid-template-columns: 116px 64px minmax(120px, 1fr) 120px 44px; }
-.line-2 { grid-template-columns: minmax(90px, 0.5fr) minmax(110px, 1fr) minmax(170px, 0.8fr) 28px; padding-left: 224px; }
+/* The two-line rows of the changes list and their header (WU-058); scoped, since .line is also the iteration timeline's connector. */
+.row .line, .cols .line, .skeleton-row .line { display: grid; gap: 12px; align-items: center; padding: 0 20px; }
+.row .line-1, .cols .line-1, .skeleton-row .line-1 { grid-template-columns: 116px 64px minmax(120px, 1fr) 120px 44px; }
+.row .line-2, .cols .line-2, .skeleton-row .line-2 { grid-template-columns: minmax(90px, 0.5fr) minmax(110px, 1fr) minmax(170px, 0.8fr) 28px; padding-left: 224px; }
 .cell.origin { overflow: visible; }
 .cols { padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-3); }
 .cols .line { height: 16px; }
@@ -208,7 +209,8 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 .step { display: grid; grid-template-columns: 14px minmax(90px, 150px) 70px minmax(0, 1fr) 64px 72px 32px; gap: 12px; align-items: center; width: 100%; height: 34px; padding: 0 8px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); font-size: 13px; text-align: left; }
 .step:hover:not(:disabled) { background: var(--hover); }
 .step .name { font: 13px var(--mono); }
-.tag { padding: 1px 5px; border: 1px solid var(--border); border-radius: var(--r-xs); font-size: 11px; color: var(--text-3); }
+.step .tags { white-space: nowrap; }
+.tag { padding: 1px 5px; border: 1px solid var(--border); border-radius: var(--r-xs); font-size: 11px; color: var(--text-3); width: fit-content; align-self: flex-start; }
 .step .mono { font-size: 12px; }
 .step .log { font-size: 12px; color: var(--accent); text-align: right; }
 .run-error { padding: 8px 0; border-bottom: 1px solid var(--border); font: 12px var(--mono); color: var(--s-violet); }
