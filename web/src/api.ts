@@ -1,6 +1,6 @@
 // The API client. Every call goes to the same origin with the session
 // cookie; a 401 anywhere means the browser is not signed in.
-import type { PipelineFile, Alert, Change, Diff, Repo, RepoFolder, RepoInput, PublishInput, RepoPublished, RepoSettings, Run, SecretCheck, SettingsView, Reviewer, ReviewerInput, ImagesView, ImageBuild } from './model'
+import type { PipelineFile, Alert, Change, Diff, Repo, RepoFolder, RepoInput, PublishInput, RepoPublished, RepoSettings, RepoSettingsPatch, GitHubReport, Run, SecretCheck, SettingsView, Reviewer, ReviewerInput, ImagesView, ImageBuild } from './model'
 
 export class ApiError extends Error {
   constructor(
@@ -99,7 +99,8 @@ export const api = {
   deleteOwnImage: (name: string) => request<void>('DELETE', `/api/v1/images/own/${encodeURIComponent(name)}`),
   imageBuild: (id: string) => request<ImageBuild>('GET', `/api/v1/images/builds/${encodeURIComponent(id)}`),
   repoSettings: (id: string) => request<RepoSettings>('GET', `/api/v1/repos/${encodeURIComponent(id)}/settings`),
-  updateRepoSettings: (id: string, guidance: string) => request<RepoSettings>('PUT', `/api/v1/repos/${encodeURIComponent(id)}/settings`, { guidance }),
+  updateRepoSettings: (id: string, patch: RepoSettingsPatch) => request<RepoSettings>('PUT', `/api/v1/repos/${encodeURIComponent(id)}/settings`, patch),
+  repoGitHub: (id: string) => request<GitHubReport>('GET', `/api/v1/repos/${encodeURIComponent(id)}/github`),
   registerRepo: (input: RepoInput) => request<Repo>('POST', '/api/v1/repos', input),
   inspectFolder: (path: string) => request<RepoFolder>('POST', '/api/v1/repos/inspect', { path }),
   publishFolder: (input: PublishInput) => request<RepoPublished>('POST', '/api/v1/repos/publish', input),

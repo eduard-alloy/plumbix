@@ -101,6 +101,86 @@ describe('Repositories page', () => {
     expect(screen.getByText('2', { selector: '.page-header .count' })).toBeTruthy()
   })
 
+  it('shows the GitHub panel with the gating switches and the live checks (WU-061)', async () => {
+    window.history.replaceState(null, '', '/repos')
+    render(<App />)
+    const plumbix = await screen.findByRole('listitem', { name: 'Repository plumbix' })
+    // Only GitHub repositories have the panel.
+    expect(within(screen.getByRole('listitem', { name: 'Repository ledger-api' })).queryByRole('button', { name: 'GitHub' })).toBeNull()
+    fireEvent.click(within(plumbix).getByRole('button', { name: 'GitHub' }))
+    const panel = within(plumbix).getByRole('group', { name: 'GitHub for plumbix' })
+    const gated = within(panel).getByRole('checkbox', { name: 'Pull requests gated for plumbix' }) as HTMLInputElement
+    const merger = within(panel).getByRole('combobox', { name: 'Merged by for plumbix' }) as HTMLSelectElement
+    expect(gated.checked).toBe(true)
+    expect(merger.value).toBe('plumbix')
+    expect(panel.textContent).toContain('Plumbix merges them when the gate approves')
+    // The merger choice saves through the settings endpoint; the card's badge follows.
+    fireEvent.change(merger, { target: { value: 'github' } })
+    await waitFor(() => expect(db.repos[0].merger).toBe('github'))
+    await waitFor(() => expect(plumbix.querySelector('.repo-line')!.textContent).toContain('Pull requests · GitHub merges'))
+    expect(panel.textContent).toContain('GitHub merges them once plumbix/gate is green')
+    // The live checks, each line led by a word, never a colour alone.
+    fireEvent.click(within(panel).getByRole('button', { name: 'Check' }))
+    const lines = await within(panel).findByRole('list', { name: 'GitHub check for plumbix' })
+    const items = within(lines).getAllByRole('listitem').map((li) => li.textContent ?? '')
+    expect(items).toHaveLength(3)
+    expect(items[0]).toContain('Installed')
+    expect(items[0]).toContain('App plumbix-gate is installed on this repository')
+    expect(items[1]).toContain('Required')
+    expect(items[1]).toContain('plumbix/gate is required on main')
+    expect(items[2]).toContain('Webhook')
+    expect(items[2]).toContain('polling every 15s as well')
+  })
+
+  it('leads every state of the GitHub check with a word: not installed with its link, not required, unknown, no intake (WU-061)', async () => {
+    db.githubReports[db.repos[0].id] = {
+      app: { configured: true, slug: 'plumbix-gate', installed: false, install_url: 'https://github.com/apps/plumbix-gate/installations/new', message: 'App plumbix-gate is not installed on this repository: no check run can be posted until it is' },
+      gate: [
+        { branch: 'main', required: false, known: true, message: 'plumbix/gate is not required on main: GitHub merges without waiting for the gate' },
+        { branch: 'release', required: false, known: false, message: 'Whether plumbix/gate is required on release is unknown: reading the branch protection needs administration read' },
+      ],
+      intake: { mode: 'none', webhook_secret_set: false, message: 'No intake: polling is off and no webhook secret is set, so pull requests are not watched' },
+    }
+    window.history.replaceState(null, '', '/repos')
+    render(<App />)
+    const plumbix = await screen.findByRole('listitem', { name: 'Repository plumbix' })
+    fireEvent.click(within(plumbix).getByRole('button', { name: 'GitHub' }))
+    const panel = within(plumbix).getByRole('group', { name: 'GitHub for plumbix' })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Check' }))
+    const lines = await within(panel).findByRole('list', { name: 'GitHub check for plumbix' })
+    const items = within(lines).getAllByRole('listitem')
+    expect(items.map((li) => li.querySelector('strong')?.textContent)).toEqual(['Not installed', 'Not required', 'Unknown', 'No intake'])
+    const link = within(items[0]).getByRole('link', { name: 'Install the App' }) as HTMLAnchorElement
+    expect(link.href).toBe('https://github.com/apps/plumbix-gate/installations/new')
+    expect(items[2].textContent).toContain('administration read')
+    // A webhook secret with no delivery yet says so in the word, not only in the message.
+    db.githubReports[db.repos[0].id].intake = { mode: 'webhook', webhook_secret_set: true, poll_interval: '15s', message: 'Webhook secret set: signed deliveries are accepted at POST /api/v1/hooks/github; last delivery for this repository none since the server started, and polling every 15s as well' }
+    fireEvent.click(within(panel).getByRole('button', { name: 'Check' }))
+    await waitFor(() => expect(within(lines).getAllByRole('listitem')[3].querySelector('strong')?.textContent).toBe('Webhook, nothing yet'))
+  })
+
+  it('turns pull requests off and on, the merger taking its default each time (WU-061)', async () => {
+    window.history.replaceState(null, '', '/repos')
+    render(<App />)
+    const plumbix = await screen.findByRole('listitem', { name: 'Repository plumbix' })
+    fireEvent.click(within(plumbix).getByRole('button', { name: 'GitHub' }))
+    const panel = within(plumbix).getByRole('group', { name: 'GitHub for plumbix' })
+    const gated = within(panel).getByRole('checkbox', { name: 'Pull requests gated for plumbix' }) as HTMLInputElement
+    const merger = within(panel).getByRole('combobox', { name: 'Merged by for plumbix' }) as HTMLSelectElement
+    fireEvent.click(gated)
+    await waitFor(() => expect(db.repos[0].pull_requests).toBe(false))
+    expect(db.repos[0].merger).toBe('plumbix')
+    await waitFor(() => expect(merger.disabled).toBe(true))
+    expect(panel.textContent).toContain('Pull requests are not watched')
+    expect(plumbix.querySelector('.repo-line')!.textContent).not.toContain('Pull requests ·')
+    fireEvent.click(gated)
+    await waitFor(() => expect(db.repos[0].pull_requests).toBe(true))
+    // A repository that opts in defaults to GitHub merging (WU-054).
+    expect(db.repos[0].merger).toBe('github')
+    await waitFor(() => expect(merger.value).toBe('github'))
+    expect(plumbix.querySelector('.repo-line')!.textContent).toContain('Pull requests · GitHub merges')
+  })
+
   it('imports a local folder with its remote and its own token, checking access (WU-041)', async () => {
     db.folders['~/dev/billing'] = { path: '/Users/me/dev/billing', remote: 'git@github.com:acme/billing.git', default_branch: 'trunk', has_pipeline: false, host: 'github', url: 'https://github.com/acme/billing.git', problem: '' }
     window.history.replaceState(null, '', '/repos')

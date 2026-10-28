@@ -123,6 +123,24 @@ func TestCLIFlow(t *testing.T) {
 	if unset := c.mustRun("", "repo", "set", repoID, "--pull-requests=false"); unset["pull_requests"] == true || unset["merger"] != "plumbix" {
 		t.Errorf("repo set off = %v", unset)
 	}
+	// repo github prints the repository's GitHub report (WU-061): the App,
+	// the gate per protected branch and the intake. This server has no
+	// App and no GitHub token, and the report says so instead of failing.
+	report := c.mustRun("", "repo", "github", repoID)
+	app, _ := report["app"].(map[string]any)
+	gate, _ := report["gate"].([]any)
+	intake, _ := report["intake"].(map[string]any)
+	if app["configured"] != false || !strings.Contains(app["message"].(string), "PLUMBIX_GITHUB_APP_ID") || len(gate) != 2 || intake["mode"] == nil {
+		t.Errorf("repo github = %v", report)
+	}
+	// With neither a token nor an App the rules cannot be read: each
+	// protected branch is unknown, with the reason, never "not required".
+	for _, g := range gate {
+		entry, _ := g.(map[string]any)
+		if entry["known"] != false || entry["required"] != false || !strings.Contains(entry["message"].(string), "Could not read the rules of "+entry["branch"].(string)) {
+			t.Errorf("gate entry = %v", entry)
+		}
+	}
 
 	changeJSON := `{"repo_id": "` + repoID + `", "source_branch": "feat", "target_branch": "main", "title": "T", "intent": "I", "acceptance_criteria": [{"text": "works"}]}`
 	file := filepath.Join(t.TempDir(), "change.json")

@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/host"
@@ -30,6 +32,34 @@ type Webhook struct {
 		ListRepos(ctx context.Context) ([]change.Repo, error)
 	}
 	Log *slog.Logger
+	// now is the clock for the delivery record; nil means time.Now.
+	now func() time.Time
+
+	mu   sync.Mutex
+	last map[string]time.Time // repository id → when a signed delivery for it last arrived
+}
+
+// LastDelivery says when a signed delivery for the repository last reached
+// the handler since the server started, handled or not (WU-061). A ping
+// names no repository and is not counted.
+func (w *Webhook) LastDelivery(repoID string) (time.Time, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	at, ok := w.last[repoID]
+	return at, ok
+}
+
+func (w *Webhook) remember(repoID string) {
+	now := time.Now
+	if w.now != nil {
+		now = w.now
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.last == nil {
+		w.last = map[string]time.Time{}
+	}
+	w.last[repoID] = now().UTC()
 }
 
 type delivery struct {
@@ -91,6 +121,7 @@ func (w *Webhook) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "no registered repository watches pull requests at "+d.Repository.URL, http.StatusNotFound)
 		return
 	}
+	w.remember(repo.ID)
 	handled, err := w.dispatch(r.Context(), repo, event, d)
 	if err != nil {
 		w.Log.Error("webhook", "event", event, "action", d.Action, "repo", repo.ID, "err", err)

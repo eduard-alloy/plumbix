@@ -973,6 +973,32 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /repos/{id}/github:
+    get:
+      operationId: getRepoGitHub
+      summary: The repository's GitHub integration, read live.
+      description: >
+        For a GitHub repository: whether the configured App is installed on it (asked as the App), per
+        protected branch whether the plumbix/gate check is required there, and how pull requests reach
+        the server (webhook, polling or neither). The App's id and key are one per host and live in
+        Settings; this report is the per-repository part (WU-061). Nothing is stored.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+      responses:
+        "200":
+          description: The report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: No such repository, or a repository on another host.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /login-links:
     post:
       operationId: createLoginLink
@@ -2422,6 +2448,68 @@ components:
           format: date-time
         message:
           type: string
+    GitHubReport:
+      type: object
+      description: The per-repository GitHub facts behind the gate (WU-061), read live.
+      required: [app, gate, intake]
+      additionalProperties: false
+      properties:
+        app:
+          type: object
+          required: [configured, installed, message]
+          additionalProperties: false
+          properties:
+            configured:
+              type: boolean
+              description: Whether a GitHub App is configured in Settings at all.
+            slug:
+              type: string
+              description: The App's name on GitHub, when the configured App answers.
+            installed:
+              type: boolean
+              description: Whether the App is installed on this repository; only an installed App can post check runs.
+            install_url:
+              type: string
+              description: Where to install the App, when it is configured.
+            message:
+              type: string
+        gate:
+          type: array
+          description: One entry per protected branch.
+          items:
+            type: object
+            required: [branch, required, known, message]
+            additionalProperties: false
+            properties:
+              branch:
+                type: string
+              required:
+                type: boolean
+                description: Whether plumbix/gate is a required status check on the branch.
+              known:
+                type: boolean
+                description: False when GitHub would not say (the read needs administration read).
+              message:
+                type: string
+        intake:
+          type: object
+          required: [mode, webhook_secret_set, message]
+          additionalProperties: false
+          properties:
+            mode:
+              type: string
+              enum: [webhook, polling, none]
+            webhook_secret_set:
+              type: boolean
+            last_delivery_at:
+              type: string
+              format: date-time
+              description: When a signed webhook delivery for this repository last arrived since the server started.
+            poll_interval:
+              type: string
+              description: The poller's interval, when polling is on.
+            message:
+              type: string
     RepoSettings:
       description: A repository's own settings. A response carries every field; a request may leave fields out, and each one left out stays as it is.
       type: object

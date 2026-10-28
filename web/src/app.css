@@ -374,6 +374,11 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 .token-editor { padding: 10px 0 14px; display: flex; flex-direction: column; gap: 8px; }
 .token-state { font-size: 12px; color: var(--text-2); }
 .token-editor .edit { display: flex; gap: 8px; align-items: center; }
+.github-panel .switch { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.github-panel .switch select { height: 24px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text); font-size: 12px; }
+.check-lines { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 12px; color: var(--text-2); }
+.check-lines li { display: grid; grid-template-columns: 96px 1fr; gap: 8px; align-items: baseline; }
+.check-lines strong { color: var(--text); font-weight: 600; }
 .token-editor .edit input { flex: 1; max-width: 520px; height: 28px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--bg); font: 13px var(--mono); }
 
 /* Human approval (WU-021) */

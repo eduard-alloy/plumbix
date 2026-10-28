@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/alert"
 	"github.com/eduard-alloy/plumbix/internal/auth"
@@ -49,6 +50,19 @@ type Deps struct {
 	// (WU-054). It verifies its own signature, so it sits outside the
 	// bearer-token check; nil leaves the route out.
 	GitHubWebhook http.Handler
+	// GitHubIntake tells the repository GitHub report how pull requests
+	// reach the server (WU-061).
+	GitHubIntake GitHubIntake
+}
+
+// GitHubIntake describes the pull-request intake for the GitHub report.
+type GitHubIntake struct {
+	// PollInterval is how often the poller looks; zero when polling is off.
+	PollInterval time.Duration
+	// LastDelivery says when a signed webhook delivery for the repository
+	// last arrived since the server started; nil when no webhook handler
+	// is wired.
+	LastDelivery func(repoID string) (time.Time, bool)
 }
 
 // NewHandler returns the HTTP handler for the public API.
@@ -83,7 +97,7 @@ func NewHandler(d Deps) http.Handler {
 		registerEventRoutes(protected, &eventHandlers{events: d.Events, log: logger})
 	}
 	if d.Settings != nil && d.Secrets != nil {
-		sh := &settingsHandlers{settings: d.Settings, secrets: d.Secrets, hosts: d.Hosts, changes: d.Changes, log: logger}
+		sh := &settingsHandlers{settings: d.Settings, secrets: d.Secrets, hosts: d.Hosts, changes: d.Changes, intake: d.GitHubIntake, log: logger}
 		if d.Engine != nil {
 			sh.heads = d.Engine.ListHeads
 		}

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/host"
@@ -82,5 +83,41 @@ func TestWebhookFeedsIntake(t *testing.T) {
 	secret = ""
 	if rec := deliver(t, w, "s3cret", "pull_request", opened); rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("no secret: %d", rec.Code)
+	}
+}
+
+// TestWebhookRemembersLastDelivery: the handler remembers when a signed
+// delivery last reached it for each repository, handled or not, so the
+// repository's GitHub report can say the webhook is wired (WU-061). A ping
+// names no repository and is not remembered.
+func TestWebhookRemembersLastDelivery(t *testing.T) {
+	h := newHarness(t)
+	secret := "s3cret"
+	now := time.Date(2026, 10, 28, 21, 0, 0, 0, time.UTC)
+	w := &Webhook{Secret: func() string { return secret }, Syncer: h.s, Repos: h.db, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), now: func() time.Time { return now }}
+	if _, ok := w.LastDelivery(h.repo.ID); ok {
+		t.Fatal("a delivery remembered before any arrived")
+	}
+	if rec := deliver(t, w, secret, "ping", map[string]any{"zen": "x"}); rec.Code != http.StatusOK {
+		t.Fatalf("ping: %d", rec.Code)
+	}
+	if _, ok := w.LastDelivery(h.repo.ID); ok {
+		t.Error("a ping was remembered as a delivery for the repository")
+	}
+	type repoBody struct {
+		URL string `json:"html_url"`
+	}
+	labeled := map[string]any{"action": "labeled", "repository": repoBody{"https://github.com/a/b.git"}, "pull_request": pr(1, "T", "")}
+	if rec := deliver(t, w, secret, "pull_request", labeled); rec.Code != http.StatusOK {
+		t.Fatalf("labeled: %d %s", rec.Code, rec.Body.String())
+	}
+	if at, ok := w.LastDelivery(h.repo.ID); !ok || !at.Equal(now) {
+		t.Errorf("last delivery = %v, %v; want %v", at, ok, now)
+	}
+	if rec := deliver(t, w, "wrong", "pull_request", labeled); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong secret: %d", rec.Code)
+	}
+	if _, ok := w.LastDelivery("r_other"); ok {
+		t.Error("a delivery remembered for another repository")
 	}
 }

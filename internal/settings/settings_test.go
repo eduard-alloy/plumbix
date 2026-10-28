@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,6 +59,13 @@ func TestGuidance(t *testing.T) {
 func TestSecretMetaAndKnownKeys(t *testing.T) {
 	s := newService(t)
 	known := KnownSecrets()
+	// The App id's purpose tells the Settings page the App is one per host
+	// and sends the per-repository question to the repository card (WU-061).
+	for _, k := range known {
+		if k.Key == "PLUMBIX_GITHUB_APP_ID" && !strings.Contains(k.Purpose, "repository's card") {
+			t.Errorf("App id purpose: %q", k.Purpose)
+		}
+	}
 	if len(known) < 4 || known[0].Key != "PLUMBIX_GITHUB_TOKEN" || known[0].Host != "github" {
 		t.Fatalf("known secrets = %+v", known)
 	}
