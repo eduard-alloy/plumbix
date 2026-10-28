@@ -235,10 +235,16 @@ func (m *Mirror) CommitFiles(ctx context.Context, parent string, files map[strin
 	if _, err := m.run(ctx, nil, env, "read-tree", parent+"^{tree}"); err != nil {
 		return "", err
 	}
+	zero := ""
 	for _, p := range paths {
 		if files[p] == nil {
+			if zero == "" {
+				if zero, err = m.zeroID(ctx); err != nil {
+					return "", err
+				}
+			}
 			// Mode 0 removes the entry; --force-remove would need a work tree.
-			if _, err := m.run(ctx, strings.NewReader("0 "+strings.Repeat("0", 40)+"\t"+p+"\n"), env, "update-index", "--index-info"); err != nil {
+			if _, err := m.run(ctx, strings.NewReader("0 "+zero+"\t"+p+"\n"), env, "update-index", "--index-info"); err != nil {
 				return "", err
 			}
 			continue
@@ -264,6 +270,19 @@ func (m *Mirror) CommitFiles(ctx context.Context, parent string, files map[strin
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// zeroID is the all-zero object id in the mirror's hash algorithm: 40
+// characters for SHA-1, 64 for SHA-256 (WU-048 review).
+func (m *Mirror) zeroID(ctx context.Context) (string, error) {
+	out, err := m.git(ctx, "rev-parse", "--show-object-format")
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(string(out)) == "sha256" {
+		return strings.Repeat("0", 64), nil
+	}
+	return strings.Repeat("0", 40), nil
 }
 
 // MergeBranches creates a merge commit of theirs into ours, with Plumbix as

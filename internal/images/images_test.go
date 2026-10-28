@@ -176,8 +176,14 @@ func TestOneBuildAtATime(t *testing.T) {
 	if done := waitBuild(t, s, first.ID); done.Status != BuildSucceeded {
 		t.Errorf("first build = %+v", done)
 	}
-	if _, err := s.Build(context.Background(), "plumbix-reference-validator"); err != nil {
-		t.Errorf("build after the first finished: %v", err)
+	third, err := s.Build(context.Background(), "plumbix-reference-validator")
+	if err != nil {
+		t.Fatalf("build after the first finished: %v", err)
+	}
+	// Wait for it: a build still writing after the test returns races the
+	// temp directory's cleanup (WU-048 review).
+	if done := waitBuild(t, s, third.ID); done.Status != BuildSucceeded {
+		t.Errorf("third build = %+v", done)
 	}
 }
 

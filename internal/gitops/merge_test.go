@@ -3,6 +3,7 @@ package gitops
 import (
 	"errors"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -359,5 +360,36 @@ func TestCommitFilesWritesAndRemoves(t *testing.T) {
 	}
 	if _, err := m.CommitFiles(ctx, base, nil, "empty"); err == nil {
 		t.Error("an empty commit was accepted")
+	}
+}
+
+// TestCommitFilesRemovesOnSHA256Repository (WU-048 review): removing a file
+// writes a zero object id to the index, and that id must be as long as the
+// repository's hashes, 64 characters here, not SHA-1's 40. Fetch cannot
+// yet make a SHA-256 mirror (it initialises SHA-1), so the mirror is cloned
+// here with git itself.
+func TestCommitFilesRemovesOnSHA256Repository(t *testing.T) {
+	r := gittest.NewSHA256(t)
+	base := r.Commit("main", map[string]string{"keep.txt": "k\n", ".plumbix/pipelines/old.yaml": "old\n"}, "base")
+	if len(base) != 64 {
+		t.Fatalf("commit %s is not a SHA-256 id", base)
+	}
+	dir := filepath.Join(t.TempDir(), "mirror.git")
+	if out, err := exec.Command("git", "clone", "-q", "--mirror", r.Remote, dir).CombinedOutput(); err != nil {
+		t.Fatalf("clone --mirror: %v\n%s", err, out)
+	}
+	m := Open(dir, r.Remote)
+	sha, err := m.CommitFiles(ctx, base, map[string][]byte{".plumbix/pipelines/old.yaml": nil, "new.txt": []byte("n\n")}, "Remove a pipeline")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := m.Show(ctx, sha, ".plumbix/pipelines/old.yaml"); ok {
+		t.Error("old.yaml was not removed")
+	}
+	if got, ok, _ := m.Show(ctx, sha, "new.txt"); !ok || string(got) != "n\n" {
+		t.Errorf("new.txt = %q", got)
+	}
+	if _, ok, _ := m.Show(ctx, sha, "keep.txt"); !ok {
+		t.Error("keep.txt is gone")
 	}
 }

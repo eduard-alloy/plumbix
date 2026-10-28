@@ -24,9 +24,21 @@ type Repo struct {
 // New creates a bare remote with one commit on main.
 func New(t *testing.T) *Repo {
 	t.Helper()
+	return newRepo(t, "sha1")
+}
+
+// NewSHA256 is New for a repository with SHA-256 object ids (64-character
+// hashes), as `git init --object-format=sha256` makes.
+func NewSHA256(t *testing.T) *Repo {
+	t.Helper()
+	return newRepo(t, "sha256")
+}
+
+func newRepo(t *testing.T, objectFormat string) *Repo {
+	t.Helper()
 	root := t.TempDir()
 	r := &Repo{t: t, Remote: filepath.Join(root, "remote.git"), work: filepath.Join(root, "work"), home: t.TempDir()}
-	r.run(root, "init", "-q", "--bare", "--initial-branch=main", r.Remote)
+	r.run(root, "init", "-q", "--bare", "--initial-branch=main", "--object-format="+objectFormat, r.Remote)
 	r.run(root, "clone", "-q", r.Remote, r.work)
 	r.Commit("main", map[string]string{"README.md": "# test\n"}, "initial commit")
 	return r

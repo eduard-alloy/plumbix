@@ -19,6 +19,7 @@ Newest first. Each entry cites its source in DISCOVERY.md.
 - Plain shell execution without container isolation is not allowed. Agent-written code is untrusted. (Q04)
 
 ## Integration
+- SHA-256 repositories (`git init --object-format=sha256`) cannot be registered: `Mirror.Fetch` initialises the mirror as SHA-1 and git refuses with "mismatched algorithms". GitHub and Azure DevOps do not host them, so only a plain git remote could hit this. `CommitFiles` already sizes its zero object id by `rev-parse --show-object-format` (WU-048 review); the rest (mirror init, 40-character assumptions) is a work unit of its own if ever needed.
 - Azure DevOps does not report a personal access token's expiry to the token's holder (its token lifecycle API needs a Microsoft Entra ID sign-in). The expiry warning relies on `PLUMBIX_AZURE_DEVOPS_TOKEN_EXPIRES` in the secrets file; without it there is no warning. Azure DevOps ignores the basic-auth user name when the password is a token. (WU-009)
 - Plain git remotes (host `git`): absolute paths, `file://`, `ssh://`, scp-style. No credentials; SSH runs in batch mode unless the user set their own SSH command. Local remotes should be bare repositories. (WU-015)
 - GitHub and Azure DevOps are the v1 hosts. Both sit behind one narrow host boundary designed from these two real implementations. (Q03, revised)
