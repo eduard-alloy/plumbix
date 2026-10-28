@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Plumbix is an open-source, self-hosted tool that replaces the pull request for the age of coding agents. Code stays on an external git host. Plumbix runs pipelines in containers on the user's own machine with free, unlimited parallelism. Instead of humans reading diffs line by line, each change is checked against its stated intent and acceptance criteria by pluggable validators, using evidence the pipelines produce. The verdict decides what merges. Plumbix defines public contracts so any tool can use it. Kai, with TRACE embedded, is one future client.
+Plumbix is an open-source, self-hosted governed path for agent-written changes. Code stays on an external git host. Instead of humans reading diffs line by line, each change is checked against its stated intent and acceptance criteria by pluggable validators, using evidence that pipelines produce in containers on the user's own machine. The verdict decides what merges, beside a GitHub pull request (verdicts as check runs, the gate as a required check, GitHub merges) or instead of one (Plumbix merges). Everything Plumbix records, changes, verdicts, validator usage, merges and bypasses, is served through public contracts so an observer can read it. Chart-AI, the governance pilot, is the first such observer, and integrating with it sets the order of work (A40). The CI replacement, Plumbix's own pipelines with free, unlimited parallelism and the import of existing ones, is built in full as planned, after and around that path. Kai, with TRACE embedded, is one future client.
 
 ## Why it exists
 
@@ -17,6 +17,7 @@ Plumbix is an open-source, self-hosted tool that replaces the pull request for t
 
 - Developers working with coding agents, starting with the project owner.
 - Client tools that submit changes through the public contracts. Kai is the first planned client.
+- Observers that read what Plumbix records: the API, the event stream and the GitHub check runs. Chart-AI, the governance pilot, is the first and sets the order of work (A40).
 
 ## Scope
 
@@ -142,11 +143,19 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-051 | Pipeline guard: built-in check of every change to `.plumbix/`, approved pipeline fingerprints gate secrets on protected branches (A38) | F-014 | ✅ |
 | WU-050 | Pipelines page: every pipeline of a repository, its triggers and blockers, edit any, run one by hand, import and re-check from the browser | F-004, F-014 | ⚪ |
 
-## Milestone 2 candidates
+## Roadmap: Milestone 2, the governed path for Chart-AI (A40)
 
-- Move one of the user's real Azure DevOps projects onto Plumbix pipelines: now the Pipeline import workstream above.
-- Kai as the first external client.
-- Authentication, then service hooks.
+Order of precedence, decided 2026-10-28: what Chart-AI consumes comes first; the pipeline import workstream above is built in full, but after and around it, as the evidence engine of the governed path. A unit on the CI line never jumps a ready unit on this one.
+
+Landed so far: WU-053 (validator usage on the run), WU-054 and WU-055 (the gate beside GitHub pull requests), WU-057 and WU-058 (origin of a change in the web).
+
+| WU | Title | Features | Status |
+|----|-------|----------|--------|
+| WU-056 | Pull requests with `merger: plumbix`: close the pull request after the merge or document the shape as unsupported; never reopen a change for a merged head | F-010 | ⚪ |
+| next | Chart-AI's requirement list, one unit per surface it needs (added as each requirement arrives) | F-010 | ⚪ |
+| later | Azure DevOps pull-request statuses and branch policies, the same gate on the second host | F-010 | ⚪ |
+
+Behind it: Kai as the first external client; authentication, then service hooks; the pipeline import workstream (I1, I2).
 
 ## Open ideas
 
