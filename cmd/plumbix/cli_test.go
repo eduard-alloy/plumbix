@@ -133,6 +133,14 @@ func TestCLIFlow(t *testing.T) {
 	if app["configured"] != false || !strings.Contains(app["message"].(string), "PLUMBIX_GITHUB_APP_ID") || len(gate) != 2 || intake["mode"] == nil {
 		t.Errorf("repo github = %v", report)
 	}
+	// With neither a token nor an App the rules cannot be read: each
+	// protected branch is unknown, with the reason, never "not required".
+	for _, g := range gate {
+		entry, _ := g.(map[string]any)
+		if entry["known"] != false || entry["required"] != false || !strings.Contains(entry["message"].(string), "Could not read the rules of "+entry["branch"].(string)) {
+			t.Errorf("gate entry = %v", entry)
+		}
+	}
 
 	changeJSON := `{"repo_id": "` + repoID + `", "source_branch": "feat", "target_branch": "main", "title": "T", "intent": "I", "acceptance_criteria": [{"text": "works"}]}`
 	file := filepath.Join(t.TempDir(), "change.json")

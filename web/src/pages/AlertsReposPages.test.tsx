@@ -132,6 +132,33 @@ describe('Repositories page', () => {
     expect(items[2]).toContain('polling every 15s as well')
   })
 
+  it('leads every state of the GitHub check with a word: not installed with its link, not required, unknown, no intake (WU-061)', async () => {
+    db.githubReports[db.repos[0].id] = {
+      app: { configured: true, slug: 'plumbix-gate', installed: false, install_url: 'https://github.com/apps/plumbix-gate/installations/new', message: 'App plumbix-gate is not installed on this repository: no check run can be posted until it is' },
+      gate: [
+        { branch: 'main', required: false, known: true, message: 'plumbix/gate is not required on main: GitHub merges without waiting for the gate' },
+        { branch: 'release', required: false, known: false, message: 'Whether plumbix/gate is required on release is unknown: reading the branch protection needs administration read' },
+      ],
+      intake: { mode: 'none', webhook_secret_set: false, message: 'No intake: polling is off and no webhook secret is set, so pull requests are not watched' },
+    }
+    window.history.replaceState(null, '', '/repos')
+    render(<App />)
+    const plumbix = await screen.findByRole('listitem', { name: 'Repository plumbix' })
+    fireEvent.click(within(plumbix).getByRole('button', { name: 'GitHub' }))
+    const panel = within(plumbix).getByRole('group', { name: 'GitHub for plumbix' })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Check' }))
+    const lines = await within(panel).findByRole('list', { name: 'GitHub check for plumbix' })
+    const items = within(lines).getAllByRole('listitem')
+    expect(items.map((li) => li.querySelector('strong')?.textContent)).toEqual(['Not installed', 'Not required', 'Unknown', 'No intake'])
+    const link = within(items[0]).getByRole('link', { name: 'Install the App' }) as HTMLAnchorElement
+    expect(link.href).toBe('https://github.com/apps/plumbix-gate/installations/new')
+    expect(items[2].textContent).toContain('administration read')
+    // A webhook secret with no delivery yet says so in the word, not only in the message.
+    db.githubReports[db.repos[0].id].intake = { mode: 'webhook', webhook_secret_set: true, poll_interval: '15s', message: 'Webhook secret set: signed deliveries are accepted at POST /api/v1/hooks/github; last delivery for this repository none since the server started, and polling every 15s as well' }
+    fireEvent.click(within(panel).getByRole('button', { name: 'Check' }))
+    await waitFor(() => expect(within(lines).getAllByRole('listitem')[3].querySelector('strong')?.textContent).toBe('Webhook, nothing yet'))
+  })
+
   it('turns pull requests off and on, the merger taking its default each time (WU-061)', async () => {
     window.history.replaceState(null, '', '/repos')
     render(<App />)

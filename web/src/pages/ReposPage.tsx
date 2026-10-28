@@ -210,7 +210,7 @@ function GitHubPanel({ repo, onChanged }: { repo: Repo; onChanged: (pullRequests
             </li>
           ))}
           <li>
-            <strong>{report.intake.mode === 'webhook' ? 'Webhook' : report.intake.mode === 'polling' ? 'Polling' : 'No intake'}</strong>
+            <strong>{report.intake.mode === 'webhook' ? (report.intake.last_delivery_at ? 'Webhook' : 'Webhook, nothing yet') : report.intake.mode === 'polling' ? 'Polling' : 'No intake'}</strong>
             <span>{report.intake.message}</span>
           </li>
         </ul>

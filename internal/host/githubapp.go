@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"sync"
 	"time"
@@ -137,6 +138,9 @@ func (a *GitHubApp) mint(ctx context.Context, base, ownerRepo string) (installat
 		ID int64 `json:"id"`
 	}
 	if err := a.call(ctx, http.MethodGet, base+"/repos/"+ownerRepo+"/installation", &inst); err != nil {
+		if isStatus(err, http.StatusNotFound) {
+			return installationToken{}, fmt.Errorf("find the App installation for %s: the App is not installed on the repository", ownerRepo)
+		}
 		return installationToken{}, fmt.Errorf("find the App installation for %s: %w", ownerRepo, err)
 	}
 	var tok struct {
@@ -164,10 +168,6 @@ func (a *GitHubApp) Check(ctx context.Context, base string) (string, error) {
 	return app.Slug, nil
 }
 
-// errNotInstalled is call's answer to a 404: the App has no installation
-// on the repository asked about.
-var errNotInstalled = errors.New("not found: the App is not installed on the repository")
-
 // Installed reports whether the App is installed on the repository
 // (owner/name), asking as the App itself; no token is minted (WU-061).
 func (a *GitHubApp) Installed(ctx context.Context, base, ownerRepo string) (bool, error) {
@@ -178,7 +178,9 @@ func (a *GitHubApp) Installed(ctx context.Context, base, ownerRepo string) (bool
 	switch {
 	case err == nil:
 		return true, nil
-	case errors.Is(err, errNotInstalled):
+	case isStatus(err, http.StatusNotFound):
+		// Only here does a 404 mean "not installed": the repository exists
+		// and GitHub knows the App, so the installation is what is missing.
 		return false, nil
 	}
 	return false, fmt.Errorf("App installation lookup for %s: %w", ownerRepo, err)
@@ -207,13 +209,22 @@ func (a *GitHubApp) call(ctx context.Context, method, url string, out any) error
 	case http.StatusOK, http.StatusCreated:
 	case http.StatusUnauthorized:
 		return fmt.Errorf("GitHub rejected the App's JWT (check %s and %s)", GitHubAppIDKey, GitHubAppKeyKey)
-	case http.StatusNotFound:
-		return errNotInstalled
 	default:
-		return fmt.Errorf("status %d", resp.StatusCode)
+		// Any other status is reported as such; what a 404 means depends on
+		// the call (an installation lookup reads it as "not installed", a
+		// read of the App itself as a wrong API base).
+		return &StatusError{Status: resp.StatusCode, Path: method + " " + pathOf(url)}
 	}
 	if err := json.NewDecoder(bytes.NewReader(body)).Decode(out); err != nil {
 		return fmt.Errorf("decode GitHub's answer: %w", err)
 	}
 	return nil
+}
+
+// pathOf is the path part of an absolute URL, for error messages.
+func pathOf(u string) string {
+	if parsed, err := neturl.Parse(u); err == nil {
+		return parsed.Path
+	}
+	return u
 }
