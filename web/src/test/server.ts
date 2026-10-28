@@ -363,6 +363,18 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       }
       return json(200, { guidance: db.repoGuidance[id] ?? '', token_set: id in db.repoTokens, token_updated_at: id in db.repoTokens ? new Date().toISOString() : undefined, pull_requests: repo.pull_requests ?? false, merger: repo.merger })
     }
+    const repoGitHub = path.match(/^\/api\/v1\/repos\/([^/]+)\/github$/)
+    if (repoGitHub && method === 'GET') {
+      const repo = db.repos.find((r) => r.id === repoGitHub[1])
+      if (!repo) return error(404, 'not_found', `repo ${repoGitHub[1]}`)
+      if (repo.host !== 'github') return error(404, 'not_found', `no GitHub integration for a ${repo.host} repository`)
+      // The report the server computes live (WU-061): the App installed, the gate required on each protected branch, the webhook wired and polling too.
+      return json(200, {
+        app: { configured: true, slug: 'plumbix-gate', installed: true, install_url: 'https://github.com/apps/plumbix-gate/installations/new', message: 'App plumbix-gate is installed on this repository; check runs are posted as it' },
+        gate: repo.protected_branches.map((branch) => ({ branch, required: true, known: true, message: `plumbix/gate is required on ${branch}: a merge past a red or waiting gate needs a bypass, which Plumbix records as gate_bypassed` })),
+        intake: { mode: 'webhook', webhook_secret_set: true, last_delivery_at: new Date(Date.now() - 120000).toISOString(), poll_interval: '15s', message: 'Webhook secret set: signed deliveries are accepted at POST /api/v1/hooks/github; last delivery for this repository at just now, and polling every 15s as well' },
+      })
+    }
     const repoToken = path.match(/^\/api\/v1\/repos\/([^/]+)\/token(\/check)?$/)
     if (repoToken) {
       const [, id, check] = repoToken

@@ -25,6 +25,7 @@ type settingsHandlers struct {
 	hosts    host.Source
 	changes  *change.Service
 	heads    func(ctx context.Context, repo change.Repo) (map[string]string, error) // fetches a repo's branch heads; nil disables the repo token check
+	intake   GitHubIntake
 	log      *slog.Logger
 }
 
@@ -42,6 +43,7 @@ func registerSettingsRoutes(mux *http.ServeMux, h *settingsHandlers) {
 		mux.HandleFunc("PUT /api/v1/repos/{id}/token", h.setRepoToken)
 		mux.HandleFunc("DELETE /api/v1/repos/{id}/token", h.removeRepoToken)
 		mux.HandleFunc("POST /api/v1/repos/{id}/token/check", h.checkRepoToken)
+		mux.HandleFunc("GET /api/v1/repos/{id}/github", h.gitHubReport)
 	}
 }
 
@@ -281,16 +283,19 @@ func (h *settingsHandlers) checkSecret(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	if key == host.GitHubAppIDKey || key == host.GitHubAppKeyKey {
 		// The App is checked as itself, whatever token sits beside it (WU-055).
-		checker, ok := adapter.(interface{ AppCheck(context.Context) error })
+		checker, ok := adapter.(interface {
+			AppCheck(context.Context) (string, error)
+		})
 		if !ok {
 			writeJSON(w, http.StatusOK, secretCheck{Message: "no App check for " + kind})
 			return
 		}
-		if err := checker.AppCheck(ctx); err != nil {
+		slug, err := checker.AppCheck(ctx)
+		if err != nil {
 			writeJSON(w, http.StatusOK, secretCheck{Message: "check failed: " + redactSecrets(err.Error(), h.secrets.Values())})
 			return
 		}
-		writeJSON(w, http.StatusOK, secretCheck{OK: true, Message: "App accepted; installation tokens renew themselves"})
+		writeJSON(w, http.StatusOK, secretCheck{OK: true, Message: "App " + slug + " accepted; installation tokens renew themselves. Whether it is installed on a repository is checked on the repository's card"})
 		return
 	}
 	expires, known, err := adapter.TokenExpiry(ctx)

@@ -279,16 +279,45 @@ func (g *GitHub) apiToken(ctx context.Context, repo change.Repo) (string, error)
 	return inst, nil
 }
 
-// AppCheck verifies the configured App's id and key against GitHub,
-// whatever token is set beside it (WU-055).
-func (g *GitHub) AppCheck(ctx context.Context) error {
+// ErrNoApp means no GitHub App is configured at all, as opposed to one
+// that is configured and unusable (WU-061).
+var ErrNoApp = errors.New("no GitHub App configured: set " + GitHubAppIDKey + " and " + GitHubAppKeyKey)
+
+// app is the configured App, or why there is none.
+func (g *GitHub) app() (*GitHubApp, error) {
 	if g.AppErr != nil {
-		return fmt.Errorf("GitHub App: %w", g.AppErr)
+		return nil, fmt.Errorf("GitHub App: %w", g.AppErr)
 	}
 	if g.App == nil {
-		return errors.New("no GitHub App configured: set " + GitHubAppIDKey + " and " + GitHubAppKeyKey)
+		return nil, ErrNoApp
 	}
-	return g.App.Check(ctx, g.base())
+	return g.App, nil
+}
+
+// AppCheck verifies the configured App's id and key against GitHub,
+// whatever token is set beside it, and returns the App's slug (WU-055,
+// WU-061). ErrNoApp when none is configured.
+func (g *GitHub) AppCheck(ctx context.Context) (string, error) {
+	app, err := g.app()
+	if err != nil {
+		return "", err
+	}
+	return app.Check(ctx, g.base())
+}
+
+// AppInstalled reports whether the configured App is installed on the
+// repository, asking GitHub as the App (WU-061). ErrNoApp when none is
+// configured.
+func (g *GitHub) AppInstalled(ctx context.Context, repo change.Repo) (bool, error) {
+	app, err := g.app()
+	if err != nil {
+		return false, err
+	}
+	or, err := ownerRepo(repo.URL)
+	if err != nil {
+		return false, err
+	}
+	return app.Installed(ctx, g.base(), or)
 }
 
 func (g *GitHub) base() string {

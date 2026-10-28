@@ -71,7 +71,7 @@ func (g *GitHub) TokenExpiry(ctx context.Context) (time.Time, bool, error) {
 		if g.App == nil {
 			return time.Time{}, false, nil
 		}
-		if err := g.App.Check(ctx, g.base()); err != nil {
+		if _, err := g.App.Check(ctx, g.base()); err != nil {
 			return time.Time{}, false, err
 		}
 		g.App.mu.Lock()

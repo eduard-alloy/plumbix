@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -270,19 +271,50 @@ func TestGitHubAppCheck(t *testing.T) {
 	srv := fakeApp(t, key, "1234")
 	ctx := context.Background()
 	a, _ := NewGitHubApp("1234", pemKey)
-	if err := (&GitHub{Token: "pat", App: a, APIBase: srv.URL}).AppCheck(ctx); err != nil {
-		t.Errorf("check with a token set: %v", err)
+	// The check names the App by its slug (WU-061), so a report can say which App it means.
+	if slug, err := (&GitHub{Token: "pat", App: a, APIBase: srv.URL}).AppCheck(ctx); err != nil || slug != "plumbix" {
+		t.Errorf("check with a token set: %q, %v", slug, err)
 	}
 	wrong, _ := NewGitHubApp("9999", pemKey)
-	err := (&GitHub{App: wrong, APIBase: srv.URL}).AppCheck(ctx)
-	if err == nil || strings.Contains(err.Error(), "PRIVATE KEY") {
+	_, err := (&GitHub{App: wrong, APIBase: srv.URL}).AppCheck(ctx)
+	if err == nil || strings.Contains(err.Error(), "PRIVATE KEY") || errors.Is(err, ErrNoApp) {
 		t.Errorf("check of a refused App: %v", err)
 	}
-	if err := (&GitHub{Token: "pat"}).AppCheck(ctx); err == nil || !strings.Contains(err.Error(), "no GitHub App") {
+	// No App at all is its own, recognisable case: a report says "not configured", not "failed".
+	if _, err := (&GitHub{Token: "pat"}).AppCheck(ctx); err == nil || !strings.Contains(err.Error(), "no GitHub App") || !errors.Is(err, ErrNoApp) {
 		t.Errorf("check without an App: %v", err)
 	}
 	broken := FromSecrets(map[string]string{GitHubAppIDKey: "1234", GitHubAppKeyKey: "garbage"})[change.HostGitHub].(*GitHub)
-	if err := broken.AppCheck(ctx); err == nil || !strings.Contains(err.Error(), GitHubAppKeyKey) || strings.Contains(err.Error(), "garbage") {
+	if _, err := broken.AppCheck(ctx); err == nil || !strings.Contains(err.Error(), GitHubAppKeyKey) || strings.Contains(err.Error(), "garbage") || errors.Is(err, ErrNoApp) {
 		t.Errorf("check of a broken App: %v", err)
+	}
+}
+
+// TestGitHubAppInstalled: the installation lookup, as the App, says whether
+// the App is installed on a repository (WU-061): yes for one with an
+// installation, no for one without, an error (never the key) when GitHub
+// refuses the App or none is configured.
+func TestGitHubAppInstalled(t *testing.T) {
+	key, pemKey := testKey(t)
+	srv := fakeApp(t, key, "1234")
+	ctx := context.Background()
+	a, _ := NewGitHubApp("1234", pemKey)
+	g := &GitHub{Token: "pat", App: a, APIBase: srv.URL}
+	if installed, err := g.AppInstalled(ctx, repo); err != nil || !installed {
+		t.Errorf("installed repository: %v, %v", installed, err)
+	}
+	other := change.Repo{ID: "r_2", Host: change.HostGitHub, URL: "https://github.com/a/c"}
+	if installed, err := g.AppInstalled(ctx, other); err != nil || installed {
+		t.Errorf("repository without an installation: %v, %v", installed, err)
+	}
+	if n := srv.mints.Load(); n != 0 {
+		t.Errorf("the lookup minted %d tokens; it must ask as the App itself", n)
+	}
+	wrong, _ := NewGitHubApp("9999", pemKey)
+	if _, err := (&GitHub{App: wrong, APIBase: srv.URL}).AppInstalled(ctx, repo); err == nil || strings.Contains(err.Error(), "PRIVATE KEY") {
+		t.Errorf("refused App: %v", err)
+	}
+	if _, err := (&GitHub{Token: "pat"}).AppInstalled(ctx, repo); !errors.Is(err, ErrNoApp) {
+		t.Errorf("without an App: %v", err)
 	}
 }

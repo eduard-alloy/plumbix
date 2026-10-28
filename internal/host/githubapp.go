@@ -152,15 +152,36 @@ func (a *GitHubApp) mint(ctx context.Context, base, ownerRepo string) (installat
 	return installationToken{token: tok.Token, expires: tok.ExpiresAt}, nil
 }
 
-// Check verifies the App id and key against GitHub by reading the App.
-func (a *GitHubApp) Check(ctx context.Context, base string) error {
+// Check verifies the App id and key against GitHub by reading the App,
+// and returns the App's slug, the name GitHub shows it under (WU-061).
+func (a *GitHubApp) Check(ctx context.Context, base string) (string, error) {
 	var app struct {
 		Slug string `json:"slug"`
 	}
 	if err := a.call(ctx, http.MethodGet, base+"/app", &app); err != nil {
-		return fmt.Errorf("GitHub App check: %w", err)
+		return "", fmt.Errorf("GitHub App check: %w", err)
 	}
-	return nil
+	return app.Slug, nil
+}
+
+// errNotInstalled is call's answer to a 404: the App has no installation
+// on the repository asked about.
+var errNotInstalled = errors.New("not found: the App is not installed on the repository")
+
+// Installed reports whether the App is installed on the repository
+// (owner/name), asking as the App itself; no token is minted (WU-061).
+func (a *GitHubApp) Installed(ctx context.Context, base, ownerRepo string) (bool, error) {
+	var inst struct {
+		ID int64 `json:"id"`
+	}
+	err := a.call(ctx, http.MethodGet, base+"/repos/"+ownerRepo+"/installation", &inst)
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, errNotInstalled):
+		return false, nil
+	}
+	return false, fmt.Errorf("App installation lookup for %s: %w", ownerRepo, err)
 }
 
 // call makes one JWT-authenticated request and decodes a JSON object.
@@ -187,7 +208,7 @@ func (a *GitHubApp) call(ctx context.Context, method, url string, out any) error
 	case http.StatusUnauthorized:
 		return fmt.Errorf("GitHub rejected the App's JWT (check %s and %s)", GitHubAppIDKey, GitHubAppKeyKey)
 	case http.StatusNotFound:
-		return errors.New("not found: the App is not installed on the repository")
+		return errNotInstalled
 	default:
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}

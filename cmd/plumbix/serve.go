@@ -131,6 +131,11 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	}
 	// Browsers must use the bound address: login links point there and
 	// cookie requests must carry it as Host.
+	hook := &pullrequest.Webhook{Secret: func() string { v, _ := secretStore.Get(host.GitHubWebhookSecretKey); return v }, Syncer: syncer, Repos: db, Log: logger}
+	intake := api.GitHubIntake{LastDelivery: hook.LastDelivery}
+	if cfg.Poller.Enabled {
+		intake.PollInterval = cfg.Poller.Interval
+	}
 	deps := api.Deps{
 		Version: version, Token: token, Changes: changes, Engine: eng, Runs: db, Alerts: db, Events: hub, Logger: logger,
 		Sessions: auth.NewSessions(db), Origin: "http://" + ln.Addr().String(),
@@ -138,7 +143,8 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		Settings: prefs, Secrets: secretStore, Hosts: hosts,
 		Images:        images.New(docker.Client(), version, filepath.Join(cfg.DataDir, "images")),
 		ImportRoot:    importRoot(),
-		GitHubWebhook: &pullrequest.Webhook{Secret: func() string { v, _ := secretStore.Get(host.GitHubWebhookSecretKey); return v }, Syncer: syncer, Repos: db, Log: logger},
+		GitHubWebhook: hook,
+		GitHubIntake:  intake,
 	}
 	if err := api.Run(ctx, ln, api.NewHandler(deps), logger, config.DefaultShutdownTimeout); err != nil {
 		logger.Error("server stopped with error", "err", err)

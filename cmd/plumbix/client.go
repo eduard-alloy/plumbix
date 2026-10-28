@@ -182,6 +182,8 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 		return c.call(http.MethodPut, "/api/v1/repos/"+url.PathEscape(pos[1])+"/settings", body)
 	case len(pos) == 1 && pos[0] == "list":
 		return c.call(http.MethodGet, "/api/v1/repos", nil)
+	case len(pos) == 2 && pos[0] == "github":
+		return c.call(http.MethodGet, "/api/v1/repos/"+url.PathEscape(pos[1])+"/github", nil)
 	case len(pos) == 2 && pos[0] == "runs":
 		path := "/api/v1/repos/" + url.PathEscape(pos[1]) + "/runs"
 		if *branch != "" {
@@ -189,7 +191,7 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 		}
 		return c.call(http.MethodGet, path, nil)
 	}
-	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> [--pull-requests] [--merger plumbix|github] | repo set <id> [--pull-requests[=false]] [--merger plumbix|github] | repo list | repo runs <id> [--branch <b>]")
+	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> [--pull-requests] [--merger plumbix|github] | repo set <id> [--pull-requests[=false]] [--merger plumbix|github] | repo list | repo github <id> | repo runs <id> [--branch <b>]")
 }
 
 // runSubmit handles "plumbix submit -f <file|->".

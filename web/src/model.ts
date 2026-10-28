@@ -348,6 +348,20 @@ export interface RepoSettings {
   merger?: 'plumbix' | 'github'
 }
 
+/** What a repository settings update may carry; a field left out stays (WU-055). An empty merger takes the default. */
+export interface RepoSettingsPatch {
+  guidance?: string
+  pull_requests?: boolean
+  merger?: 'plumbix' | 'github' | ''
+}
+
+/** The per-repository GitHub facts behind the gate, read live (WU-061). */
+export interface GitHubReport {
+  app: { configured: boolean; slug?: string; installed: boolean; install_url?: string; message: string }
+  gate: { branch: string; required: boolean; known: boolean; message: string }[]
+  intake: { mode: 'webhook' | 'polling' | 'none'; webhook_secret_set: boolean; last_delivery_at?: string; poll_interval?: string; message: string }
+}
+
 export interface SecretCheck {
   ok: boolean
   expires_at?: string

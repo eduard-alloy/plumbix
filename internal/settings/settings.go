@@ -48,7 +48,7 @@ type Secret struct {
 func KnownSecrets() []Secret {
 	return []Secret{
 		{Key: "PLUMBIX_GITHUB_TOKEN", Purpose: "Default token for every GitHub repository: contents read and write; fetches, pushes merges, checks expiry. A fine-grained token covers only the repositories chosen for it; a repository can carry its own token on the Repositories page", Host: "github"},
-		{Key: "PLUMBIX_GITHUB_APP_ID", Purpose: "The GitHub App's id, for repositories gated through pull requests; with the key below, Plumbix mints installation tokens itself and needs no personal token", Host: "github"},
+		{Key: "PLUMBIX_GITHUB_APP_ID", Purpose: "The GitHub App's id, for repositories gated through pull requests; with the key below, Plumbix mints installation tokens itself and needs no personal token. One App per GitHub host: whether it is installed on a repository is checked on the repository's card", Host: "github"},
 		{Key: "PLUMBIX_GITHUB_APP_KEY", Purpose: "The GitHub App's private key: the PEM with \\n for its line breaks, or base64-encoded", Host: "github"},
 		{Key: "PLUMBIX_GITHUB_WEBHOOK_SECRET", Purpose: "The secret GitHub signs webhook deliveries with; without it POST /api/v1/hooks/github refuses everything and pull requests are found by polling only", Host: "github"},
 		{Key: "PLUMBIX_AZURE_DEVOPS_TOKEN", Purpose: "Default personal access token for every Azure DevOps repository, code read and write; a repository can carry its own token on the Repositories page", Host: "azuredevops"},
