@@ -7,13 +7,14 @@ import { useNow, useStore } from '../store'
 import { StatePill } from '../ui/StatePill'
 import { ENCODING } from '../ui/StatePill'
 import { FOCUS_SEARCH } from '../ui/Shell'
+import { OriginTag } from '../ui/OriginTag'
 import { listGroups, repoName, type ListFilters } from '../vm/changes'
 
 const skeletonWidths = [62, 48, 70, 55, 40, 66, 52, 45, 60, 50]
 
 function readFilters(): ListFilters {
   const q = new URLSearchParams(window.location.search)
-  return { q: q.get('q') ?? '', repo: q.get('repo') ?? 'all', state: q.get('state') ?? 'all' }
+  return { q: q.get('q') ?? '', repo: q.get('repo') ?? 'all', state: q.get('state') ?? 'all', origin: q.get('origin') ?? 'all' }
 }
 
 function writeFilters(f: ListFilters) {
@@ -21,6 +22,7 @@ function writeFilters(f: ListFilters) {
   if (f.q) q.set('q', f.q)
   if (f.repo !== 'all') q.set('repo', f.repo)
   if (f.state !== 'all') q.set('state', f.state)
+  if (f.origin !== 'all') q.set('origin', f.origin)
   const search = q.toString()
   window.history.replaceState(null, '', search ? `/?${search}` : '/')
 }
@@ -63,8 +65,8 @@ export function ChangesPage() {
 
   const groups = useMemo(() => listGroups(Object.values(state.changes), state.runs, state.repos, filters, now), [state.changes, state.runs, state.repos, filters, now])
   const total = groups.reduce((a, g) => a + g.count, 0)
-  const hasFilters = filters.q !== '' || filters.repo !== 'all' || filters.state !== 'all'
-  const clear = () => setFilters({ q: '', repo: 'all', state: 'all' })
+  const hasFilters = filters.q !== '' || filters.repo !== 'all' || filters.state !== 'all' || filters.origin !== 'all'
+  const clear = () => setFilters({ q: '', repo: 'all', state: 'all', origin: 'all' })
   const noRepos = state.loaded && state.repos.length === 0 && Object.keys(state.changes).length === 0
 
   return (
@@ -107,6 +109,11 @@ export function ChangesPage() {
                 {ENCODING[s].label}
               </option>
             ))}
+          </select>
+          <select value={filters.origin} onChange={(e) => setFilters({ ...filters, origin: e.target.value })} aria-label="Origin">
+            <option value="all">All origins</option>
+            <option value="pr">Pull requests</option>
+            <option value="api">API</option>
           </select>
           {hasFilters && (
             <button className="quiet" onClick={clear}>
@@ -175,7 +182,10 @@ export function ChangesPage() {
                   <span className="cell">
                     <StatePill status={r.state} />
                   </span>
-                  <span className="cell title">{r.title}</span>
+                  <span className="cell title">
+                    <OriginTag origin={r.origin} />
+                    {r.title}
+                  </span>
                   <span className="cell mono dim2">
                     {r.repo}
                     <span className="dim"> · </span>

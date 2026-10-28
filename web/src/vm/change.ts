@@ -3,7 +3,7 @@
 import type { Change, ChangeState, CriterionStatus, Repo, Run, Severity, Step, ValidatorDecision, ValidatorOutcome } from '../model'
 import { prose, type Block } from './prose'
 import { ago, agoLong, clock, dateTime, duration, elapsedSeconds, minutesBetween, plural, shortSha } from '../format'
-import { latestJudged, latestRun, repoName } from './changes'
+import { latestJudged, latestRun, origin, repoName, type OriginVM } from './changes'
 
 const HOST: Record<Repo['host'], string> = { github: 'GitHub', azuredevops: 'Azure DevOps', git: 'git' }
 
@@ -90,6 +90,7 @@ export interface ChangeView {
     base: string
     iter: string
     by: string
+    origin: OriginVM
     submitted: string
     updated: string
   }
@@ -260,6 +261,7 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       base: withHead ? shortSha(withHead.base) : '—',
       iter: nR ? `${nR} of ${nR}` : '—',
       by: c.submitted_by ?? '',
+      origin: origin(c),
       submitted: clock(c.created_at),
       updated: c.state === 'running' ? 'Live' : `Updated ${agoLong(minutesBetween(c.updated_at, now))}`,
     },

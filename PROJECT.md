@@ -125,6 +125,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-053 | Validator model usage on the run result: each validator's reported `usage` on `result.validators`, served by the run endpoints for observers such as Chart-AI; OpenAPI `Usage` schema mirrors the verdict's | F-003, F-004 | ✅ |
 | WU-054 | The gate on GitHub pull requests: App identity beside the token, pull requests as changes (polling and webhook), verdicts as `plumbix/<validator>` and `plumbix/gate` check runs with the embedded verdict, review approval as a person's approval, GitHub merges and Plumbix records it, `gate_bypassed` alerts | F-010, F-005 | ✅ |
 | WU-055 | Pull-request API calls go out as the App (only an App may create check runs), with the token as the fallback; `pull_requests` and `merger` settable on a registered repository (`PUT /repos/{id}/settings`, `plumbix repo set`, shown on the repository card); the App's id and key checkable in Settings | F-010 | ✅ |
+| WU-057 | Origin of a change in the web: a `PR #n` or `API` tag on the changes list and the change page header (the pull request linked), tinted but never colour alone, and an origin filter kept in the URL | F-010, F-004 | ✅ |
 
 ## Roadmap: Pipeline import (Kai workstream TCVR9R)
 

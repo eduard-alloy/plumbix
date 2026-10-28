@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { listGroups, repoName, verdictColumn, type ListFilters } from './changes'
 import { allChanges, approved, closed, fixRequested, needsHuman, NOW, open, repos, running, runsByChange } from '../test/fixtures'
 
-const none: ListFilters = { q: '', repo: 'all', state: 'all' }
+const none: ListFilters = { q: '', repo: 'all', state: 'all', origin: 'all' }
 
 describe('listGroups', () => {
   it('puts Needs you first, newest activity first, then everything else with running on top', () => {

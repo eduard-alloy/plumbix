@@ -6,6 +6,7 @@ import type { Diff } from '../model'
 import { useRoute } from '../router'
 import { useNow, useStore } from '../store'
 import { StatePill, type PillStatus } from '../ui/StatePill'
+import { OriginTag } from '../ui/OriginTag'
 import { LogPanel, type LogTarget } from '../ui/LogPanel'
 import { Prose } from '../ui/Prose'
 import { DiffView, type Highlight } from '../ui/DiffView'
@@ -298,6 +299,9 @@ export function ChangePage({ id }: { id: string }) {
               </span>
               <span>
                 <span className="k">by</span> {v.header.by}
+              </span>
+              <span>
+                <span className="k">from</span> <OriginTag origin={v.header.origin} link />
               </span>
               <span>
                 <span className="k">submitted</span> {v.header.submitted}

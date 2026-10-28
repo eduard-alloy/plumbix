@@ -70,6 +70,22 @@ describe('Changes page', () => {
     expect(rowIds(screen.getByRole('list', { name: 'Changes' }))).toHaveLength(7)
   })
 
+  it('tags each row with its origin and filters by it (WU-057)', async () => {
+    const list = await renderList()
+    const pr = list.querySelector(`[data-id="${fixRequested.id}"]`) as HTMLElement
+    expect(within(pr).getByText('PR #7')).toBeTruthy()
+    expect(within(pr).getByText('PR #7').getAttribute('title')).toContain('pull request #7')
+    const api = list.querySelector(`[data-id="${approved.id}"]`) as HTMLElement
+    expect(within(api).getByText('API')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Origin'), { target: { value: 'pr' } })
+    expect(rowIds(list)).toEqual([fixRequested.id])
+    expect(window.location.search).toContain('origin=pr')
+    fireEvent.change(screen.getByLabelText('Origin'), { target: { value: 'api' } })
+    expect(rowIds(list)).toHaveLength(6)
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(rowIds(list)).toHaveLength(7)
+  })
+
   it('moves with the keyboard and opens with Enter', async () => {
     const list = await renderList()
     fireEvent.keyDown(window, { key: 'ArrowDown' })

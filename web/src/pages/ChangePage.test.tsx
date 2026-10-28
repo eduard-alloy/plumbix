@@ -67,6 +67,16 @@ describe('Change page', () => {
     expect(screen.getByText(/a81d7c0\.\.9f3c1e2/)).toBeTruthy()
   })
 
+  it('names the origin in the header: the pull request as a link, or the API (WU-057)', async () => {
+    await open(fixRequested.id)
+    const link = screen.getByRole('link', { name: 'PR #7' })
+    expect(link.getAttribute('href')).toBe('https://github.com/plumbix/plumbix/pull/7')
+    cleanup()
+    await open(approved.id)
+    expect(screen.queryByRole('link', { name: /PR #/ })).toBeNull()
+    expect(document.querySelector('.meta-line')?.textContent).toContain('API')
+  })
+
   it('merges with one click and shows the record', async () => {
     const verdict = await open(approved.id)
     fireEvent.click(screen.getByRole('button', { name: 'Merge' }))

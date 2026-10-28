@@ -134,6 +134,7 @@ export const fixRequested: Change = {
   ],
   constraints: ['no new dependencies', 'never log token values'],
   submitted_by: 'mira',
+  pull_request: { number: 7, url: 'https://github.com/plumbix/plumbix/pull/7' },
   state: 'fix_requested',
   created_at: at(50),
   updated_at: at(12),

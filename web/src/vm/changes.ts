@@ -8,11 +8,29 @@ export interface ListFilters {
   q: string
   repo: string // 'all' or a repo id
   state: string // 'all' or a change state
+  origin: string // 'all', 'pr' or 'api' (WU-057)
+}
+
+/** OriginVM says where a change came from: a pull request Plumbix watches,
+ * or a submission through the API (WU-057). */
+export interface OriginVM {
+  kind: 'pr' | 'api'
+  label: string
+  title: string
+  url?: string
+}
+
+export function origin(c: Change): OriginVM {
+  if (c.pull_request) {
+    return { kind: 'pr', label: `PR #${c.pull_request.number}`, title: `Opened from pull request #${c.pull_request.number}`, url: c.pull_request.url }
+  }
+  return { kind: 'api', label: 'API', title: 'Submitted through the API' }
 }
 
 export interface RowVM {
   id: string
   state: ChangeState
+  origin: OriginVM
   title: string
   repo: string
   src: string
@@ -68,6 +86,7 @@ export function matchesFilters(c: Change, f: ListFilters): boolean {
   if (q && !`${c.title} ${c.id} ${c.source_branch}`.toLowerCase().includes(q)) return false
   if (f.repo !== 'all' && c.repo_id !== f.repo) return false
   if (f.state !== 'all' && c.state !== f.state) return false
+  if (f.origin !== 'all' && origin(c).kind !== f.origin) return false
   return true
 }
 
@@ -98,6 +117,7 @@ function row(c: Change, runs: Run[], repos: Repo[], now: Date): RowVM {
   return {
     id: c.id,
     state: c.state,
+    origin: origin(c),
     title: c.title,
     repo: repoName(
       repos.find((r) => r.id === c.repo_id),
