@@ -116,7 +116,8 @@ export interface Change {
   state: ChangeState
   merge?: Merge
   /** Set while a person's approval stands; a new run clears it. */
-  human_approval?: { reason: string; head: string; at: string }
+  /** A person's standing approval; by and source name the person and the surface (WU-060), absent on older records. */
+  human_approval?: { reason: string; head: string; at: string; by?: string; source?: 'plumbix' | 'github_review' }
   /** True when Plumbix created the source branch (a pipeline editor change); it can be updated from its target. */
   plumbix_branch?: boolean
   source_head?: string

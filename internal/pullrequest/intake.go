@@ -30,7 +30,7 @@ type API interface {
 // Engine is what intake asks the engine to do.
 type Engine interface {
 	Validate(ctx context.Context, changeID string) (run.Run, error)
-	ApproveByPerson(ctx context.Context, changeID, reason string) (change.Change, error)
+	ApproveByPerson(ctx context.Context, changeID string, who change.Approver, reason string) (change.Change, error)
 	RecordExternalMerge(ctx context.Context, changeID string, m engine.ExternalMerge) (change.Change, error)
 }
 
@@ -323,14 +323,16 @@ func (s *Syncer) ApplyReviews(ctx context.Context, c change.Change, reviews []ho
 			s.Log.Info("approving review ignored: the reviewer is not an owner, member or collaborator", "change", c.ID, "by", r.Author.Login, "association", r.AuthorAssociation)
 			continue
 		}
-		reason := "Approved on GitHub by " + r.Author.Login
-		if body := strings.TrimSpace(r.Body); body != "" {
-			reason += ": " + body
+		// The reviewer is the person (WU-060); the review's text is the
+		// reason, or a plain sentence when the review has none.
+		reason := strings.TrimSpace(r.Body)
+		if reason == "" {
+			reason = "Approving review on GitHub"
 		}
 		if utf8.RuneCountInString(reason) > engine.MaxApprovalReason {
 			reason = string([]rune(reason)[:engine.MaxApprovalReason])
 		}
-		if _, err := s.Engine.ApproveByPerson(ctx, c.ID, reason); err != nil {
+		if _, err := s.Engine.ApproveByPerson(ctx, c.ID, change.Approver{By: r.Author.Login, Source: change.ApprovalSourceGitHubReview}, reason); err != nil {
 			if errors.Is(err, change.ErrInvalidState) {
 				return nil
 			}

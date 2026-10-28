@@ -189,8 +189,12 @@ describe('human approval', () => {
     expect(changeView(approved, approvedRuns, plumbix, undefined, NOW).actions.approve).toBe(false)
     expect(changeView(fixRequested, fixRequestedRuns, repos[1], undefined, NOW).actions.approve).toBe(false)
     const byPerson = changeView({ ...needsHuman, state: 'approved', human_approval: { reason: 'pipeline edit read by hand', head: 'abc', at: new Date(NOW.getTime() - 5 * 60000).toISOString() } }, needsHumanRuns, repos[1], undefined, NOW)
-    expect(byPerson.humanApproval).toEqual({ reason: 'pipeline edit read by hand', ago: '5m' })
+    // An approval recorded before WU-060 names nobody; a named one says who, and through GitHub when a review did it.
+    expect(byPerson.humanApproval).toEqual({ who: 'Approved by a person', reason: 'pipeline edit read by hand', ago: '5m' })
     expect(byPerson.actions.primary).toBe('merge')
+    const at = new Date(NOW.getTime() - 5 * 60000).toISOString()
+    expect(changeView({ ...needsHuman, state: 'approved', human_approval: { reason: 'r', head: 'abc', at, by: 'eduard@mac', source: 'plumbix' } }, needsHumanRuns, repos[1], undefined, NOW).humanApproval?.who).toBe('Approved by eduard@mac')
+    expect(changeView({ ...needsHuman, state: 'approved', human_approval: { reason: 'r', head: 'abc', at, by: 'lead', source: 'github_review' } }, needsHumanRuns, repos[1], undefined, NOW).humanApproval?.who).toBe('Approved on GitHub by lead')
   })
 })
 

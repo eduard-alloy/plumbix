@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	osuser "os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -228,6 +229,7 @@ func runChange(args []string, stdout, stderr io.Writer) int {
 	repo := c.fs.String("repo", "", "filter by repo id (change list)")
 	state := c.fs.String("state", "", "filter by state (change list)")
 	reason := c.fs.String("reason", "", "why the change is fine despite the verdict (change approve)")
+	by := c.fs.String("by", defaultApprover(), "who approves, as Plumbix should record it (change approve)")
 	pos, ok := c.parse(args)
 	if !ok {
 		return 2
@@ -254,7 +256,10 @@ func runChange(args []string, stdout, stderr io.Writer) int {
 		if strings.TrimSpace(*reason) == "" {
 			return usageError(stderr, "plumbix change approve needs --reason: say why the change is fine despite the verdict")
 		}
-		body, _ := json.Marshal(map[string]string{"reason": *reason})
+		if strings.TrimSpace(*by) == "" {
+			return usageError(stderr, "plumbix change approve needs --by: name the person approving")
+		}
+		body, _ := json.Marshal(map[string]string{"reason": *reason, "by": strings.TrimSpace(*by)})
 		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/approve", body)
 	case len(pos) == 2 && pos[0] == "validate":
 		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/validate", nil)
@@ -649,4 +654,26 @@ func runMCP(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// defaultApprover is user@host, the name the review loop uses for its
+// reviewer too; "" when neither is known.
+func defaultApprover() string {
+	user := os.Getenv("USER")
+	if user == "" {
+		if u, err := osuser.Current(); err == nil {
+			user = u.Username
+		}
+	}
+	host, _ := os.Hostname()
+	host, _, _ = strings.Cut(host, ".")
+	switch {
+	case user == "" && host == "":
+		return ""
+	case user == "":
+		return host
+	case host == "":
+		return user
+	}
+	return user + "@" + host
 }

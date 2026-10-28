@@ -117,7 +117,8 @@ export interface ChangeView {
   evidence: { label: string; runId: string; error: string; steps: StepVM[] }
   actions: { primary: 'merge' | 'validate' | null; close: boolean; approve: boolean; refresh: boolean }
   /** A person's standing approval, for the verdict panel. */
-  humanApproval: { reason: string; ago: string } | null
+  /** who is the lead-in sentence: "Approved by Eduard", "Approved on GitHub by lead", or "Approved by a person" for older records. */
+  humanApproval: { who: string; reason: string; ago: string } | null
   diffRange: string
   /** Short sha of commits on the branch newer than the judged head, or null. */
   newerCommits: string | null
@@ -309,7 +310,7 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       approve: c.state === 'needs_human' || c.state === 'escalated',
       refresh: !!c.plumbix_branch && !['merged', 'closed', 'running'].includes(c.state),
     },
-    humanApproval: c.human_approval ? { reason: c.human_approval.reason, ago: ago(minutesBetween(c.human_approval.at, now)) } : null,
+    humanApproval: c.human_approval ? { who: approvedBy(c.human_approval), reason: c.human_approval.reason, ago: ago(minutesBetween(c.human_approval.at, now)) } : null,
     diffRange: withHead ? `${shortSha(withHead.base)}..${shortSha(withHead.head)}` : '',
     newerCommits: c.source_head && cur?.head && c.source_head !== cur.head && !['running', 'open', 'merged', 'closed'].includes(c.state) ? shortSha(c.source_head) : null,
     needsPerson: ['needs_human', 'escalated', 'rejected'].includes(c.state),
@@ -401,4 +402,10 @@ export function refreshNotice(code: string, ctx: NoticeCtx, message = ''): Notic
     default:
       return { title: 'Not updated', body: message || 'The server refused the update. Reload the change and try again.', ...none }
   }
+}
+
+/** approvedBy words who approved and through what (WU-060). */
+function approvedBy(a: NonNullable<Change['human_approval']>): string {
+  if (!a.by) return 'Approved by a person'
+  return a.source === 'github_review' ? `Approved on GitHub by ${a.by}` : `Approved by ${a.by}`
 }

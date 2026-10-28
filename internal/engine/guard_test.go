@@ -57,7 +57,7 @@ func TestMergeApprovesTheChangedPipelineFiles(t *testing.T) {
 	h.repo.Commit("feat", map[string]string{".plumbix/pipelines/ci.yaml": "version: 1\non: {manual: true}\nsteps:\n  - {name: a, image: x, run: x}\n"}, "add ci")
 	c := h.submit("feat")
 	h.validate(c.ID)
-	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "reviewed the guard's report"); err != nil {
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, tester, "reviewed the guard's report"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := h.eng.Merge(ctx, c.ID); err != nil {
@@ -97,7 +97,7 @@ func TestFirstUseTrustsEveryPipelineFile(t *testing.T) {
 		h.repo.Commit("feat", map[string]string{".plumbix/pipelines/ci.yaml": ciYAML}, "add ci")
 		c := h.submit("feat")
 		h.validate(c.ID)
-		if _, err := h.eng.ApproveByPerson(ctx, c.ID, "ok"); err != nil {
+		if _, err := h.eng.ApproveByPerson(ctx, c.ID, tester, "ok"); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := h.eng.Merge(ctx, c.ID); err != nil {

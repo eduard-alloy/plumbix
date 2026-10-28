@@ -174,6 +174,17 @@ func TestToolsWrapTheAPIUnderTheSessionIdentity(t *testing.T) {
 	if !res.IsError || !strings.Contains(text(res), "invalid_state") {
 		t.Errorf("approve refusal = %v %s", res.IsError, text(res))
 	}
+	// The approval names the session unless the agent names the person (WU-060).
+	var approved map[string]any
+	_ = json.Unmarshal([]byte(api.bodies["POST /api/v1/changes/c_1/approve"]), &approved)
+	if by, _ := approved["by"].(string); !strings.HasPrefix(by, "mcp:eduard:") {
+		t.Errorf("approval body = %v; want the session identity as by", approved)
+	}
+	_ = call(t, approver, "approve_change", map[string]any{"change_id": "c_1", "reason": "fine", "by": "Eduard"})
+	_ = json.Unmarshal([]byte(api.bodies["POST /api/v1/changes/c_1/approve"]), &approved)
+	if approved["by"] != "Eduard" {
+		t.Errorf("approval body = %v; want the named person", approved)
+	}
 	// A claim polls as the session, so the server's own-change rule applies to it.
 	res = call(t, cs, "next_review", map[string]any{"wait_seconds": 0})
 	if res.IsError || !strings.Contains(text(res), `"waiting":false`) {

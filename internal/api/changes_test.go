@@ -206,21 +206,27 @@ func TestApproveEndpoint(t *testing.T) {
 	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), `"reason"`) {
 		t.Errorf("empty reason: %d %s", bad.Code, bad.Body.String())
 	}
-	rec := a.do(http.MethodPost, "/api/v1/changes/"+c.ID+"/approve", `{"reason": "pipeline edit reviewed by hand"}`)
+	// The person is named by the client, since the API carries no identity (WU-060).
+	noOne := a.do(http.MethodPost, "/api/v1/changes/"+c.ID+"/approve", `{"reason": "pipeline edit reviewed by hand"}`)
+	o.check("Error", noOne)
+	if noOne.Code != http.StatusBadRequest || !strings.Contains(noOne.Body.String(), `"by"`) {
+		t.Errorf("approval without a person: %d %s", noOne.Code, noOne.Body.String())
+	}
+	rec := a.do(http.MethodPost, "/api/v1/changes/"+c.ID+"/approve", `{"reason": "pipeline edit reviewed by hand", "by": "eduard@mac"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
 	}
 	o.check("Change", rec)
 	got := decode[change.Change](t, rec)
-	if got.State != change.Approved || got.HumanApproval == nil || got.HumanApproval.Reason != "pipeline edit reviewed by hand" || got.HumanApproval.Head == "" {
+	if got.State != change.Approved || got.HumanApproval == nil || got.HumanApproval.Reason != "pipeline edit reviewed by hand" || got.HumanApproval.Head == "" || got.HumanApproval.By != "eduard@mac" || got.HumanApproval.Source != "plumbix" {
 		t.Errorf("approved = %+v %+v", got.State, got.HumanApproval)
 	}
-	again := a.do(http.MethodPost, "/api/v1/changes/"+c.ID+"/approve", `{"reason": "again"}`)
+	again := a.do(http.MethodPost, "/api/v1/changes/"+c.ID+"/approve", `{"reason": "again", "by": "eduard@mac"}`)
 	o.check("Error", again)
 	if again.Code != http.StatusConflict || decode[apiError](t, again).Error.Code != "invalid_state" {
 		t.Errorf("approve twice: %d %s", again.Code, again.Body.String())
 	}
-	if rec := a.do(http.MethodPost, "/api/v1/changes/c_nope/approve", `{"reason": "x"}`); rec.Code != http.StatusNotFound {
+	if rec := a.do(http.MethodPost, "/api/v1/changes/c_nope/approve", `{"reason": "x", "by": "me"}`); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown: %d", rec.Code)
 	}
 	merged := a.do(http.MethodPost, "/api/v1/changes/"+c.ID+"/merge", "")

@@ -164,7 +164,7 @@ func TestExternalMergePastTheGateApprovesNoPipeline(t *testing.T) {
 				if r := h.validate(c.ID); r.Outcome != change.NeedsHuman {
 					t.Fatalf("outcome = %s, want needs_human for a pipeline edit", r.Outcome)
 				}
-				if _, err := h.eng.ApproveByPerson(ctx, c.ID, "reviewed the pipeline"); err != nil {
+				if _, err := h.eng.ApproveByPerson(ctx, c.ID, tester, "reviewed the pipeline"); err != nil {
 					t.Fatal(err)
 				}
 			}

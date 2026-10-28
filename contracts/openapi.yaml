@@ -1343,7 +1343,7 @@ paths:
   /changes/{id}/approve:
     post:
       operationId: approveChange
-      summary: A person approves a needs_human or escalated change, with a reason.
+      summary: A person approves a needs_human or escalated change, with a reason and their name.
       description: >
         Records the reason and the validated head on the change, emits
         change.approved_by_person and the state change to approved, and lets
@@ -1359,12 +1359,17 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [reason]
+              required: [reason, by]
               properties:
                 reason:
                   type: string
                   minLength: 1
                   maxLength: 1000
+                by:
+                  description: Who approves, as Plumbix should record it (WU-060). The API carries no identity of its own, so the client says.
+                  type: string
+                  minLength: 1
+                  maxLength: 100
       responses:
         "200":
           description: The approved change, with human_approval set.
@@ -1965,6 +1970,13 @@ components:
             head:
               description: The validated commit the person approved.
               type: string
+            by:
+              description: The person, as the surface knew them (WU-060), the name given to the Approve action or the GitHub login of the approving review. Absent on approvals recorded before it.
+              type: string
+            source:
+              description: Where the approval came from; plumbix is the Approve action on the API, CLI, web or MCP tool.
+              type: string
+              enum: [plumbix, github_review]
             at:
               type: string
               format: date-time

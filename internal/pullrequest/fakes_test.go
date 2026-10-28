@@ -147,7 +147,7 @@ func (f *fakeEngine) Validate(ctx context.Context, changeID string) (run.Run, er
 	return r, f.db.SetChangeState(ctx, c.ID, change.Running, f.outcome, t0.Add(time.Minute))
 }
 
-func (f *fakeEngine) ApproveByPerson(ctx context.Context, changeID, reason string) (change.Change, error) {
+func (f *fakeEngine) ApproveByPerson(ctx context.Context, changeID string, who change.Approver, reason string) (change.Change, error) {
 	c, err := f.db.GetChange(ctx, changeID)
 	if err != nil {
 		return c, err
@@ -156,7 +156,7 @@ func (f *fakeEngine) ApproveByPerson(ctx context.Context, changeID, reason strin
 		return c, change.ErrInvalidState
 	}
 	f.approvals = append(f.approvals, reason)
-	if err := f.db.ApproveByPerson(ctx, changeID, c.State, reason, f.head, t0); err != nil {
+	if err := f.db.ApproveByPerson(ctx, changeID, c.State, change.HumanApproval{Reason: reason, Head: f.head, At: t0, By: who.By, Source: who.Source}); err != nil {
 		return c, err
 	}
 	return f.db.GetChange(ctx, changeID)

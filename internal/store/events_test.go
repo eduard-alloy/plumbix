@@ -178,7 +178,7 @@ func TestLifecycleEmitsEvents(t *testing.T) {
 	if err := db.SetChangeState(ctx, "c_2", change.Open, change.NeedsHuman, at.Add(13*time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.ApproveByPerson(ctx, "c_2", change.NeedsHuman, "read it myself", "ffff", at.Add(14*time.Second)); err != nil {
+	if err := db.ApproveByPerson(ctx, "c_2", change.NeedsHuman, change.HumanApproval{Reason: "read it myself", Head: "ffff", At: at.Add(14 * time.Second), By: "tester", Source: change.ApprovalSourcePlumbix}); err != nil {
 		t.Fatal(err)
 	}
 	// Plumbix brings main into its own branch; the engine appends the event itself.
@@ -420,7 +420,7 @@ func TestApproveByPersonRecordsReasonAndEmitsBothEvents(t *testing.T) {
 	}
 	before, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
 	at := t0.Add(time.Minute)
-	if err := db.ApproveByPerson(ctx, "c_1", change.NeedsHuman, "pipeline edit reviewed by hand", "abc123", at); err != nil {
+	if err := db.ApproveByPerson(ctx, "c_1", change.NeedsHuman, change.HumanApproval{Reason: "pipeline edit reviewed by hand", Head: "abc123", At: at, By: "tester", Source: change.ApprovalSourcePlumbix}); err != nil {
 		t.Fatal(err)
 	}
 	c, _ := db.GetChange(ctx, "c_1")
@@ -437,11 +437,14 @@ func TestApproveByPersonRecordsReasonAndEmitsBothEvents(t *testing.T) {
 	}
 	raw, _ := json.Marshal(fresh[0].Payload)
 	var p events.ApprovedByPersonPayload
-	if err := json.Unmarshal(raw, &p); err != nil || p.Reason != "pipeline edit reviewed by hand" || p.Head != "abc123" {
+	if err := json.Unmarshal(raw, &p); err != nil || p.Reason != "pipeline edit reviewed by hand" || p.Head != "abc123" || p.By != "tester" || p.Source != change.ApprovalSourcePlumbix {
 		t.Errorf("payload = %s %v", raw, err)
 	}
+	if c, _ = db.GetChange(ctx, "c_1"); c.HumanApproval == nil || c.HumanApproval.By != "tester" || c.HumanApproval.Source != change.ApprovalSourcePlumbix {
+		t.Errorf("the change's approval names %+v", c.HumanApproval)
+	}
 	// Approving again is a conflict: the change is no longer needs_human.
-	if err := db.ApproveByPerson(ctx, "c_1", change.NeedsHuman, "again", "abc123", at); !errors.Is(err, change.ErrConflict) {
+	if err := db.ApproveByPerson(ctx, "c_1", change.NeedsHuman, change.HumanApproval{Reason: "again", Head: "abc123", At: at, By: "tester", Source: change.ApprovalSourcePlumbix}); !errors.Is(err, change.ErrConflict) {
 		t.Errorf("second approval err = %v", err)
 	}
 	// A new run ends the approval.
@@ -451,7 +454,12 @@ func TestApproveByPersonRecordsReasonAndEmitsBothEvents(t *testing.T) {
 	if c, _ = db.GetChange(ctx, "c_1"); c.HumanApproval != nil {
 		t.Errorf("approval survived a new run: %+v", c.HumanApproval)
 	}
-	if err := db.ApproveByPerson(ctx, "c_nope", change.NeedsHuman, "x", "h", at); !errors.Is(err, change.ErrNotFound) {
+	// The person and the source are cleared with the rest, not only hidden behind a nil approval.
+	var by, source string
+	if err := db.sql.QueryRowContext(ctx, `SELECT approved_by, approved_source FROM changes WHERE id = 'c_1'`).Scan(&by, &source); err != nil || by != "" || source != "" {
+		t.Errorf("after a new run approved_by=%q approved_source=%q err=%v", by, source, err)
+	}
+	if err := db.ApproveByPerson(ctx, "c_nope", change.NeedsHuman, change.HumanApproval{Reason: "x", Head: "h", At: at, By: "tester", Source: change.ApprovalSourcePlumbix}); !errors.Is(err, change.ErrNotFound) {
 		t.Errorf("unknown change err = %v", err)
 	}
 }

@@ -107,6 +107,9 @@ func (h *changeHandlers) close(w http.ResponseWriter, r *http.Request) {
 // approveBody is a person's approval of a needs_human or escalated change.
 type approveBody struct {
 	Reason string `json:"reason"`
+	// By names the person approving (WU-060): the API carries no identity
+	// of its own, so the client says who.
+	By string `json:"by"`
 }
 
 func (h *changeHandlers) approve(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +121,7 @@ func (h *changeHandlers) approve(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	c, err := h.engine.ApproveByPerson(r.Context(), r.PathValue("id"), body.Reason)
+	c, err := h.engine.ApproveByPerson(r.Context(), r.PathValue("id"), change.Approver{By: body.By}, body.Reason)
 	if err != nil {
 		h.fail(w, err)
 		return

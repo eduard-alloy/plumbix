@@ -79,7 +79,7 @@ export const api = {
   diff: (id: string, stat: boolean) => request<Diff>('GET', `/api/v1/changes/${encodeURIComponent(id)}/diff${stat ? '?stat=true' : ''}`),
   merge: (id: string) => request<Change>('POST', `/api/v1/changes/${encodeURIComponent(id)}/merge`),
   close: (id: string) => request<Change>('POST', `/api/v1/changes/${encodeURIComponent(id)}/close`),
-  approve: (id: string, reason: string) => request<Change>('POST', `/api/v1/changes/${encodeURIComponent(id)}/approve`, { reason }),
+  approve: (id: string, reason: string, by: string) => request<Change>('POST', `/api/v1/changes/${encodeURIComponent(id)}/approve`, { reason, by }),
   refresh: (id: string) => request<Change>('POST', `/api/v1/changes/${encodeURIComponent(id)}/refresh`),
   validate: (id: string) => request<Run>('POST', `/api/v1/changes/${encodeURIComponent(id)}/validate`),
   alerts: (all = false) => request<{ alerts: Alert[] }>('GET', `/api/v1/alerts${all ? '?include_resolved=true' : ''}`).then((r) => r.alerts),

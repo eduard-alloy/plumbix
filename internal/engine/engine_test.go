@@ -664,6 +664,9 @@ func TestProposeFilePushesANewBranchOnly(t *testing.T) {
 	}
 }
 
+// tester is the person every engine test approves as (WU-060).
+var tester = change.Approver{By: "eduard@mac"}
+
 func TestAPersonApprovesAnEscalatedChangeAndItMerges(t *testing.T) {
 	h := newHarness(t, Config{MaxFixRounds: 1})
 	h.repo.Commit("feat", map[string]string{"app.go": "x\n"}, "feature")
@@ -674,20 +677,33 @@ func TestAPersonApprovesAnEscalatedChangeAndItMerges(t *testing.T) {
 	if r.Outcome != change.Escalated {
 		t.Fatalf("outcome = %s", r.Outcome)
 	}
-	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "  "); err == nil || !strings.Contains(err.Error(), "reason") {
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, tester, "  "); err == nil || !strings.Contains(err.Error(), "reason") {
 		t.Errorf("empty reason: %v", err)
 	}
-	if _, err := h.eng.ApproveByPerson(ctx, c.ID, strings.Repeat("x", MaxApprovalReason+1)); err == nil {
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, tester, strings.Repeat("x", MaxApprovalReason+1)); err == nil {
 		t.Error("an overlong reason was accepted")
 	}
-	got, err := h.eng.ApproveByPerson(ctx, c.ID, "the failing test is a known flake; fixed in the next change")
+	// The person is required and bounded like submitted_by (WU-060).
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, change.Approver{}, "fine"); err == nil || !strings.Contains(err.Error(), "by") {
+		t.Errorf("approval without a person: %v", err)
+	}
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, change.Approver{By: strings.Repeat("x", change.MaxSubmittedBy+1)}, "fine"); err == nil {
+		t.Error("an overlong name was accepted")
+	}
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, change.Approver{By: "x", Source: "slack"}, "fine"); err == nil || !strings.Contains(err.Error(), "source") {
+		t.Errorf("an unknown source was accepted: %v", err)
+	}
+	got, err := h.eng.ApproveByPerson(ctx, c.ID, tester, "the failing test is a known flake; fixed in the next change")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.State != change.Approved || got.HumanApproval == nil || got.HumanApproval.Head != r.Head || got.HumanApproval.Reason == "" {
 		t.Fatalf("approved change = %+v %+v", got.State, got.HumanApproval)
 	}
-	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "again"); !errors.Is(err, change.ErrInvalidState) {
+	if got.HumanApproval.By != "eduard@mac" || got.HumanApproval.Source != change.ApprovalSourcePlumbix {
+		t.Errorf("approval names %q through %q; want eduard@mac through plumbix", got.HumanApproval.By, got.HumanApproval.Source)
+	}
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, tester, "again"); !errors.Is(err, change.ErrInvalidState) {
 		t.Errorf("approving an approved change: %v", err)
 	}
 	merged, err := h.eng.Merge(ctx, c.ID)
@@ -704,10 +720,10 @@ func TestApprovalRefusalsAndANewRunEndsIt(t *testing.T) {
 	h.repo.Commit("feat", map[string]string{"app.go": "x\n"}, "feature")
 	c := h.submit("feat")
 	// No run yet: open, so not a state a person approves.
-	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "why"); !errors.Is(err, change.ErrInvalidState) {
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, tester, "why"); !errors.Is(err, change.ErrInvalidState) {
 		t.Errorf("open change: %v", err)
 	}
-	if _, err := h.eng.ApproveByPerson(ctx, "c_nope", "why"); !errors.Is(err, change.ErrNotFound) {
+	if _, err := h.eng.ApproveByPerson(ctx, "c_nope", tester, "why"); !errors.Is(err, change.ErrNotFound) {
 		t.Errorf("unknown change: %v", err)
 	}
 	h.repo.Commit("feat", map[string]string{".plumbix/pipeline.yaml": pipelineYAML + "  - {name: lint, image: x, run: x}\n"}, "pipeline edit")
@@ -715,7 +731,7 @@ func TestApprovalRefusalsAndANewRunEndsIt(t *testing.T) {
 	if r.Outcome != change.NeedsHuman {
 		t.Fatalf("outcome = %s, want needs_human for a .plumbix/ edit", r.Outcome)
 	}
-	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "reviewed the pipeline edit by hand"); err != nil {
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, tester, "reviewed the pipeline edit by hand"); err != nil {
 		t.Fatal(err)
 	}
 	// A new push starts a new run, which ends the approval.
@@ -742,7 +758,7 @@ func TestApprovalRefusesRejectedAndUnfinishedRuns(t *testing.T) {
 	if err := h.db.SetChangeState(ctx, c.ID, change.NeedsHuman, change.Rejected, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "override"); !errors.Is(err, change.ErrInvalidState) || !strings.Contains(err.Error(), "rejected") {
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, tester, "override"); !errors.Is(err, change.ErrInvalidState) || !strings.Contains(err.Error(), "rejected") {
 		t.Errorf("approving a rejected change: %v", err)
 	}
 	if err := h.db.SetChangeState(ctx, c.ID, change.Rejected, change.NeedsHuman, time.Now()); err != nil {
@@ -753,7 +769,7 @@ func TestApprovalRefusesRejectedAndUnfinishedRuns(t *testing.T) {
 	if r := h.validate(c.ID); r.Status != run.Errored {
 		t.Fatalf("run = %+v", r)
 	}
-	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "fine"); !errors.Is(err, change.ErrInvalidState) || !strings.Contains(err.Error(), "finished run") {
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, tester, "fine"); !errors.Is(err, change.ErrInvalidState) || !strings.Contains(err.Error(), "finished run") {
 		t.Errorf("approving after an errored run: %v", err)
 	}
 }
@@ -773,7 +789,7 @@ func TestRefreshBringsTheTargetIntoAPlumbixBranchAndRevalidates(t *testing.T) {
 		t.Errorf("refresh while current: %v, want ErrAlreadyCurrent", err)
 	}
 	// A person approves, then main moves: the merge would be refused with target_moved.
-	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "pipeline edit read by hand"); err != nil {
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, tester, "pipeline edit read by hand"); err != nil {
 		t.Fatal(err)
 	}
 	main2 := h.repo.Commit("main", map[string]string{"untouched.txt": "x\n"}, "main goes on")
@@ -817,7 +833,7 @@ func TestRefreshBringsTheTargetIntoAPlumbixBranchAndRevalidates(t *testing.T) {
 	if r2.Iteration != 2 || r2.Base != main2 || r2.Head != tip[0].SHA || r2.Outcome != change.NeedsHuman {
 		t.Errorf("new run = iteration %d base %s head %s outcome %s", r2.Iteration, short(r2.Base), short(r2.Head), r2.Outcome)
 	}
-	if _, err := h.eng.ApproveByPerson(ctx, c.ID, "still fine after the refresh"); err != nil {
+	if _, err := h.eng.ApproveByPerson(ctx, c.ID, tester, "still fine after the refresh"); err != nil {
 		t.Fatal(err)
 	}
 	merged, err := h.eng.Merge(ctx, c.ID)

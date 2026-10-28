@@ -91,6 +91,10 @@ type (
 	ApprovedByPersonPayload struct {
 		Reason string `json:"reason"`
 		Head   string `json:"head"`
+		// By and Source name the person and the surface (WU-060): plumbix
+		// for the Approve action, github_review for a GitHub review.
+		By     string `json:"by,omitempty"`
+		Source string `json:"source,omitempty"`
 	}
 	// ChangeRefreshedPayload: the source branch moved from FromHead to Head,
 	// a merge commit that brings in the target's TargetHead.

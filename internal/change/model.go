@@ -99,11 +99,30 @@ type Change struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
-// HumanApproval records that a person approved a change, and why.
+// HumanApproval records that a person approved a change, who and why.
 type HumanApproval struct {
 	Reason string    `json:"reason"`
 	Head   string    `json:"head"` // the validated commit the person approved
 	At     time.Time `json:"at"`
+	// By is the person as the surface knew them: the name given to the
+	// Approve action, or the GitHub login of an approving review (WU-060).
+	By string `json:"by,omitempty"`
+	// Source is the surface the approval came through: plumbix (the
+	// Approve action on the API, CLI, web or MCP tool) or github_review.
+	Source string `json:"source,omitempty"`
+}
+
+// Approval sources (WU-060).
+const (
+	ApprovalSourcePlumbix      = "plumbix"
+	ApprovalSourceGitHubReview = "github_review"
+)
+
+// Approver names the person behind an approval and the surface it came
+// through; an empty Source is plumbix.
+type Approver struct {
+	By     string
+	Source string
 }
 
 // Merge says how a change landed on its target branch.
@@ -168,7 +187,7 @@ type Store interface {
 	SetChangeState(ctx context.Context, id string, from, to State, at time.Time) error
 	// ApproveByPerson records a person's approval at head and moves the
 	// change from state from to approved. ErrConflict if it left state from.
-	ApproveByPerson(ctx context.Context, id string, from State, reason, head string, at time.Time) error
+	ApproveByPerson(ctx context.Context, id string, from State, approval HumanApproval) error
 	RecordMerge(ctx context.Context, m MergeRecord) error // ErrConflict if the change was merged already
 	// ListMerges returns the merges Plumbix pushed to a branch, oldest first.
 	ListMerges(ctx context.Context, repoID, branch string) ([]MergeRecord, error)

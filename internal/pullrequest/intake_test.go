@@ -192,7 +192,8 @@ func TestReviewApprovalApproves(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, _ := h.db.ChangeByPullRequest(ctx, h.repo.ID, 1)
-	if c.State != change.Approved || c.HumanApproval == nil || c.HumanApproval.Reason != "Approved on GitHub by lead: ship it" || c.HumanApproval.Head != "h1" {
+	// The reviewer is the person, the review's text the reason (WU-060).
+	if c.State != change.Approved || c.HumanApproval == nil || c.HumanApproval.Reason != "ship it" || c.HumanApproval.Head != "h1" || c.HumanApproval.By != "lead" || c.HumanApproval.Source != change.ApprovalSourceGitHubReview {
 		t.Fatalf("change = %s %+v", c.State, c.HumanApproval)
 	}
 	// Once approved, a further sync asks nothing more.

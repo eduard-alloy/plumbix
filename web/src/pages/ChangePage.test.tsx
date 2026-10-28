@@ -126,13 +126,35 @@ describe('Change page', () => {
     const confirm = within(form).getByRole('button', { name: 'Confirm approval' })
     expect(confirm.hasAttribute('disabled')).toBe(true)
     fireEvent.change(within(form).getByLabelText('Reason'), { target: { value: 'pipeline edit read by hand' } })
+    // The person is named too (WU-060); the reason alone does not enable the button.
+    expect(confirm.hasAttribute('disabled')).toBe(true)
+    fireEvent.change(within(form).getByLabelText('Your name'), { target: { value: 'Eduard' } })
     fireEvent.click(confirm)
-    await waitFor(() => expect(screen.getByTestId('human-approval').textContent).toContain('Approved by a person · pipeline edit read by hand'))
+    await waitFor(() => expect(screen.getByTestId('human-approval').textContent).toContain('Approved by Eduard · pipeline edit read by hand'))
     expect(screen.getByRole('button', { name: 'Merge' })).toBeTruthy()
     expect(screen.queryByRole('form', { name: 'Approve this change' })).toBeNull()
     const c = db.changes.find((x) => x.id === needsHuman.id)!
     expect(c.state).toBe('approved')
     expect(c.human_approval?.reason).toBe('pipeline edit read by hand')
+    expect(c.human_approval?.by).toBe('Eduard')
+    expect(c.human_approval?.source).toBe('plumbix')
+    expect(window.localStorage.getItem('plumbix.approver')).toBe('Eduard')
+  })
+
+  it('remembers the approver\'s name and says when GitHub approved (WU-060)', async () => {
+    window.localStorage.setItem('plumbix.approver', 'Eduard')
+    await open(needsHuman.id)
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    const form = screen.getByRole('form', { name: 'Approve this change' })
+    expect((within(form).getByLabelText('Your name') as HTMLInputElement).value).toBe('Eduard')
+    fireEvent.click(screen.getByRole('button', { name: 'Keep' }))
+    // An approval that came through a GitHub review names the reviewer and the surface.
+    const c = db.changes.find((x) => x.id === needsHuman.id)!
+    c.state = 'approved'
+    c.human_approval = { reason: 'ship it', head: 'h1', at: new Date().toISOString(), by: 'lead', source: 'github_review' }
+    window.history.replaceState(null, '', '/')
+    await open(needsHuman.id)
+    expect(screen.getByTestId('human-approval').textContent).toContain('Approved on GitHub by lead · ship it')
   })
 
   it('Keep closes the approval field without approving', async () => {

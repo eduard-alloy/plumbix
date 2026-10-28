@@ -202,6 +202,13 @@ func TestCLIFlow(t *testing.T) {
 	if code, _, errOut := c.run("", "change", "approve", id, "--reason", "looked at it myself"); code != 1 || !strings.Contains(errOut, "invalid_state") || !strings.Contains(errOut, "finished run") {
 		t.Errorf("approve with an errored latest run: exit %d, stderr %q", code, errOut)
 	}
+	// --by names the person (WU-060); its default is user@host, and an empty one is refused before the call.
+	if code, _, errOut := c.run("", "change", "approve", id, "--reason", "looked", "--by", " "); code != 2 || !strings.Contains(errOut, "--by") {
+		t.Errorf("approve with an empty --by: exit %d, stderr %q", code, errOut)
+	}
+	if d := defaultApprover(); d == "" || strings.HasPrefix(d, "@") || strings.HasSuffix(d, "@") {
+		t.Errorf("default approver = %q", d)
+	}
 	// The branch was pushed by the test, not created by Plumbix, so a refresh is refused.
 	if code, _, errOut := c.run("", "change", "refresh", id); code != 1 || !strings.Contains(errOut, "not_plumbix_branch") {
 		t.Errorf("refresh of the test's own branch: exit %d, stderr %q", code, errOut)

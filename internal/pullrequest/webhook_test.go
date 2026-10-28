@@ -66,7 +66,7 @@ func TestWebhookFeedsIntake(t *testing.T) {
 	if rec := deliver(t, w, secret, "pull_request_review", review); rec.Code != http.StatusAccepted {
 		t.Fatalf("review: %d %s", rec.Code, rec.Body.String())
 	}
-	if c, _ := h.db.ChangeByPullRequest(ctx, h.repo.ID, 1); c.State != change.Approved || c.HumanApproval.Reason != "Approved on GitHub by lead: fine" {
+	if c, _ := h.db.ChangeByPullRequest(ctx, h.repo.ID, 1); c.State != change.Approved || c.HumanApproval.Reason != "fine" || c.HumanApproval.By != "lead" || c.HumanApproval.Source != change.ApprovalSourceGitHubReview {
 		t.Errorf("after review: %s %+v", c.State, c.HumanApproval)
 	}
 

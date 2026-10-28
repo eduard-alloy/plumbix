@@ -78,7 +78,7 @@ func TestPublisherPostsCheckRuns(t *testing.T) {
 	if err := h.db.SetChangeState(ctx, c.ID, change.Open, change.NeedsHuman, t0); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.db.ApproveByPerson(ctx, c.ID, change.NeedsHuman, "known flake", "h1", t0); err != nil {
+	if err := h.db.ApproveByPerson(ctx, c.ID, change.NeedsHuman, change.HumanApproval{Reason: "known flake", Head: "h1", At: t0, By: "tester", Source: change.ApprovalSourcePlumbix}); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.Handle(ctx, events.Event{Type: events.ApprovedByPerson, RepoID: h.repo.ID, ChangeID: c.ID}); err != nil {

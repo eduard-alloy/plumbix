@@ -26,6 +26,14 @@ export function ChangePage({ id }: { id: string }) {
   const [confirmClose, setConfirmClose] = useState(false)
   const [approving, setApproving] = useState(false)
   const [reason, setReason] = useState('')
+  // The approver's name, remembered in this browser (WU-060); best effort, the storage may be unavailable.
+  const [approver, setApprover] = useState(() => {
+    try {
+      return window.localStorage.getItem('plumbix.approver') ?? ''
+    } catch {
+      return ''
+    }
+  })
   const [notice, setNotice] = useState<NoticeVM | null>(null)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [flash, setFlash] = useState<string | null>(null)
@@ -93,10 +101,15 @@ export function ChangePage({ id }: { id: string }) {
   }
 
   async function approve() {
-    if (!reason.trim()) return
+    if (!reason.trim() || !approver.trim()) return
     setBusy('approve')
     try {
-      actions.setChange(await api.approve(c!.id, reason.trim()))
+      actions.setChange(await api.approve(c!.id, reason.trim(), approver.trim()))
+      try {
+        window.localStorage.setItem('plumbix.approver', approver.trim())
+      } catch {
+        // nothing to remember with
+      }
       setApproving(false)
       setReason('')
     } catch (e) {
@@ -359,8 +372,12 @@ export function ChangePage({ id }: { id: string }) {
                 Why is this change fine despite the verdict?
                 <textarea aria-label="Reason" rows={2} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Read by whoever looks at this change later." autoFocus />
               </label>
+              <label>
+                Your name
+                <input aria-label="Your name" type="text" maxLength={100} value={approver} onChange={(e) => setApprover(e.target.value)} placeholder="Recorded on the approval; remembered in this browser." />
+              </label>
               <div className="buttons">
-                <button className="primary" type="submit" disabled={busy !== null || !reason.trim()}>
+                <button className="primary" type="submit" disabled={busy !== null || !reason.trim() || !approver.trim()}>
                   {busy === 'approve' ? 'Approving…' : 'Confirm approval'}
                 </button>
                 <button
@@ -541,7 +558,7 @@ export function ChangePage({ id }: { id: string }) {
             )}
             {v.humanApproval && (
               <div className="block mergenote" data-testid="human-approval">
-                <b>Approved by a person</b> · {v.humanApproval.reason} · {v.humanApproval.ago} ago
+                <b>{v.humanApproval.who}</b> · {v.humanApproval.reason} · {v.humanApproval.ago} ago
               </div>
             )}
             {v.verdict.mergeNote && <div className="block mergenote">{v.verdict.mergeNote}</div>}

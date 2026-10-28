@@ -433,12 +433,15 @@ export function fakeFetch(db: FakeDB): typeof fetch {
         return json(200, c)
       }
       if (sub === 'approve' && method === 'POST') {
-        const body = JSON.parse(String(init?.body)) as { reason: string }
-        if (!body.reason?.trim()) return json(400, { error: { code: 'invalid_request', message: 'the request has 1 problem(s)', details: { problems: [{ field: 'reason', message: 'is required' }] } } })
+        const body = JSON.parse(String(init?.body)) as { reason: string; by?: string }
+        const problems: { field: string; message: string }[] = []
+        if (!body.reason?.trim()) problems.push({ field: 'reason', message: 'is required' })
+        if (!body.by?.trim()) problems.push({ field: 'by', message: 'is required: name the person approving' })
+        if (problems.length) return json(400, { error: { code: 'invalid_request', message: `the request has ${problems.length} problem(s)`, details: { problems } } })
         if (c.state !== 'needs_human' && c.state !== 'escalated') return error(409, 'invalid_state', `change ${c.id} is ${c.state}`)
         const head = (db.runs[c.id] ?? []).slice(-1)[0]?.head ?? ''
         c.state = 'approved'
-        c.human_approval = { reason: body.reason.trim(), head, at: new Date().toISOString() }
+        c.human_approval = { reason: body.reason.trim(), head, at: new Date().toISOString(), by: body.by!.trim(), source: 'plumbix' }
         c.updated_at = new Date().toISOString()
         return json(200, c)
       }

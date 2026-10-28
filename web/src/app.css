@@ -384,6 +384,7 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 /* Human approval (WU-021) */
 .approve-form { display: grid; gap: 8px; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface); max-width: 640px; }
 .approve-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-3); }
+.approve-form input[type=text] { width: 100%; max-width: 320px; box-sizing: border-box; height: 28px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--bg); color: var(--text); font: 13px var(--ui); }
 .approve-form textarea { width: 100%; box-sizing: border-box; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--bg); color: var(--text); font: 13px/1.5 var(--ui); resize: vertical; }
 .approve-form .buttons { display: flex; gap: 6px; }
 

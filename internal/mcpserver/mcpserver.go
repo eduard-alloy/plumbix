@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -164,6 +165,7 @@ type (
 	approveIn struct {
 		ChangeID string `json:"change_id"`
 		Reason   string `json:"reason" jsonschema:"why the change is fine despite the verdict; kept as the audit trail"`
+		By       string `json:"by,omitempty" jsonschema:"who approves, as Plumbix should record it; the session identity when left out"`
 	}
 	nextReviewIn struct {
 		RepoID      string `json:"repo_id,omitempty" jsonschema:"only this repository's reviews"`
@@ -266,7 +268,11 @@ func (s *Server) submit(ctx context.Context, _ *mcp.CallToolRequest, in submitIn
 }
 
 func (s *Server) approve(ctx context.Context, _ *mcp.CallToolRequest, in approveIn) (*mcp.CallToolResult, any, error) {
-	out, err := s.api(ctx, http.MethodPost, "/api/v1/changes/"+url.PathEscape(in.ChangeID)+"/approve", map[string]string{"reason": in.Reason})
+	by := strings.TrimSpace(in.By)
+	if by == "" {
+		by = s.Identity
+	}
+	out, err := s.api(ctx, http.MethodPost, "/api/v1/changes/"+url.PathEscape(in.ChangeID)+"/approve", map[string]string{"reason": in.Reason, "by": by})
 	if err != nil {
 		return nil, nil, err
 	}
