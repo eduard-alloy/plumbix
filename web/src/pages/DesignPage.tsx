@@ -92,14 +92,14 @@ function Pane({ theme }: { theme: 'light' | 'dark' }) {
               <span className="cell">
                 <StatePill status="approved" />
               </span>
+              <span className="cell origin">
+                <OriginTag origin={{ kind: 'pr', label: 'PR #7', title: 'Opened from pull request #7' }} />
+              </span>
               <span className="cell title">Retry failed artifact uploads</span>
               <span className="cell dim2">kai</span>
               <span className="cell mono dim right">4m</span>
             </span>
             <span className="line line-2">
-              <span className="cell">
-                <OriginTag origin={{ kind: 'pr', label: 'PR #7', title: 'Opened from pull request #7' }} />
-              </span>
               <span className="cell mono dim2">plumbix</span>
               <span className="cell mono dim2">
                 feat/retry-uploads<span className="dim"> → </span>main

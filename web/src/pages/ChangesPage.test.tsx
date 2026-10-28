@@ -70,17 +70,19 @@ describe('Changes page', () => {
     expect(rowIds(screen.getByRole('list', { name: 'Changes' }))).toHaveLength(7)
   })
 
-  it('lays each row out on two lines: state, title, by, moved; then origin, repository, branch, verdict, iteration (WU-058)', async () => {
+  it('lays each row out on two lines: state, origin, title, by, moved; then repository, branch, verdict, iteration (WU-058)', async () => {
     const list = await renderList()
     const row = list.querySelector(`[data-id="${fixRequested.id}"]`) as HTMLElement
     const lines = Array.from(row.querySelectorAll('.line')).map((l) => Array.from(l.querySelectorAll('.cell')).map((c) => c.textContent?.trim()))
     expect(lines).toHaveLength(2)
-    expect(lines[0].slice(0, 3)).toEqual(['Fix requested', 'Add Azure DevOps token expiry warning', 'mira'])
-    expect(lines[0][3]).toMatch(/^\d+m$/)
-    expect(lines[1]).toEqual(['PR #7', 'plumbix', 'feat/ado-token-expiry → main', '1/3 met · 2 blockers', '1'])
-    const header = document.querySelector('.cols') as HTMLElement
-    expect(header.textContent).toContain('State')
-    expect(header.textContent).toContain('Origin')
+    expect(lines[0].slice(0, 4)).toEqual(['Fix requested', 'PR #7', 'Add Azure DevOps token expiry warning', 'mira'])
+    expect(lines[0][4]).toMatch(/^\d+m$/)
+    expect(lines[1]).toEqual(['plumbix', 'feat/ado-token-expiry → main', '1/3 met · 2 blockers', '1'])
+    const header = Array.from(document.querySelectorAll('.cols .line')).map((l) => Array.from(l.querySelectorAll('span')).map((c) => c.textContent))
+    expect(header).toEqual([
+      ['State', 'Origin', 'Change', 'By', 'Moved'],
+      ['Repository', 'Branch', 'Verdict', 'Iter'],
+    ])
   })
 
   it('tags each row with its origin and filters by it (WU-057)', async () => {

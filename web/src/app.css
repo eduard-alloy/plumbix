@@ -64,11 +64,12 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 .filters select { height: 28px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--bg); font-size: 12px; }
 
 /* List */
-/* A list row is two lines (WU-058): state, title, by, moved; then origin, repository, branch, verdict, iteration.
-   The first column of each line is 116px, so the origin tag sits under the state pill. */
+/* A list row is two lines (WU-058): state, origin, title, by, moved; then repository, branch, verdict, iteration.
+   The second line is indented past the state and origin columns, so it starts under the title. */
 .line { display: grid; gap: 12px; align-items: center; padding: 0 20px; }
-.line-1 { grid-template-columns: 116px minmax(120px, 1fr) 120px 44px; }
-.line-2 { grid-template-columns: 116px minmax(90px, 0.5fr) minmax(110px, 1fr) minmax(170px, 0.8fr) 28px; }
+.line-1 { grid-template-columns: 116px 64px minmax(120px, 1fr) 120px 44px; }
+.line-2 { grid-template-columns: minmax(90px, 0.5fr) minmax(110px, 1fr) minmax(170px, 0.8fr) 28px; padding-left: 224px; }
+.cell.origin { overflow: visible; }
 .cols { padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-3); }
 .cols .line { height: 16px; }
 .skeleton-row { padding: 6px 0; border-bottom: 1px solid var(--border); }
