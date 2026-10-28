@@ -13,6 +13,10 @@ When a GitHub repository is registered with `pull_requests: true`, Plumbix gates
 
 The gate is the hold: mark `plumbix/gate` a required status check in branch protection or a ruleset, and GitHub refuses the merge until it is `success`. If it is not required, Plumbix can hold nothing and raises a `gate_bypassed` alert when the pull request merges anyway.
 
+### The landing gate
+
+A required check applies to every update of the branch, so a change Plumbix merges itself (one submitted through the API, or a pull request on a `merger: plumbix` repository) lands as follows (WU-059): the validated commit is pushed to `refs/plumbix/landing/<change id>`, a `plumbix/gate` check run is created on it with conclusion `success`, then the branch is pushed and the holding ref deleted. That check run has `output.title` `Landed by Plumbix: approved by the validators` or `Landed by Plumbix: approved by a person` (the approval's reason in the summary), `external_id` the run id, and `output.text` carrying `plumbix-result/v1` for the run that judged the change, exactly as the gate of a pull request would; its summary names the validated head (the source commit the run judged, which the landed commit's tree equals) and the target branch. A consumer reading a protected branch's history therefore finds a `plumbix/gate` on every commit Plumbix landed, posted by the same App, and none on a commit that reached the branch another way. The holding ref is never a branch: it starts no run and shows nowhere.
+
 ## Output
 
 `output.title` is a short phrase in words (`Approved`, `Fixes requested`, `Rejected`, `Needs a person`, `No verdict`, `Advisory: …`). `output.summary` is Markdown for people: the validator's summary, a table of criteria with status and reason, the findings and risks, and the model usage exactly as the validator reported it. When the pull request stated no acceptance criteria, the gate's summary says so: `No acceptance criteria stated in the pull request: validators judged the intent and the diff only.` Findings with a file and line are also posted as annotations (`failure` for blocker and major, `warning` for minor), at most fifty per check run.
