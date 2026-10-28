@@ -165,6 +165,8 @@ func (h *changeHandlers) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "github_merges", err.Error())
 	case errors.Is(err, gitops.ErrMergeConflict):
 		writeError(w, http.StatusConflict, "merge_conflict", err.Error())
+	case errors.Is(err, gitops.ErrPushRefused):
+		writeError(w, http.StatusConflict, "push_refused", err.Error())
 	case errors.Is(err, gitops.ErrPushRejected):
 		writeError(w, http.StatusConflict, "push_rejected", err.Error())
 	case errors.Is(err, gitops.ErrPushDenied):

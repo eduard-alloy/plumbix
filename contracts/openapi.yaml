@@ -1394,9 +1394,14 @@ paths:
         branch moved since validation (source_moved: the new commits need a
         verdict), when the target branch is not the commit validation assumed
         (target_moved: bring the target into the source and push), when the
-        remote moved during the push (push_rejected), or when the host did not
-        accept Plumbix's credentials for the push (push_denied: set a token for
-        the repository). A refused merge changes nothing.
+        remote moved during the push (push_rejected), when the host's rules for
+        the branch refused the update (push_refused: the message carries the
+        rules), or when the host did not accept Plumbix's credentials for the
+        push (push_denied: set a token for the repository). When the target
+        requires the plumbix/gate check, the landing commit is first pushed to
+        a holding ref and the gate is posted on it as a success, so the rule
+        is satisfied by the same check run a pull request gets (WU-059). A
+        refused merge changes nothing.
       parameters:
         - $ref: "#/components/parameters/ChangeID"
       responses:
@@ -1411,7 +1416,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: Codes invalid_state (not approved, or a merge is in progress), source_moved, target_moved, push_rejected, push_denied, github_merges (the repository lets GitHub merge its pull requests; merge the pull request there and Plumbix records it).
+          description: Codes invalid_state (not approved, or a merge is in progress), source_moved, target_moved, push_rejected, push_refused (the host's rules refused the update; the message names them), push_denied, github_merges (the repository lets GitHub merge its pull requests; merge the pull request there and Plumbix records it).
           content:
             application/json:
               schema:

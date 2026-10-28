@@ -24,6 +24,10 @@ var (
 	// ErrPushDenied means the host refused Plumbix's credentials, or there
 	// were none to offer. Nothing was changed.
 	ErrPushDenied = errors.New("push denied: the host did not accept Plumbix's credentials")
+	// ErrPushRefused means the host's rules for the branch refused the
+	// update (a required check, a protected-branch policy). The error
+	// carries the rule lines the host printed. Nothing was changed (WU-059).
+	ErrPushRefused = errors.New("push refused by the repository's rules")
 	// ErrBranchExists means a branch Plumbix wanted to create is already on
 	// the remote. Nothing was changed.
 	ErrBranchExists = errors.New("branch exists")
@@ -55,10 +59,53 @@ func pushError(err error, branch string) error {
 			return fmt.Errorf("%w: %s", ErrPushDenied, branch)
 		}
 	}
+	if rules := refusedRules(msg); rules != "" {
+		return fmt.Errorf("%w: %s: %s", ErrPushRefused, branch, rules)
+	}
 	if strings.Contains(msg, "rejected") || strings.Contains(msg, "stale info") {
 		return fmt.Errorf("%w: %s", ErrPushRejected, branch)
 	}
 	return err
+}
+
+// refusedMarkers are the phrases GitHub prints when a ruleset or a branch
+// protection refuses an update; both say "rejected" too, which is why
+// this is checked first.
+var refusedMarkers = []string{
+	"repository rule violations",
+	"Repository rule violations",
+	"protected branch hook declined",
+	"Protected branch update failed",
+}
+
+// refusedRules returns the rule lines of a refusal ("Required status
+// check "plumbix/gate" is expected."), joined, or "" when the message is
+// not a rule refusal.
+func refusedRules(msg string) string {
+	refused := false
+	for _, m := range refusedMarkers {
+		if strings.Contains(msg, m) {
+			refused = true
+			break
+		}
+	}
+	if !refused {
+		return ""
+	}
+	var rules []string
+	for _, line := range strings.Split(msg, "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "remote:"))
+		line = strings.TrimSpace(strings.TrimPrefix(line, "error:"))
+		line = strings.TrimSpace(strings.TrimPrefix(line, "-"))
+		if line == "" || strings.HasPrefix(line, "GH0") || strings.HasPrefix(line, "!") || strings.HasPrefix(line, "git push") {
+			continue
+		}
+		rules = append(rules, line)
+	}
+	if len(rules) == 0 {
+		return "the host gave no rule"
+	}
+	return strings.Join(rules, "; ")
 }
 
 // Committer identity for the commits Plumbix creates.
@@ -172,6 +219,33 @@ func (m *Mirror) Push(ctx context.Context, branch, sha, old string) error {
 	}
 	_, err = m.git(ctx, "update-ref", ref, sha, old)
 	return err
+}
+
+// PushRef puts sha at a ref outside refs/heads/ on the remote, replacing
+// whatever the ref held: such refs are Plumbix's own (the landing refs of
+// WU-059), never a branch anyone works on. The mirror follows.
+func (m *Mirror) PushRef(ctx context.Context, ref, sha string) error {
+	if !strings.HasPrefix(ref, "refs/") || strings.HasPrefix(ref, "refs/heads/") || strings.HasPrefix(ref, "refs/tags/") {
+		return fmt.Errorf("push ref: %q is not a ref outside refs/heads/ and refs/tags/", ref)
+	}
+	if _, err := m.git(ctx, "push", "-q", "--force", m.url, sha+":"+ref); err != nil {
+		return pushError(err, ref)
+	}
+	_, err := m.git(ctx, "update-ref", ref, sha)
+	return err
+}
+
+// DeleteRef removes a ref PushRef made from the remote and the mirror; a
+// ref that is already gone is fine.
+func (m *Mirror) DeleteRef(ctx context.Context, ref string) error {
+	if !strings.HasPrefix(ref, "refs/") || strings.HasPrefix(ref, "refs/heads/") || strings.HasPrefix(ref, "refs/tags/") {
+		return fmt.Errorf("delete ref: %q is not a ref outside refs/heads/ and refs/tags/", ref)
+	}
+	if _, err := m.git(ctx, "push", "-q", m.url, ":"+ref); err != nil && !strings.Contains(err.Error(), "remote ref does not exist") {
+		return pushError(err, ref)
+	}
+	_, _ = m.git(ctx, "update-ref", "-d", ref)
+	return nil
 }
 
 // run executes git with stdin and extra environment, returning stdout.
