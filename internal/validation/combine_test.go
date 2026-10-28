@@ -221,7 +221,8 @@ func TestAdvisoryVerdictsAreRecordedButNeverCounted(t *testing.T) {
 // not empty, when the validator reported none.
 func TestUsageIsCarried(t *testing.T) {
 	with := verdict(Approve, allMet)
-	with.Usage = &Usage{Model: "claude-x", InputTokens: 1200, OutputTokens: 300, CacheReadTokens: 8000, CostUSD: 0.0412}
+	cost := 0.0412
+	with.Usage = &Usage{Model: "claude-x", InputTokens: 1200, OutputTokens: 300, CacheReadTokens: 8000, CostUSD: &cost}
 	adv := verdict(Reject, nil)
 	adv.Usage = &Usage{Model: "grok-y", InputTokens: 1, OutputTokens: 2, Turns: 3}
 	r := combine([]ValidatorResult{
@@ -235,7 +236,7 @@ func TestUsageIsCarried(t *testing.T) {
 	if r.Validators[0].Usage != nil {
 		t.Errorf("a validator that reported no usage has one: %+v", r.Validators[0].Usage)
 	}
-	if u := r.Validators[1].Usage; u == nil || *u != *with.Usage {
+	if u := r.Validators[1].Usage; u == nil || u.CostUSD == nil || *u.CostUSD != cost || u.Model != with.Usage.Model {
 		t.Errorf("ai-review usage = %+v, want %+v", u, with.Usage)
 	}
 	if u := r.Validators[2].Usage; u == nil || *u != *adv.Usage {

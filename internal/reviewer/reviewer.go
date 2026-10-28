@@ -202,7 +202,7 @@ func reviewOne(ctx context.Context, o Options, b review.Brief) error {
 	if !resp.OK() {
 		return fmt.Errorf("post verdict: %w", resp.Error())
 	}
-	fmt.Fprintf(o.Stdout, "review %s: %s · %d turns · $%.2f · %s\n", b.ID, v.Outcome, res.NumTurns, res.TotalCostUSD, firstLine(v.Summary))
+	fmt.Fprintf(o.Stdout, "review %s: %s · %d turns · %s · %s\n", b.ID, v.Outcome, res.NumTurns, claudecode.CostText(res.TotalCostUSD), firstLine(v.Summary))
 	return nil
 }
 

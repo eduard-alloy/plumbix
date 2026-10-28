@@ -62,7 +62,7 @@ type Result struct {
 	IsError          bool            `json:"is_error"`
 	Result           string          `json:"result"`
 	StructuredOutput json.RawMessage `json:"structured_output"`
-	TotalCostUSD     float64         `json:"total_cost_usd"`
+	TotalCostUSD     *float64        `json:"total_cost_usd"` // nil when the result line carried none (WU-053)
 	NumTurns         int             `json:"num_turns"`
 	SessionID        string          `json:"session_id"`
 	Usage            struct {
@@ -92,10 +92,26 @@ func (r Result) Model() string {
 	return best
 }
 
-// VerdictUsage is the result's usage as a verdict records it, under model (WU-039: cached input included).
+// VerdictUsage is the result's usage as a verdict records it, under model
+// (WU-039: cached input included). The cost is copied only when the result
+// reported one, a reported zero included (WU-053).
 func (r Result) VerdictUsage(model string) validation.Usage {
-	return validation.Usage{Model: model, InputTokens: r.Usage.InputTokens, OutputTokens: r.Usage.OutputTokens,
-		CacheReadTokens: r.Usage.CacheReadInputTokens, CacheWriteTokens: r.Usage.CacheCreationInputTokens, Turns: r.NumTurns, CostUSD: r.TotalCostUSD}
+	u := validation.Usage{Model: model, InputTokens: r.Usage.InputTokens, OutputTokens: r.Usage.OutputTokens,
+		CacheReadTokens: r.Usage.CacheReadInputTokens, CacheWriteTokens: r.Usage.CacheCreationInputTokens, Turns: r.NumTurns}
+	if r.TotalCostUSD != nil {
+		cost := *r.TotalCostUSD
+		u.CostUSD = &cost
+	}
+	return u
+}
+
+// CostText is a cost for a log line: "$0.04", or "cost not reported" when
+// the runtime gave none.
+func CostText(cost *float64) string {
+	if cost == nil {
+		return "cost not reported"
+	}
+	return fmt.Sprintf("$%.2f", *cost)
 }
 
 // Run runs claude -p in o.Dir with the prompt and schema, under the tool

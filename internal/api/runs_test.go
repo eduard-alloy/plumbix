@@ -29,6 +29,8 @@ import (
 
 var ctxBG = context.Background()
 
+var testCost = 0.0412
+
 // approvingRunner passes every step and makes validators approve.
 type approvingRunner struct{}
 
@@ -43,7 +45,7 @@ func (approvingRunner) Run(_ context.Context, job runner.Job) (runner.Result, er
 		}
 		v := validation.Verdict{Plumbix: validation.VerdictVersion, Outcome: validation.Approve, Summary: "fine",
 			Criteria: []validation.CriterionVerdict{{ID: "AC-1", Status: validation.Met, Reason: "ok", Evidence: []string{"evidence/test/log.txt"}}},
-			Usage:    &validation.Usage{Model: "test-model", InputTokens: 1200, OutputTokens: 300, CacheReadTokens: 8000, CostUSD: 0.0412}}
+			Usage:    &validation.Usage{Model: "test-model", InputTokens: 1200, OutputTokens: 300, CacheReadTokens: 8000, CostUSD: &testCost}}
 		data, _ := json.Marshal(v)
 		if err := os.WriteFile(filepath.Join(m.Source, validation.VerdictFile), data, 0o644); err != nil {
 			return runner.Result{}, err

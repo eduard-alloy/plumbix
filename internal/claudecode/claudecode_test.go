@@ -2,6 +2,7 @@ package claudecode
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,7 +74,7 @@ func TestRunPassesPromptSchemaPolicyAndEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.NumTurns != 3 || res.Usage.InputTokens != 1200 || res.TotalCostUSD != 0.0421 || res.Model() != "claude-opus-5-5" || !strings.Contains(string(res.StructuredOutput), `"approve"`) {
+	if res.NumTurns != 3 || res.Usage.InputTokens != 1200 || res.TotalCostUSD == nil || *res.TotalCostUSD != 0.0421 || res.Model() != "claude-opus-5-5" || !strings.Contains(string(res.StructuredOutput), `"approve"`) {
 		t.Errorf("result = %+v", res)
 	}
 	args := recorded(t, rec, "args")
@@ -162,5 +163,30 @@ func TestDescribeToolRendersPathsRelativeAndCutsLongArguments(t *testing.T) {
 		if got := describeTool(c.name, []byte(c.input), "/w"); got != c.want {
 			t.Errorf("%s %s = %q, want %q", c.name, c.input, got, c.want)
 		}
+	}
+}
+
+// TestVerdictUsageKeepsCostOnlyWhenReported (WU-053 follow-up): a result
+// line without total_cost_usd gives no cost, one with 0 gives a reported
+// zero; neither is ever defaulted.
+func TestVerdictUsageKeepsCostOnlyWhenReported(t *testing.T) {
+	var none, zero Result
+	if err := json.Unmarshal([]byte(`{"type":"result","num_turns":1,"usage":{"input_tokens":1,"output_tokens":2}}`), &none); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(`{"type":"result","num_turns":1,"total_cost_usd":0,"usage":{"input_tokens":1,"output_tokens":2}}`), &zero); err != nil {
+		t.Fatal(err)
+	}
+	if u := none.VerdictUsage("m"); u.CostUSD != nil {
+		t.Errorf("unreported cost = %v", *u.CostUSD)
+	}
+	if u := zero.VerdictUsage("m"); u.CostUSD == nil || *u.CostUSD != 0 {
+		t.Errorf("reported zero = %v", u.CostUSD)
+	}
+	if got := CostText(none.TotalCostUSD); got != "cost not reported" {
+		t.Errorf("CostText(nil) = %q", got)
+	}
+	if got := CostText(zero.TotalCostUSD); got != "$0.00" {
+		t.Errorf("CostText(0) = %q", got)
 	}
 }

@@ -178,13 +178,14 @@ export interface ValidatorOutcome {
   usage?: Usage
 }
 
-/** A validator's model usage, copied from its verdict; cost_usd is the reviewer's own estimate and missing means unknown. */
+/** A validator's model usage, copied from its verdict. */
 export interface Usage {
   model: string
   input_tokens: number
   output_tokens: number
   turns?: number
-  cost_usd?: number
+  /** The reviewer's own estimate. Absent or null: not reported; 0: reported as zero. */
+  cost_usd?: number | null
   reasoning_tokens?: number
   cache_read_tokens?: number
   cache_write_tokens?: number

@@ -2556,7 +2556,7 @@ components:
           items:
             type: string
     Usage:
-      description: Model usage, for validators that call one (WU-053). Copied from the validator's verdict exactly as its runtime reported it; Plumbix computes, converts and estimates none of it. Absent when the validator reported none, and on runs stored before the field existed. A missing cost_usd means the cost is unknown, never zero.
+      description: Model usage, for validators that call one (WU-053). Copied from the validator's verdict exactly as its runtime reported it; Plumbix computes, converts and estimates none of it. Absent when the validator reported none, and on runs stored before the field existed. cost_usd absent or null means the cost was not reported; 0 means it was reported as zero.
       type: object
       additionalProperties: false
       required: [model, input_tokens, output_tokens]
@@ -2575,8 +2575,8 @@ components:
           type: integer
           minimum: 0
         cost_usd:
-          description: The reviewer's estimated spend, in US dollars.
-          type: number
+          description: "The reviewer's estimated spend, in US dollars. Absent or null: cost not reported; 0: reported as zero."
+          type: [number, "null"]
           minimum: 0
         reasoning_tokens:
           description: Hidden reasoning tokens a reasoning model spent before answering.

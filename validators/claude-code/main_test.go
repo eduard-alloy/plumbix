@@ -74,7 +74,7 @@ func TestWritesVerdictFromClaudeCode(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, stderr.String())
 	}
 	v, err := validation.ReadVerdict(filepath.Join(out, validation.VerdictFile), crit)
-	if err != nil || v.Outcome != validation.Approve || v.Usage == nil || v.Usage.InputTokens != 1200 || v.Usage.Turns != 3 || v.Usage.CostUSD != 0.0421 || v.Usage.Model != "claude-opus-5-5" || v.Usage.CacheReadTokens != 41000 || v.Usage.CacheWriteTokens != 6000 {
+	if err != nil || v.Outcome != validation.Approve || v.Usage == nil || v.Usage.InputTokens != 1200 || v.Usage.Turns != 3 || v.Usage.CostUSD == nil || *v.Usage.CostUSD != 0.0421 || v.Usage.Model != "claude-opus-5-5" || v.Usage.CacheReadTokens != 41000 || v.Usage.CacheWriteTokens != 6000 {
 		t.Fatalf("verdict = %+v, %v", v, err)
 	}
 	args := recorded(t, rec, "args")

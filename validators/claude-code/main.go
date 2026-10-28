@@ -112,7 +112,7 @@ func run(getenv func(string) string, stderr io.Writer) int {
 	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
 		return fail("write verdict: %v", err)
 	}
-	fmt.Fprintf(stderr, prefix+"%s · %d turns · $%.2f · %s (%d input, %d read from cache, %d written to cache, %d output tokens): %s\n", v.Outcome, res.NumTurns, res.TotalCostUSD, model,
+	fmt.Fprintf(stderr, prefix+"%s · %d turns · %s · %s (%d input, %d read from cache, %d written to cache, %d output tokens): %s\n", v.Outcome, res.NumTurns, claudecode.CostText(res.TotalCostUSD), model,
 		res.Usage.InputTokens, res.Usage.CacheReadInputTokens, res.Usage.CacheCreationInputTokens, res.Usage.OutputTokens, firstLine(v.Summary))
 	return 0
 }

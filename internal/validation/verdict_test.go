@@ -3,6 +3,7 @@ package validation
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,12 +108,40 @@ func TestUsageMayCarryTurnsAndCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Usage == nil || v.Usage.Turns != 13 || v.Usage.CostUSD != 3.06 {
+	if v.Usage == nil || v.Usage.Turns != 13 || v.Usage.CostUSD == nil || *v.Usage.CostUSD != 3.06 {
 		t.Errorf("usage = %+v", v.Usage)
 	}
 	// Absent, they stay out of the JSON a container validator writes.
 	out, _ := json.Marshal(Verdict{Plumbix: VerdictVersion, Outcome: "approve", Summary: "ok", Usage: &Usage{Model: "m", InputTokens: 1, OutputTokens: 2}})
 	if strings.Contains(string(out), "turns") || strings.Contains(string(out), "cost_usd") {
 		t.Errorf("empty usage extras were written: %s", out)
+	}
+}
+
+// TestCostZeroIsReportedAndAbsentStaysAbsent (WU-053 follow-up): cost_usd
+// has three honest states. Absent or null means the validator reported no
+// cost; 0 means it reported zero and must reach the wire as 0, never be
+// dropped; a negative cost is invalid.
+func TestCostZeroIsReportedAndAbsentStaysAbsent(t *testing.T) {
+	crit := []change.Criterion{{ID: "AC-1"}}
+	base := `{"plumbix":"verdict/v1","outcome":"approve","summary":"ok","criteria":[{"id":"AC-1","status":"met","reason":"r","evidence":["x"]}],"usage":{"model":"m","input_tokens":1,"output_tokens":2%s}}`
+	zero, err := ParseVerdict([]byte(fmt.Sprintf(base, `,"cost_usd":0`)), crit)
+	if err != nil || zero.Usage.CostUSD == nil || *zero.Usage.CostUSD != 0 {
+		t.Fatalf("reported zero = %+v, %v", zero.Usage, err)
+	}
+	if out, _ := json.Marshal(zero.Usage); !strings.Contains(string(out), `"cost_usd":0`) {
+		t.Errorf("a reported zero was dropped: %s", out)
+	}
+	for _, in := range []string{"", `,"cost_usd":null`} {
+		none, err := ParseVerdict([]byte(fmt.Sprintf(base, in)), crit)
+		if err != nil || none.Usage.CostUSD != nil {
+			t.Fatalf("usage %q: cost = %v, %v", in, none.Usage.CostUSD, err)
+		}
+		if out, _ := json.Marshal(none.Usage); strings.Contains(string(out), "cost_usd") {
+			t.Errorf("usage %q: an unreported cost was written: %s", in, out)
+		}
+	}
+	if _, err := ParseVerdict([]byte(fmt.Sprintf(base, `,"cost_usd":-1`)), crit); err == nil || !strings.Contains(err.Error(), "cost") {
+		t.Errorf("negative cost accepted: %v", err)
 	}
 }

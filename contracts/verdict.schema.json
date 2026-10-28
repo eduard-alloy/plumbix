@@ -65,7 +65,7 @@
         "input_tokens": { "type": "integer", "minimum": 0 },
         "output_tokens": { "type": "integer", "minimum": 0 },
         "turns": { "description": "Agentic turns an external reviewer took.", "type": "integer", "minimum": 0 },
-        "cost_usd": { "description": "The reviewer's estimated spend, in US dollars.", "type": "number", "minimum": 0 },
+        "cost_usd": { "description": "The reviewer's estimated spend, in US dollars. Absent or null: cost not reported; 0: reported as zero.", "type": ["number", "null"], "minimum": 0 },
         "reasoning_tokens": { "description": "Hidden reasoning tokens a reasoning model spent before answering.", "type": "integer", "minimum": 0 },
         "cache_read_tokens": { "description": "Input tokens read from the provider's prompt cache; input_tokens counts only uncached input.", "type": "integer", "minimum": 0 },
         "cache_write_tokens": { "description": "Input tokens written to the provider's prompt cache.", "type": "integer", "minimum": 0 }

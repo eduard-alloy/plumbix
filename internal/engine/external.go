@@ -243,8 +243,8 @@ func usageNote(u *validation.Usage) string {
 	if u.Turns > 0 {
 		parts = append(parts, fmt.Sprintf("%d turns", u.Turns))
 	}
-	if u.CostUSD > 0 {
-		parts = append(parts, fmt.Sprintf("$%.2f estimated", u.CostUSD))
+	if u.CostUSD != nil {
+		parts = append(parts, fmt.Sprintf("$%.2f estimated", *u.CostUSD))
 	}
 	return " (" + strings.Join(parts, ", ") + ")"
 }

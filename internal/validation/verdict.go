@@ -80,9 +80,11 @@ type Usage struct {
 	OutputTokens int    `json:"output_tokens"`
 	// Turns and CostUSD are what an agentic reviewer knows and a one-shot
 	// validator does not: agentic turns taken, and the spend as the
-	// reviewer's tool estimated it (WU-023).
-	Turns   int     `json:"turns,omitempty"`
-	CostUSD float64 `json:"cost_usd,omitempty"`
+	// reviewer's tool estimated it (WU-023). CostUSD is nil when the
+	// validator reported no cost and 0 when it reported zero; the two are
+	// different facts to a consumer, so nothing here defaults it (WU-053).
+	Turns   int      `json:"turns,omitempty"`
+	CostUSD *float64 `json:"cost_usd,omitempty"`
 	// ReasoningTokens are the hidden thinking tokens a reasoning model spent
 	// before its answer (WU-034): where a slow review's time went.
 	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
@@ -202,6 +204,9 @@ func (v Verdict) check(criteria []change.Criterion) []string {
 		}
 		if v.Usage.InputTokens < 0 || v.Usage.OutputTokens < 0 {
 			add("usage: token counts cannot be negative")
+		}
+		if v.Usage.CostUSD != nil && *v.Usage.CostUSD < 0 {
+			add("usage: cost cannot be negative")
 		}
 	}
 	if v.Outcome == Approve && unmet > 0 {

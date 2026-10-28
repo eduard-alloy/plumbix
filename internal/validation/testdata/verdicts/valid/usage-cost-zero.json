@@ -1,0 +1,9 @@
+{
+  "plumbix": "verdict/v1",
+  "outcome": "approve",
+  "summary": "Reviewed by a local model that cost nothing to run.",
+  "criteria": [
+    {"id": "AC-1", "status": "met", "reason": "tests pass", "evidence": ["test/log.txt"]}
+  ],
+  "usage": {"model": "local-model", "input_tokens": 1200, "output_tokens": 300, "cost_usd": 0}
+}
