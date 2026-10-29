@@ -1,6 +1,7 @@
 package pullrequest
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -299,5 +300,95 @@ func TestEditedPullRequestUpdatesTheChange(t *testing.T) {
 	}
 	if fresh, _ := h.db.ChangeByPullRequest(ctx, h.repo.ID, 1); fresh.ID == got.ID || fresh.Title != "Third title" {
 		t.Errorf("the open pull request did not get a new change: %+v", fresh)
+	}
+}
+
+// TestAutoMergeIsRecordedAsTheSystemsAct: GitHub attributes an auto-merge
+// to the account that requested it; Plumbix tells the two apart (WU-063).
+// A standing auto-merge request by the same login that GitHub names as
+// the merger is auto_merge; a request withdrawn before the merge, or a
+// merge by someone else, is a person's merge.
+func TestAutoMergeIsRecordedAsTheSystemsAct(t *testing.T) {
+	cases := []struct {
+		name     string
+		timeline []host.TimelineEvent
+		mergedBy string
+		auto     bool
+	}{
+		{"requested and merged by GitHub", []host.TimelineEvent{{Event: "auto_merge_enabled", Actor: host.Actor{Login: "eduard", Type: "User"}, CreatedAt: t0}}, "eduard", true},
+		{"request withdrawn", []host.TimelineEvent{{Event: "auto_merge_enabled", Actor: host.Actor{Login: "eduard", Type: "User"}, CreatedAt: t0}, {Event: "auto_merge_disabled", Actor: host.Actor{Login: "eduard", Type: "User"}, CreatedAt: t0.Add(time.Minute)}}, "eduard", false},
+		{"someone else pressed merge", []host.TimelineEvent{{Event: "auto_merge_enabled", Actor: host.Actor{Login: "eduard", Type: "User"}, CreatedAt: t0}}, "lead", false},
+		{"no request", nil, "eduard", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.eng.outcome = change.Approved
+			h.gh.prs[1] = pr(1, "ok", "")
+			if err := h.s.Sync(ctx, h.repo); err != nil {
+				t.Fatal(err)
+			}
+			merged := h.gh.prs[1]
+			merged.State, merged.Merged, merged.MergeCommitSHA, merged.Commits = "closed", true, "mc1", 1
+			at := t0.Add(2 * time.Minute)
+			merged.MergedAt, merged.MergedBy = &at, &host.Actor{Login: tc.mergedBy, Type: "User"}
+			h.gh.prs[1] = merged
+			h.gh.timeline = map[int][]host.TimelineEvent{1: tc.timeline}
+			if err := h.s.Sync(ctx, h.repo); err != nil {
+				t.Fatal(err)
+			}
+			c := h.byPR(t, 1)
+			if c.State != change.Merged || c.Merge == nil || c.Merge.AutoMerge != tc.auto || c.Merge.MergedBy != tc.mergedBy {
+				t.Errorf("merge = %+v, want auto_merge %v by %s", c.Merge, tc.auto, tc.mergedBy)
+			}
+			if len(h.eng.merges) != 1 || h.eng.merges[0].AutoMerge != tc.auto {
+				t.Errorf("recorded = %+v", h.eng.merges)
+			}
+		})
+	}
+	// A timeline that cannot be read leaves the merge a person's, and the merge is still recorded.
+	t.Run("timeline unreadable", func(t *testing.T) {
+		h := newHarness(t)
+		h.eng.outcome = change.Approved
+		h.gh.prs[1] = pr(1, "ok", "")
+		if err := h.s.Sync(ctx, h.repo); err != nil {
+			t.Fatal(err)
+		}
+		merged := h.gh.prs[1]
+		merged.State, merged.Merged, merged.MergeCommitSHA, merged.Commits = "closed", true, "mc1", 1
+		at := t0
+		merged.MergedAt, merged.MergedBy = &at, &host.Actor{Login: "eduard", Type: "User"}
+		h.gh.prs[1] = merged
+		h.gh.timelineErr = errors.New("GitHub status 500")
+		if err := h.s.Sync(ctx, h.repo); err != nil {
+			t.Fatal(err)
+		}
+		if c := h.byPR(t, 1); c.State != change.Merged || c.Merge == nil || c.Merge.AutoMerge {
+			t.Errorf("merge = %+v", c.Merge)
+		}
+	})
+	// The pull request object itself says so when GitHub still carries the request.
+	h := newHarness(t)
+	h.eng.outcome = change.Approved
+	h.gh.prs[1] = pr(1, "ok", "")
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	merged := h.gh.prs[1]
+	merged.State, merged.Merged, merged.MergeCommitSHA, merged.Commits = "closed", true, "mc1", 1
+	at := t0
+	merged.MergedAt, merged.MergedBy = &at, &host.Actor{Login: "eduard", Type: "User"}
+	merged.AutoMerge = &host.AutoMerge{EnabledBy: host.Actor{Login: "eduard", Type: "User"}}
+	h.gh.prs[1] = merged
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if c := h.byPR(t, 1); c.Merge == nil || !c.Merge.AutoMerge {
+		t.Errorf("auto_merge from the pull request object: %+v", c.Merge)
+	}
+	for _, call := range h.gh.calls {
+		if call == "timeline 1" {
+			t.Error("the timeline was read although the pull request carried the request")
+		}
 	}
 }

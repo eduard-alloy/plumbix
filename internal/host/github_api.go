@@ -53,6 +53,23 @@ type PullRequest struct {
 	MergedBy       *Actor     `json:"merged_by"`
 	Commits        int        `json:"commits"`
 	UpdatedAt      time.Time  `json:"updated_at"`
+	// AutoMerge is GitHub's standing auto-merge request while the pull
+	// request is open; GitHub clears it once merged (WU-063).
+	AutoMerge *AutoMerge `json:"auto_merge"`
+}
+
+// AutoMerge is a pull request's auto-merge request: who asked, and how.
+type AutoMerge struct {
+	EnabledBy   Actor  `json:"enabled_by"`
+	MergeMethod string `json:"merge_method"`
+}
+
+// TimelineEvent is one event of a pull request's issue timeline; the gate
+// reads auto_merge_enabled and auto_merge_disabled from it (WU-063).
+type TimelineEvent struct {
+	Event     string    `json:"event"`
+	Actor     Actor     `json:"actor"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Review is one pull-request review.
@@ -163,6 +180,23 @@ func (g *GitHub) ListReviews(ctx context.Context, repo change.Repo, number int) 
 		}
 		all = append(all, reviews...)
 		if len(reviews) < 100 {
+			break
+		}
+	}
+	return all, nil
+}
+
+// PullRequestTimeline lists the pull request's issue timeline, oldest
+// first, following pagination up to maxPullRequestPages.
+func (g *GitHub) PullRequestTimeline(ctx context.Context, repo change.Repo, number int) ([]TimelineEvent, error) {
+	var all []TimelineEvent
+	for page := 1; page <= maxPullRequestPages; page++ {
+		var events []TimelineEvent
+		if err := g.rest(ctx, repo, http.MethodGet, fmt.Sprintf("/issues/%d/timeline?per_page=100&page=%d", number, page), nil, &events); err != nil {
+			return nil, err
+		}
+		all = append(all, events...)
+		if len(events) < 100 {
 			break
 		}
 	}

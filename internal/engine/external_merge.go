@@ -21,6 +21,9 @@ type ExternalMerge struct {
 	HeadSHA  string // the pull request's head that was merged
 	Commits  int    // how many commits the pull request had
 	MergedBy string // the GitHub login that merged
+	// AutoMerge: GitHub merged on MergedBy's behalf once the gate was green
+	// (WU-063); MergedBy requested, nobody pressed.
+	AutoMerge bool
 }
 
 // RecordExternalMerge records that GitHub merged the change's pull request
@@ -66,7 +69,7 @@ func (e *Engine) RecordExternalMerge(ctx context.Context, changeID string, m Ext
 	}
 	now := e.now().UTC()
 	rec := change.MergeRecord{ChangeID: c.ID, RepoID: c.RepoID, Branch: c.TargetBranch,
-		Merge: change.Merge{Commit: m.Commit, Previous: previous, Strategy: change.StrategyGitHub, RunID: runID, MergedBy: m.MergedBy, MergedAt: now}}
+		Merge: change.Merge{Commit: m.Commit, Previous: previous, Strategy: change.StrategyGitHub, RunID: runID, MergedBy: m.MergedBy, AutoMerge: m.AutoMerge, MergedAt: now}}
 	if err := e.store.RecordMerge(ctx, rec); err != nil {
 		return change.Change{}, fmt.Errorf("record GitHub's merge of %s: %w", short(m.Commit), err)
 	}

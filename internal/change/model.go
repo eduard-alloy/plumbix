@@ -133,8 +133,12 @@ type Merge struct {
 	RunID    string `json:"run_id"` // the approved run that was merged; empty when GitHub merged before any run
 	// MergedBy is the GitHub login that merged a pull request; empty for
 	// Plumbix's own merges.
-	MergedBy string    `json:"merged_by,omitempty"`
-	MergedAt time.Time `json:"merged_at"`
+	MergedBy string `json:"merged_by,omitempty"`
+	// AutoMerge says GitHub merged on the requester's behalf once the gate
+	// was green: MergedBy is who requested auto-merge, not who decided
+	// (WU-063). False for a merge a person pressed and for Plumbix's own.
+	AutoMerge bool      `json:"auto_merge,omitempty"`
+	MergedAt  time.Time `json:"merged_at"`
 }
 
 // MergeRecord is a Merge with the change and branch it belongs to.

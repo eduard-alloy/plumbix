@@ -25,6 +25,9 @@ type API interface {
 	CreateCheckRun(ctx context.Context, repo change.Repo, c host.CheckRun) (int64, error)
 	UpdateCheckRun(ctx context.Context, repo change.Repo, id int64, c host.CheckRun) error
 	RequiredChecks(ctx context.Context, repo change.Repo, branch string) (contexts []string, known bool, err error)
+	// PullRequestTimeline lists the pull request's issue timeline, where
+	// an auto-merge request and its withdrawal are recorded (WU-063).
+	PullRequestTimeline(ctx context.Context, repo change.Repo, number int) ([]host.TimelineEvent, error)
 }
 
 // Engine is what intake asks the engine to do.
@@ -323,7 +326,8 @@ func (s *Syncer) merged(ctx context.Context, repo change.Repo, c change.Change, 
 		mergedBy = Submitter(*pr.MergedBy)
 	}
 	before := c.State
-	m := engine.ExternalMerge{Commit: pr.MergeCommitSHA, HeadSHA: pr.Head.SHA, Commits: pr.Commits, MergedBy: mergedBy}
+	m := engine.ExternalMerge{Commit: pr.MergeCommitSHA, HeadSHA: pr.Head.SHA, Commits: pr.Commits, MergedBy: mergedBy,
+		AutoMerge: s.autoMerged(ctx, api, repo, pr, mergedBy)}
 	if _, err := s.Engine.RecordExternalMerge(ctx, c.ID, m); err != nil {
 		return fmt.Errorf("record the merge: %w", err)
 	}
@@ -417,6 +421,35 @@ func (s *Syncer) ApplyReviews(ctx context.Context, c change.Change, reviews []ho
 		return nil
 	}
 	return nil
+}
+
+// autoMerged reports whether GitHub merged the pull request on a
+// requester's behalf (WU-063): an auto-merge request stood at the merge
+// and GitHub names the requester as the merger. GitHub clears the pull
+// request's auto_merge object once merged, so the issue timeline is read
+// when the object is gone; a request withdrawn before the merge, or a
+// merge pressed by someone else, is a person's merge. A timeline that
+// cannot be read leaves the merge a person's, and the log says so.
+func (s *Syncer) autoMerged(ctx context.Context, api API, repo change.Repo, pr host.PullRequest, mergedBy string) bool {
+	requester := ""
+	if pr.AutoMerge != nil {
+		requester = Submitter(pr.AutoMerge.EnabledBy)
+	} else {
+		events, err := api.PullRequestTimeline(ctx, repo, pr.Number)
+		if err != nil {
+			s.Log.Warn("pull request timeline could not be read; the merge is recorded as a person's", "repo", repo.ID, "pr", pr.Number, "err", err)
+			return false
+		}
+		for _, e := range events {
+			switch e.Event {
+			case "auto_merge_enabled":
+				requester = Submitter(e.Actor)
+			case "auto_merge_disabled":
+				requester = ""
+			}
+		}
+	}
+	return requester != "" && requester == mergedBy
 }
 
 // Revalidate starts a new run for the change of a pull request, as a

@@ -109,7 +109,7 @@ export interface ChangeView {
     stepsLabel: string
     steps: StepVM[]
     mergeNote: string
-    record: { commit: string; previous: string; strategy: string; mergedAt: string } | undefined
+    record: { commit: string; previous: string; strategy: string; mergedBy: string; mergedAt: string } | undefined
   }
   findings: FindingGroupVM[]
   risks: RiskVM[]
@@ -281,7 +281,7 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       stepsLabel: showPipeline ? 'Pipeline' : 'Validators',
       steps: verdictSteps.map((s) => stepVM(s, cur?.result?.validators)),
       mergeNote: c.state === 'approved' && cur ? `${mergeVerb}${shortSha(cur.head)} onto ${c.target_branch} (${strategy}, set per repository).` : '',
-      record: c.state === 'merged' && c.merge ? { commit: c.merge.commit.slice(0, 12), previous: c.merge.previous.slice(0, 12), strategy: c.merge.strategy, mergedAt: dateTime(c.merge.merged_at) } : undefined,
+      record: c.state === 'merged' && c.merge ? { commit: c.merge.commit.slice(0, 12), previous: c.merge.previous.slice(0, 12), strategy: c.merge.strategy, mergedBy: mergedBy(c.merge), mergedAt: dateTime(c.merge.merged_at) } : undefined,
     },
     findings: groups,
     risks: risksAll.map((r) => ({ area: r.area, message: r.message, validator: r.validator, advisory: !!r.advisory, humanRequired: r.human_required })),
@@ -408,4 +408,11 @@ export function refreshNotice(code: string, ctx: NoticeCtx, message = ''): Notic
 function approvedBy(a: NonNullable<Change['human_approval']>): string {
   if (!a.by) return 'Approved by a person'
   return a.source === 'github_review' ? `Approved on GitHub by ${a.by}` : `Approved by ${a.by}`
+}
+
+/** mergedBy words who landed the change: Plumbix, a person on GitHub, or GitHub's auto-merge on a requester's behalf (WU-063). */
+function mergedBy(m: NonNullable<Change['merge']>): string {
+  if (m.strategy !== 'github') return 'Plumbix'
+  if (m.auto_merge) return `GitHub auto-merge, requested by ${m.merged_by ?? 'unknown'}`
+  return m.merged_by ? `GitHub, by ${m.merged_by}` : 'GitHub'
 }

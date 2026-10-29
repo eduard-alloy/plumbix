@@ -500,3 +500,37 @@ func TestPlumbixBranchRoundTripsAndARefreshIsAnEvent(t *testing.T) {
 		t.Errorf("payload = %s %v", raw, err)
 	}
 }
+
+// TestMergeEventCarriesAutoMerge: a GitHub merge made on the requester's
+// behalf is recorded with auto_merge on the change and in change.merged,
+// and the payload validates against the events schema (WU-063).
+func TestMergeEventCarriesAutoMerge(t *testing.T) {
+	db := openDB(t)
+	schema := compileEventsSchema(t)
+	if err := db.CreateRepo(ctx, sampleRepo("r_1", "https://github.com/a/b")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateChange(ctx, sampleChange("c_1", "r_1", "feat")); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
+	if err := db.RecordMerge(ctx, change.MergeRecord{ChangeID: "c_1", RepoID: "r_1", Branch: "main",
+		Merge: change.Merge{Commit: "cccc", Previous: "dddd", Strategy: change.StrategyGitHub, MergedBy: "eduard", AutoMerge: true, MergedAt: t0}}); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := db.GetChange(ctx, "c_1")
+	if c.Merge == nil || !c.Merge.AutoMerge || c.Merge.MergedBy != "eduard" {
+		t.Fatalf("merge = %+v", c.Merge)
+	}
+	after, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
+	fresh := after[len(before):]
+	if len(fresh) != 1 || fresh[0].Type != events.ChangeMerged {
+		t.Fatalf("events = %+v", fresh)
+	}
+	validateEvent(t, schema, fresh[0])
+	var p events.ChangeMergedPayload
+	decodePayload(t, fresh[0], &p)
+	if !p.AutoMerge || p.MergedBy != "eduard" || p.Strategy != change.StrategyGitHub {
+		t.Errorf("payload = %+v", p)
+	}
+}

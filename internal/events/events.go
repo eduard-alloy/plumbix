@@ -86,6 +86,9 @@ type (
 		Previous string `json:"previous"`
 		Strategy string `json:"strategy"`
 		MergedBy string `json:"merged_by,omitempty"`
+		// AutoMerge: GitHub merged on MergedBy's behalf once the gate was
+		// green; MergedBy requested, nobody pressed (WU-063).
+		AutoMerge bool `json:"auto_merge,omitempty"`
 	}
 	// ApprovedByPersonPayload: a person approved the change at Head, and why.
 	ApprovedByPersonPayload struct {

@@ -571,6 +571,8 @@ export function ChangePage({ id }: { id: string }) {
                   <span className="v">{v.verdict.record.previous}</span>
                   <span className="k">strategy</span>
                   <span className="v">{v.verdict.record.strategy}</span>
+                  <span className="k">merged by</span>
+                  <span className="v">{v.verdict.record.mergedBy}</span>
                   <span className="k">merged at</span>
                   <span className="v">{v.verdict.record.mergedAt}</span>
                 </div>

@@ -228,7 +228,7 @@ func (db *DB) CreateChange(ctx context.Context, c change.Change) error {
 }
 
 const changeColumns = `c.id, c.repo_id, c.source_branch, c.target_branch, c.title, c.intent, c.acceptance_criteria, c.constraints, c.submitted_by, c.state, c.created_at, c.updated_at,
-	m.commit_sha, m.previous_sha, m.strategy, m.run_id, m.merged_by, m.merged_at, COALESCE(b.head, ''), c.approved_reason, c.approved_head, c.approved_at, c.approved_by, c.approved_source, c.plumbix_branch, c.pr_number, c.pr_url`
+	m.commit_sha, m.previous_sha, m.strategy, m.run_id, m.merged_by, COALESCE(m.auto_merge, 0), m.merged_at, COALESCE(b.head, ''), c.approved_reason, c.approved_head, c.approved_at, c.approved_by, c.approved_source, c.plumbix_branch, c.pr_number, c.pr_url`
 
 // changeFrom joins each change with its merge, if any, and the last head
 // the poller saw on its source branch.
@@ -358,12 +358,13 @@ func scanChange(s scanner) (change.Change, error) {
 	var c change.Change
 	var criteria, constraints, state, created, updated string
 	var mCommit, mPrevious, mStrategy, mRun, mBy, mAt sql.NullString
+	var mAuto sql.NullBool
 	var apReason, apHead, apAt, apBy, apSource string
 	var prNumber int
 	var prURL string
 	if err := s.Scan(&c.ID, &c.RepoID, &c.SourceBranch, &c.TargetBranch, &c.Title, &c.Intent,
 		&criteria, &constraints, &c.SubmittedBy, &state, &created, &updated,
-		&mCommit, &mPrevious, &mStrategy, &mRun, &mBy, &mAt, &c.SourceHead, &apReason, &apHead, &apAt, &apBy, &apSource, &c.PlumbixBranch, &prNumber, &prURL); err != nil {
+		&mCommit, &mPrevious, &mStrategy, &mRun, &mBy, &mAuto, &mAt, &c.SourceHead, &apReason, &apHead, &apAt, &apBy, &apSource, &c.PlumbixBranch, &prNumber, &prURL); err != nil {
 		return change.Change{}, mapErr(err)
 	}
 	c.State = change.State(state)
@@ -382,7 +383,7 @@ func scanChange(s scanner) (change.Change, error) {
 		if err != nil {
 			return change.Change{}, err
 		}
-		c.Merge = &change.Merge{Commit: mCommit.String, Previous: mPrevious.String, Strategy: mStrategy.String, RunID: mRun.String, MergedBy: mBy.String, MergedAt: at}
+		c.Merge = &change.Merge{Commit: mCommit.String, Previous: mPrevious.String, Strategy: mStrategy.String, RunID: mRun.String, MergedBy: mBy.String, AutoMerge: mAuto.Bool, MergedAt: at}
 	}
 	if err := json.Unmarshal([]byte(criteria), &c.AcceptanceCriteria); err != nil {
 		return change.Change{}, fmt.Errorf("change %s: criteria: %w", c.ID, err)

@@ -16,10 +16,11 @@ import (
 // from a table by method and path.
 type restServer struct {
 	*httptest.Server
-	answers map[string]string // "METHOD /path" -> body
-	pages   map[string]string // body by page query value, for GET /pulls
-	status  map[string]int
-	got     []recorded
+	answers  map[string]string // "METHOD /path" -> body
+	pages    map[string]string // body by page query value, for GET /pulls
+	timeline map[string]string // body by page query value, for GET .../issues/7/timeline
+	status   map[string]int
+	got      []recorded
 }
 
 type recorded struct {
@@ -42,6 +43,10 @@ func fakeREST(t *testing.T) *restServer {
 			w.WriteHeader(st)
 		}
 		if body, ok := s.pages[r.URL.Query().Get("page")]; ok && r.URL.Path == "/repos/a/b/pulls" {
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		if body, ok := s.timeline[r.URL.Query().Get("page")]; ok && r.URL.Path == "/repos/a/b/issues/7/timeline" {
 			_, _ = w.Write([]byte(body))
 			return
 		}
@@ -196,5 +201,37 @@ func TestListPullRequestsFollowsPages(t *testing.T) {
 	prs, err := (&GitHub{Token: "tok", APIBase: srv.URL}).ListPullRequests(context.Background(), repo, "open")
 	if err != nil || len(prs) != 101 || prs[100].Number != 101 {
 		t.Fatalf("prs = %d, %v", len(prs), err)
+	}
+}
+
+// TestPullRequestTimeline: the issue timeline is read for the pull request,
+// each event with its name, actor and time (WU-063); the pull request's
+// auto_merge object decodes with who enabled it.
+func TestPullRequestTimeline(t *testing.T) {
+	srv := fakeREST(t)
+	srv.answers["GET /repos/a/b/issues/7/timeline"] = `[{"event":"commented","actor":{"login":"x","type":"User"},"created_at":"2026-10-29T10:00:00Z"},{"event":"auto_merge_enabled","actor":{"login":"eduard","type":"User"},"created_at":"2026-10-29T10:01:00Z"}]`
+	events, err := (&GitHub{Token: "tok", APIBase: srv.URL}).PullRequestTimeline(context.Background(), repo, 7)
+	if err != nil || len(events) != 2 || events[1].Event != "auto_merge_enabled" || events[1].Actor.Login != "eduard" || events[1].CreatedAt.IsZero() {
+		t.Fatalf("timeline = %+v, %v", events, err)
+	}
+	if q := srv.got[len(srv.got)-1].Query; !strings.Contains(q, "per_page=100") {
+		t.Errorf("query = %q", q)
+	}
+	// A full first page is followed by the next one.
+	full := make([]string, 100)
+	for i := range full {
+		full[i] = `{"event":"commented","actor":{"login":"x","type":"User"},"created_at":"2026-10-29T10:00:00Z"}`
+	}
+	srv.timeline = map[string]string{"1": "[" + strings.Join(full, ",") + "]", "2": `[{"event":"auto_merge_enabled","actor":{"login":"eduard","type":"User"},"created_at":"2026-10-29T11:00:00Z"}]`}
+	events, err = (&GitHub{Token: "tok", APIBase: srv.URL}).PullRequestTimeline(context.Background(), repo, 7)
+	if err != nil || len(events) != 101 || events[100].Event != "auto_merge_enabled" {
+		t.Fatalf("two pages: %d events, %v", len(events), err)
+	}
+	var pr PullRequest
+	if err := json.Unmarshal([]byte(`{"number":7,"auto_merge":{"enabled_by":{"login":"eduard","type":"User"},"merge_method":"squash"}}`), &pr); err != nil || pr.AutoMerge == nil || pr.AutoMerge.EnabledBy.Login != "eduard" || pr.AutoMerge.MergeMethod != "squash" {
+		t.Errorf("auto_merge = %+v, %v", pr.AutoMerge, err)
+	}
+	if err := json.Unmarshal([]byte(`{"number":7,"auto_merge":null}`), &pr); err != nil || pr.AutoMerge != nil {
+		t.Errorf("auto_merge null = %+v, %v", pr.AutoMerge, err)
 	}
 }

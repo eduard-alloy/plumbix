@@ -17,12 +17,12 @@ func (db *DB) RecordMerge(ctx context.Context, m change.MergeRecord) error {
 	}
 	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO merges (change_id, run_id, repo_id, branch, commit_sha, previous_sha, strategy, merged_by, merged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			m.ChangeID, runID, m.RepoID, m.Branch, m.Commit, m.Previous, m.Strategy, m.MergedBy, formatTime(m.MergedAt)); err != nil {
+			`INSERT INTO merges (change_id, run_id, repo_id, branch, commit_sha, previous_sha, strategy, merged_by, auto_merge, merged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			m.ChangeID, runID, m.RepoID, m.Branch, m.Commit, m.Previous, m.Strategy, m.MergedBy, m.AutoMerge, formatTime(m.MergedAt)); err != nil {
 			return mapErr(err)
 		}
 		_, err := emit(events.Event{Type: events.ChangeMerged, Time: m.MergedAt, RepoID: m.RepoID, ChangeID: m.ChangeID, RunID: m.RunID,
-			Payload: events.ChangeMergedPayload{Branch: m.Branch, Commit: m.Commit, Previous: m.Previous, Strategy: m.Strategy, MergedBy: m.MergedBy}})
+			Payload: events.ChangeMergedPayload{Branch: m.Branch, Commit: m.Commit, Previous: m.Previous, Strategy: m.Strategy, MergedBy: m.MergedBy, AutoMerge: m.AutoMerge}})
 		return err
 	})
 }

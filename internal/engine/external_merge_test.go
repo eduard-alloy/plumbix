@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"encoding/json"
 	"errors"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/eduard-alloy/plumbix/internal/alert"
 	"github.com/eduard-alloy/plumbix/internal/change"
+	"github.com/eduard-alloy/plumbix/internal/events"
 	"github.com/eduard-alloy/plumbix/internal/guard"
 )
 
@@ -245,5 +247,33 @@ func TestUnapprovedExternalMergeWithoutPipelineFilesIsQuiet(t *testing.T) {
 	}
 	if alerts, _ := h.db.List(ctx, false); len(alerts) != 0 {
 		t.Errorf("alerts = %+v", alerts)
+	}
+}
+
+// TestExternalMergeRecordsAutoMerge: the flag reaches the change's merge
+// record and the change.merged payload (WU-063).
+func TestExternalMergeRecordsAutoMerge(t *testing.T) {
+	h := newHarness(t, Config{})
+	h.repo.Commit("feat", map[string]string{"a.go": "x\n"}, "feature")
+	c := h.submit("feat")
+	head := h.remote("rev-parse", "feat")
+	landed := h.repo.Commit("main", map[string]string{"a.go": "x\n"}, "squash of feat")
+	got, err := h.eng.RecordExternalMerge(ctx, c.ID, ExternalMerge{Commit: landed, HeadSHA: head, Commits: 1, MergedBy: "eduard", AutoMerge: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Merge == nil || !got.Merge.AutoMerge || got.Merge.MergedBy != "eduard" {
+		t.Fatalf("merge = %+v", got.Merge)
+	}
+	evs, _ := h.db.EventsAfter(ctx, 0, events.Filter{ChangeID: c.ID}, 100)
+	var payload events.ChangeMergedPayload
+	for _, e := range evs {
+		if e.Type == events.ChangeMerged {
+			raw, _ := json.Marshal(e.Payload)
+			_ = json.Unmarshal(raw, &payload)
+		}
+	}
+	if !payload.AutoMerge || payload.MergedBy != "eduard" {
+		t.Errorf("payload = %+v", payload)
 	}
 }

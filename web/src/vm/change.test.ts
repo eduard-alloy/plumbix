@@ -262,3 +262,13 @@ describe('criterion notes (WU-062)', () => {
     expect(v.criteria[0].check).toBe('no check · names step `bulid`, which the pipeline has not')
   })
 })
+
+describe('merge record (WU-063)', () => {
+  it('says who merged, and when GitHub merged on a requester\'s behalf', () => {
+    const at = new Date(NOW.getTime() - 60000).toISOString()
+    const base = { ...approved, state: 'merged' as const }
+    expect(changeView({ ...base, merge: { commit: 'abc'.padEnd(40, '0'), previous: 'def'.padEnd(40, '0'), strategy: 'squash', run_id: 'r', merged_at: at } }, approvedRuns, plumbix, undefined, NOW).verdict.record?.mergedBy).toBe('Plumbix')
+    expect(changeView({ ...base, merge: { commit: 'abc'.padEnd(40, '0'), previous: 'def'.padEnd(40, '0'), strategy: 'github', run_id: 'r', merged_by: 'lead', merged_at: at } }, approvedRuns, plumbix, undefined, NOW).verdict.record?.mergedBy).toBe('GitHub, by lead')
+    expect(changeView({ ...base, merge: { commit: 'abc'.padEnd(40, '0'), previous: 'def'.padEnd(40, '0'), strategy: 'github', run_id: 'r', merged_by: 'eduard', auto_merge: true, merged_at: at } }, approvedRuns, plumbix, undefined, NOW).verdict.record?.mergedBy).toBe('GitHub auto-merge, requested by eduard')
+  })
+})

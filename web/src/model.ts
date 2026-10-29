@@ -100,6 +100,8 @@ export interface Merge {
   run_id: string
   /** The GitHub login that merged the pull request. */
   merged_by?: string
+  /** GitHub merged on merged_by's behalf once the gate was green (WU-063). */
+  auto_merge?: boolean
   merged_at: string
 }
 

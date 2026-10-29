@@ -30,6 +30,8 @@ type fakeGitHub struct {
 	mu          sync.Mutex
 	prs         map[int]host.PullRequest
 	reviews     map[int][]host.Review
+	timeline    map[int][]host.TimelineEvent
+	timelineErr error
 	required    []string
 	known       bool
 	requiredErr error
@@ -93,6 +95,16 @@ func (f *fakeGitHub) UpdateCheckRun(_ context.Context, _ change.Repo, id int64, 
 	defer f.mu.Unlock()
 	f.updated[id] = c
 	return nil
+}
+
+func (f *fakeGitHub) PullRequestTimeline(_ context.Context, _ change.Repo, n int) ([]host.TimelineEvent, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, fmt.Sprintf("timeline %d", n))
+	if f.timelineErr != nil {
+		return nil, f.timelineErr
+	}
+	return f.timeline[n], nil
 }
 
 func (f *fakeGitHub) RequiredChecks(context.Context, change.Repo, string) ([]string, bool, error) {
@@ -191,7 +203,7 @@ func (f *fakeEngine) RecordExternalMerge(ctx context.Context, changeID string, m
 		return c, change.ErrInvalidState
 	}
 	f.merges = append(f.merges, m)
-	if err := f.db.RecordMerge(ctx, change.MergeRecord{ChangeID: c.ID, RepoID: c.RepoID, Branch: c.TargetBranch, Merge: change.Merge{Commit: m.Commit, Previous: "prev", Strategy: change.StrategyGitHub, MergedBy: m.MergedBy, MergedAt: t0}}); err != nil {
+	if err := f.db.RecordMerge(ctx, change.MergeRecord{ChangeID: c.ID, RepoID: c.RepoID, Branch: c.TargetBranch, Merge: change.Merge{Commit: m.Commit, Previous: "prev", Strategy: change.StrategyGitHub, MergedBy: m.MergedBy, AutoMerge: m.AutoMerge, MergedAt: t0}}); err != nil {
 		return c, err
 	}
 	if err := f.db.SetChangeState(ctx, c.ID, c.State, change.Merged, t0); err != nil {
@@ -234,4 +246,21 @@ func pr(n int, title, body string) host.PullRequest {
 	p.Head.Branch, p.Head.SHA, p.Head.Repo.FullName = fmt.Sprintf("feat-%d", n), "h1", "a/b"
 	p.Base.Branch, p.Base.SHA, p.Base.Repo.FullName = "main", "m1", "a/b"
 	return p
+}
+
+// byPR finds the change of a pull request in any state, final ones
+// included (ChangeByPullRequest answers only open ones).
+func (h *harness) byPR(t *testing.T, n int) change.Change {
+	t.Helper()
+	cs, err := h.db.ListChanges(ctx, change.Filter{RepoID: h.repo.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cs {
+		if c.PullRequest != nil && c.PullRequest.Number == n {
+			return c
+		}
+	}
+	t.Fatalf("no change for pull request #%d", n)
+	return change.Change{}
 }
