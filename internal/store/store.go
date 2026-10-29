@@ -452,6 +452,19 @@ func nonNil(s []string) []string {
 	return s
 }
 
+// UpdateRepoMergeStrategy sets how Plumbix's own merges land on the
+// repository (WU-064).
+func (db *DB) UpdateRepoMergeStrategy(ctx context.Context, id, strategy string) error {
+	res, err := db.sql.ExecContext(ctx, `UPDATE repos SET merge_strategy = ? WHERE id = ?`, strategy, id)
+	if err != nil {
+		return mapErr(err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return change.ErrNotFound
+	}
+	return nil
+}
+
 // UpdateRepoMerging sets whether Plumbix watches a repository's pull
 // requests and who merges them (WU-054).
 func (db *DB) UpdateRepoMerging(ctx context.Context, id string, pullRequests bool, merger string) error {

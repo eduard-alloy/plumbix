@@ -34,6 +34,15 @@ const (
 
 var mergeStrategies = map[string]bool{"squash": true, "merge": true, "rebase": true}
 
+// CheckMergeStrategy says whether a strategy is one Plumbix's own merges
+// know (WU-064): squash, merge or rebase.
+func CheckMergeStrategy(strategy string) error {
+	if !mergeStrategies[strategy] {
+		return &InvalidError{Problems: []Problem{{Field: "merge_strategy", Message: "must be squash, merge or rebase"}}}
+	}
+	return nil
+}
+
 var (
 	githubURL = regexp.MustCompile(`^https://github\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`)
 	azureURLs = []*regexp.Regexp{

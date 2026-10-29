@@ -219,6 +219,38 @@ function GitHubPanel({ repo, onChanged }: { repo: Repo; onChanged: (pullRequests
   )
 }
 
+// MergeStrategyPicker sets how Plumbix's own merges land on the repository
+// (WU-064), in place of the plain "squash merge" text; GitHub's merges of
+// pull requests are not affected, which the title says.
+function MergeStrategyPicker({ repo }: { repo: Repo }) {
+  const [value, setValue] = useState(repo.merge_strategy)
+  const [status, setStatus] = useState('')
+  // The list refreshes with what another client set meanwhile; the picker follows it.
+  useEffect(() => setValue(repo.merge_strategy), [repo.merge_strategy])
+  async function save(next: Repo['merge_strategy']) {
+    const previous = value
+    setValue(next)
+    setStatus('')
+    try {
+      const s = await api.updateRepoSettings(repo.id, { merge_strategy: next })
+      setValue(s.merge_strategy ?? next)
+    } catch (err) {
+      setValue(previous)
+      setStatus(err instanceof ApiError ? err.message : String(err))
+    }
+  }
+  return (
+    <span className="dim2 strategy">
+      <select className="quiet-select" aria-label={`Merge strategy for ${repoName(repo)}`} title="How Plumbix's own merges land; GitHub's merges of pull requests are not affected" value={value} onChange={(e) => void save(e.target.value as Repo['merge_strategy'])}>
+        <option value="squash">squash merge</option>
+        <option value="merge">merge commit</option>
+        <option value="rebase">rebase merge</option>
+      </select>
+      {status && <span className="status-text error"> {status}</span>}
+    </span>
+  )
+}
+
 export function ReposPage() {
   const { state, actions } = useStore()
   const [importing, setImporting] = useState(false)
@@ -282,7 +314,7 @@ export function ReposPage() {
                     <span className="dim2">
                       {count} {count === 1 ? 'change' : 'changes'}
                     </span>
-                    <span className="dim2">{r.merge_strategy} merge</span>
+                    <MergeStrategyPicker repo={r} />
                     {gated.pull_requests && <span className="host-badge">Pull requests · {gated.merger === 'github' ? 'GitHub' : 'Plumbix'} merges</span>}
                     <span className="spacer" />
                     {r.host !== 'git' && (

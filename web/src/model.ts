@@ -352,6 +352,8 @@ export interface RepoSettings {
   /** The gating settings (WU-054), settable here after registration (WU-055). */
   pull_requests?: boolean
   merger?: 'plumbix' | 'github'
+  /** How Plumbix's own merges land (WU-064). */
+  merge_strategy?: 'squash' | 'merge' | 'rebase'
 }
 
 /** What a repository settings update may carry; a field left out stays (WU-055). An empty merger takes the default. */
@@ -359,6 +361,7 @@ export interface RepoSettingsPatch {
   guidance?: string
   pull_requests?: boolean
   merger?: 'plumbix' | 'github' | ''
+  merge_strategy?: 'squash' | 'merge' | 'rebase'
 }
 
 /** The per-repository GitHub facts behind the gate, read live (WU-061). */

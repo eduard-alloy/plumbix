@@ -349,8 +349,10 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       if (!db.repos.some((r) => r.id === id)) return error(404, 'not_found', `repo ${id}`)
       const repo = db.repos.find((r) => r.id === id)!
       if (method === 'PUT') {
-        const body = JSON.parse(String(init?.body)) as { guidance?: string; pull_requests?: boolean; merger?: 'plumbix' | 'github' | '' }
+        const body = JSON.parse(String(init?.body)) as { guidance?: string; pull_requests?: boolean; merger?: 'plumbix' | 'github' | ''; merge_strategy?: string }
+        if (body.merge_strategy !== undefined && !['squash', 'merge', 'rebase'].includes(body.merge_strategy)) return problems([{ field: 'merge_strategy', message: 'must be squash, merge or rebase' }])
         if (body.guidance !== undefined) db.repoGuidance[id] = body.guidance.trim()
+        if (body.merge_strategy !== undefined) repo.merge_strategy = body.merge_strategy as Repo['merge_strategy']
         if (body.pull_requests !== undefined || body.merger !== undefined) {
           // The server's rules (change.normalizeMerging): a field left out stays; an empty merger takes the default.
           const pull_requests = body.pull_requests ?? repo.pull_requests ?? false
@@ -364,7 +366,7 @@ export function fakeFetch(db: FakeDB): typeof fetch {
           repo.merger = merger
         }
       }
-      return json(200, { guidance: db.repoGuidance[id] ?? '', token_set: id in db.repoTokens, token_updated_at: id in db.repoTokens ? new Date().toISOString() : undefined, pull_requests: repo.pull_requests ?? false, merger: repo.merger })
+      return json(200, { guidance: db.repoGuidance[id] ?? '', token_set: id in db.repoTokens, token_updated_at: id in db.repoTokens ? new Date().toISOString() : undefined, pull_requests: repo.pull_requests ?? false, merger: repo.merger, merge_strategy: repo.merge_strategy })
     }
     const repoGitHub = path.match(/^\/api\/v1\/repos\/([^/]+)\/github$/)
     if (repoGitHub && method === 'GET') {

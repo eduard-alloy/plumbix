@@ -174,10 +174,12 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 				set["pull_requests"] = in.PullRequests
 			case "merger":
 				set["merger"] = in.Merger
+			case "merge-strategy":
+				set["merge_strategy"] = in.MergeStrategy
 			}
 		})
 		if len(set) == 0 {
-			return usageError(stderr, "usage: plumbix repo set <id> [--pull-requests[=false]] [--merger plumbix|github]")
+			return usageError(stderr, "usage: plumbix repo set <id> [--pull-requests[=false]] [--merger plumbix|github] [--merge-strategy squash|merge|rebase]")
 		}
 		body, _ := json.Marshal(set)
 		return c.call(http.MethodPut, "/api/v1/repos/"+url.PathEscape(pos[1])+"/settings", body)
@@ -192,7 +194,7 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 		}
 		return c.call(http.MethodGet, path, nil)
 	}
-	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> [--pull-requests] [--merger plumbix|github] | repo set <id> [--pull-requests[=false]] [--merger plumbix|github] | repo list | repo github <id> | repo runs <id> [--branch <b>]")
+	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> [--pull-requests] [--merger plumbix|github] | repo set <id> [--pull-requests[=false]] [--merger plumbix|github] [--merge-strategy squash|merge|rebase] | repo list | repo github <id> | repo runs <id> [--branch <b>]")
 }
 
 // runSubmit handles "plumbix submit -f <file|->".

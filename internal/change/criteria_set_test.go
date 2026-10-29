@@ -33,6 +33,9 @@ func TestCriteriaSetRules(t *testing.T) {
 	if _, err := s.CreateCriteriaSet(ctx, change.CriteriaSetInput{Task: "kai:plumbix/LONGTITLE", Title: strings.Repeat("t", 300), Owner: "eduard@mac", Criteria: []change.Criterion{{Text: "x"}}}); err != nil {
 		t.Errorf("a long title: %v", err)
 	}
+	if _, err := s.CreateCriteriaSet(ctx, change.CriteriaSetInput{Task: "kai:plumbix/LONGTITLE", Title: strings.Repeat("t", change.MaxText+1), Owner: "eduard@mac", Criteria: []change.Criterion{{Text: "x"}}}); err == nil || !strings.Contains(err.Error(), "title: must be at most 2000") {
+		t.Errorf("a title over the limit: %v", err)
+	}
 	cs, err := s.CreateCriteriaSet(ctx, change.CriteriaSetInput{Task: "kai:plumbix/X6Q5JY", Title: "WU-066", Owner: "eduard@mac",
 		Source:   &change.CriteriaSource{Kind: "kai", Project: "plumbix", Ref: "X6Q5JY"},
 		Criteria: []change.Criterion{{ID: "AC-9", Text: " The build passes ", Check: &change.Check{Steps: []string{"build", "test"}}}, {Text: "Reads well"}}})

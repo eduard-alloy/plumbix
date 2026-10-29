@@ -2765,6 +2765,10 @@ components:
           description: Who lands changes. Left out of a request it stays as it is; empty in a request it takes the default for pull_requests (github with it, plumbix without). A response always names one.
           type: string
           enum: [plumbix, github, ""]
+        merge_strategy:
+          description: How Plumbix's own merges land (squash, merge or rebase); GitHub's merges of pull requests are not affected. Settable after registration (WU-064).
+          type: string
+          enum: [squash, merge, rebase]
     LoginLink:
       type: object
       additionalProperties: false

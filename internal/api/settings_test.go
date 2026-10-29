@@ -330,6 +330,33 @@ func TestRepoSettings(t *testing.T) {
 	if v := decode[merging](t, rec); v.PullRequests || v.Merger != "plumbix" {
 		t.Errorf("merging after a guidance PUT: %+v", v)
 	}
+	// The merge strategy is settable here too (WU-064), under the registration rule.
+	type withStrategy struct {
+		MergeStrategy string `json:"merge_strategy"`
+		Merger        string `json:"merger"`
+	}
+	if v := decode[withStrategy](t, rec); v.MergeStrategy != "squash" {
+		t.Errorf("initial strategy = %+v", v)
+	}
+	rec = a.do(http.MethodPut, "/api/v1/repos/"+repo.ID+"/settings", `{"merge_strategy": "rebase"}`)
+	o.check("RepoSettings", rec)
+	if v := decode[withStrategy](t, rec); rec.Code != http.StatusOK || v.MergeStrategy != "rebase" || v.Merger != "plumbix" {
+		t.Errorf("strategy PUT: %d %+v", rec.Code, v)
+	}
+	if rs := decode[struct{ Repos []change.Repo }](t, a.do(http.MethodGet, "/api/v1/repos", "")).Repos; len(rs) != 1 || rs[0].MergeStrategy != "rebase" {
+		t.Errorf("repos after the strategy PUT: %+v", rs)
+	}
+	bad := a.do(http.MethodPut, "/api/v1/repos/"+repo.ID+"/settings", `{"merge_strategy": "octopus", "guidance": "kept out"}`)
+	o.check("Error", bad)
+	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), "merge_strategy") {
+		t.Errorf("bad strategy: %d %s", bad.Code, bad.Body.String())
+	}
+	if v := decode[struct {
+		Guidance      string `json:"guidance"`
+		MergeStrategy string `json:"merge_strategy"`
+	}](t, a.do(http.MethodGet, "/api/v1/repos/"+repo.ID+"/settings", "")); v.MergeStrategy != "rebase" || v.Guidance != "Go code needs tests." {
+		t.Errorf("a refused body changed something: %+v", v)
+	}
 	rec = a.do(http.MethodPut, "/api/v1/repos/"+repo.ID+"/settings", `{"pull_requests": true, "merger": "plumbix"}`)
 	o.check("RepoSettings", rec)
 	if v := decode[merging](t, rec); rec.Code != http.StatusOK || !v.PullRequests || v.Merger != "plumbix" || v.Guidance != "Go code needs tests." {

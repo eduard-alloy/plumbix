@@ -317,6 +317,8 @@ type repoSettings struct {
 	// (WU-054), settable here after registration (WU-055).
 	PullRequests bool   `json:"pull_requests"`
 	Merger       string `json:"merger"`
+	// MergeStrategy is how Plumbix's own merges land (WU-064), settable here.
+	MergeStrategy string `json:"merge_strategy"`
 }
 
 func (h *settingsHandlers) repoView(ctx context.Context, repo change.Repo) (repoSettings, error) {
@@ -324,7 +326,7 @@ func (h *settingsHandlers) repoView(ctx context.Context, repo change.Repo) (repo
 	if err != nil {
 		return repoSettings{}, err
 	}
-	v := repoSettings{Guidance: g.Repository, PullRequests: repo.PullRequests, Merger: repo.Merger}
+	v := repoSettings{Guidance: g.Repository, PullRequests: repo.PullRequests, Merger: repo.Merger, MergeStrategy: repo.MergeStrategy}
 	key := host.RepoTokenKey(repo.ID)
 	if _, set := h.secrets.Get(key); set {
 		v.TokenSet = true
@@ -432,9 +434,10 @@ func (h *settingsHandlers) updateRepo(w http.ResponseWriter, r *http.Request) {
 	}
 	// A field left out of the body stays as it is.
 	var body struct {
-		Guidance     *string `json:"guidance"`
-		PullRequests *bool   `json:"pull_requests"`
-		Merger       *string `json:"merger"`
+		Guidance      *string `json:"guidance"`
+		PullRequests  *bool   `json:"pull_requests"`
+		Merger        *string `json:"merger"`
+		MergeStrategy *string `json:"merge_strategy"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -461,6 +464,12 @@ func (h *settingsHandlers) updateRepo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if body.MergeStrategy != nil {
+		if err := change.CheckMergeStrategy(strings.TrimSpace(*body.MergeStrategy)); err != nil {
+			h.fail(w, err)
+			return
+		}
+	}
 	if body.Guidance != nil {
 		if err := h.settings.SetRepoGuidance(r.Context(), repo.ID, *body.Guidance); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
@@ -473,6 +482,13 @@ func (h *settingsHandlers) updateRepo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.log.Info("repository merging set", "repo", repo.ID, "pull_requests", pullRequests, "merger", merger)
+	}
+	if body.MergeStrategy != nil {
+		if _, err := h.changes.SetRepoMergeStrategy(r.Context(), repo.ID, *body.MergeStrategy); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.log.Info("repository merge strategy set", "repo", repo.ID, "merge_strategy", strings.TrimSpace(*body.MergeStrategy))
 	}
 	h.getRepo(w, r)
 }

@@ -88,6 +88,25 @@ func (s *Service) SetRepoMerging(ctx context.Context, id string, pullRequests bo
 	return r, nil
 }
 
+// SetRepoMergeStrategy sets how Plumbix's own merges land on a registered
+// repository (WU-064): squash, merge or rebase, the same rule as at
+// registration. GitHub's merges of pull requests are not affected.
+func (s *Service) SetRepoMergeStrategy(ctx context.Context, id, strategy string) (Repo, error) {
+	r, err := s.GetRepo(ctx, id)
+	if err != nil {
+		return Repo{}, err
+	}
+	strategy = strings.TrimSpace(strategy)
+	if err := CheckMergeStrategy(strategy); err != nil {
+		return Repo{}, err
+	}
+	if err := s.store.UpdateRepoMergeStrategy(ctx, id, strategy); err != nil {
+		return Repo{}, err
+	}
+	r.MergeStrategy = strategy
+	return r, nil
+}
+
 // ListRepos returns every repo.
 func (s *Service) ListRepos(ctx context.Context) ([]Repo, error) {
 	return s.store.ListRepos(ctx)

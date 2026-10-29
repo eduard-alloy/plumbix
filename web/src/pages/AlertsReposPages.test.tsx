@@ -159,6 +159,19 @@ describe('Repositories page', () => {
     await waitFor(() => expect(within(lines).getAllByRole('listitem')[3].querySelector('strong')?.textContent).toBe('Webhook, nothing yet'))
   })
 
+  it('sets the merge strategy from the card, for every host (WU-064)', async () => {
+    window.history.replaceState(null, '', '/repos')
+    render(<App />)
+    const ledger = await screen.findByRole('listitem', { name: 'Repository ledger-api' })
+    const pick = within(ledger).getByRole('combobox', { name: 'Merge strategy for ledger-api' }) as HTMLSelectElement
+    expect(pick.value).toBe('merge')
+    fireEvent.change(pick, { target: { value: 'rebase' } })
+    await waitFor(() => expect(db.repos[1].merge_strategy).toBe('rebase'))
+    expect(within(ledger).getByText('rebase merge', { selector: 'option' })).toBeTruthy()
+    const plumbix = screen.getByRole('listitem', { name: 'Repository plumbix' })
+    expect((within(plumbix).getByRole('combobox', { name: 'Merge strategy for plumbix' }) as HTMLSelectElement).value).toBe('squash')
+  })
+
   it('turns pull requests off and on, the merger taking its default each time (WU-061)', async () => {
     window.history.replaceState(null, '', '/repos')
     render(<App />)

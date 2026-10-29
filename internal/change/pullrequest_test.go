@@ -95,3 +95,28 @@ func TestSetRepoMerging(t *testing.T) {
 		t.Errorf("unknown repo: %v", err)
 	}
 }
+
+// TestSetRepoMergeStrategy: the strategy of Plumbix's own merges is
+// settable after registration under the registration rule (WU-064).
+func TestSetRepoMergeStrategy(t *testing.T) {
+	s := newService(t)
+	r, err := s.RegisterRepo(ctx, change.RepoInput{Host: "github", URL: "https://github.com/a/strategy"})
+	if err != nil || r.MergeStrategy != "squash" {
+		t.Fatalf("registered = %+v, %v", r, err)
+	}
+	for _, want := range []string{"merge", "rebase", "squash"} {
+		got, err := s.SetRepoMergeStrategy(ctx, r.ID, " "+want+" ")
+		if err != nil || got.MergeStrategy != want {
+			t.Fatalf("%s: %+v, %v", want, got, err)
+		}
+		if stored, _ := s.GetRepo(ctx, r.ID); stored.MergeStrategy != want || stored.PullRequests || stored.Merger != change.MergerPlumbix {
+			t.Errorf("stored after %s = %+v", want, stored)
+		}
+	}
+	if _, err := s.SetRepoMergeStrategy(ctx, r.ID, "octopus"); problems(t, err)["merge_strategy"] == "" {
+		t.Errorf("unknown strategy: %v", err)
+	}
+	if _, err := s.SetRepoMergeStrategy(ctx, "r_nope", "merge"); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("unknown repo: %v", err)
+	}
+}

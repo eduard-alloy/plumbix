@@ -123,6 +123,13 @@ func TestCLIFlow(t *testing.T) {
 	if unset := c.mustRun("", "repo", "set", repoID, "--pull-requests=false"); unset["pull_requests"] == true || unset["merger"] != "plumbix" {
 		t.Errorf("repo set off = %v", unset)
 	}
+	// The merge strategy follows the same path (WU-064).
+	if got := c.mustRun("", "repo", "set", repoID, "--merge-strategy", "merge"); got["merge_strategy"] != "merge" {
+		t.Errorf("repo set --merge-strategy = %v", got)
+	}
+	if code, _, errOut := c.run("", "repo", "set", repoID, "--merge-strategy", "octopus"); code != 1 || !strings.Contains(errOut, "merge_strategy") {
+		t.Errorf("bad strategy: exit %d, stderr %q", code, errOut)
+	}
 	// repo github prints the repository's GitHub report (WU-061): the App,
 	// the gate per protected branch and the intake. This server has no
 	// App and no GitHub token, and the report says so instead of failing.
