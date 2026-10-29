@@ -402,6 +402,17 @@
               "type": "string"
             }
           }
+        },
+        "criteria_set": {
+         "description": "The criteria set the change took its criteria from, frozen at submission (WU-066); absent when the change stated its own.",
+         "type": "object",
+         "additionalProperties": false,
+         "required": ["id"],
+         "properties": {
+          "id": {"type": "string"},
+          "owner": {"type": "string"},
+          "task": {"type": "string"}
+         }
         }
       }
     },

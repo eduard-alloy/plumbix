@@ -213,22 +213,30 @@ func (db *DB) CreateChange(ctx context.Context, c change.Change) error {
 		prNumber, prURL = c.PullRequest.Number, c.PullRequest.URL
 		prPayload = &events.PullRequestPayload{Number: prNumber, URL: prURL}
 	}
+	csID, csOwner, csTask, csProblem := criteriaSetColumns(c.CriteriaSet)
+	var csPayload *events.CriteriaSetPayload
+	if c.CriteriaSet != nil && c.CriteriaSet.Problem == "" {
+		csPayload = &events.CriteriaSetPayload{ID: csID, Owner: csOwner, Task: csTask}
+	}
 	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		if err := freezeCriteriaSet(ctx, tx, c.CriteriaSet); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO changes (id, repo_id, source_branch, target_branch, title, intent, acceptance_criteria, constraints, submitted_by, state, created_at, updated_at, plumbix_branch, pr_number, pr_url)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO changes (id, repo_id, source_branch, target_branch, title, intent, acceptance_criteria, constraints, submitted_by, state, created_at, updated_at, plumbix_branch, pr_number, pr_url, cs_id, cs_owner, cs_task, cs_problem)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			c.ID, c.RepoID, c.SourceBranch, c.TargetBranch, c.Title, c.Intent, string(criteria), string(constraints),
-			c.SubmittedBy, string(c.State), formatTime(c.CreatedAt), formatTime(c.UpdatedAt), c.PlumbixBranch, prNumber, prURL); err != nil {
+			c.SubmittedBy, string(c.State), formatTime(c.CreatedAt), formatTime(c.UpdatedAt), c.PlumbixBranch, prNumber, prURL, csID, csOwner, csTask, csProblem); err != nil {
 			return mapErr(err)
 		}
 		_, err := emit(events.Event{Type: events.ChangeSubmitted, Time: c.CreatedAt, RepoID: c.RepoID, ChangeID: c.ID,
-			Payload: events.ChangeSubmittedPayload{SourceBranch: c.SourceBranch, TargetBranch: c.TargetBranch, Title: c.Title, SubmittedBy: c.SubmittedBy, PullRequest: prPayload}})
+			Payload: events.ChangeSubmittedPayload{SourceBranch: c.SourceBranch, TargetBranch: c.TargetBranch, Title: c.Title, SubmittedBy: c.SubmittedBy, PullRequest: prPayload, CriteriaSet: csPayload}})
 		return err
 	})
 }
 
 const changeColumns = `c.id, c.repo_id, c.source_branch, c.target_branch, c.title, c.intent, c.acceptance_criteria, c.constraints, c.submitted_by, c.state, c.created_at, c.updated_at,
-	m.commit_sha, m.previous_sha, m.strategy, m.run_id, m.merged_by, COALESCE(m.auto_merge, 0), m.merged_at, COALESCE(b.head, ''), c.approved_reason, c.approved_head, c.approved_at, c.approved_by, c.approved_source, c.plumbix_branch, c.pr_number, c.pr_url`
+	m.commit_sha, m.previous_sha, m.strategy, m.run_id, m.merged_by, COALESCE(m.auto_merge, 0), m.merged_at, COALESCE(b.head, ''), c.approved_reason, c.approved_head, c.approved_at, c.approved_by, c.approved_source, c.plumbix_branch, c.pr_number, c.pr_url, c.cs_id, c.cs_owner, c.cs_task, c.cs_problem`
 
 // changeFrom joins each change with its merge, if any, and the last head
 // the poller saw on its source branch.
@@ -302,7 +310,7 @@ func (db *DB) SetChangeState(ctx context.Context, id string, from, to change.Sta
 // UpdateChangeText rewrites a change's title, intent and criteria (WU-062).
 // A final change is ErrInvalidState; no event is emitted, since the next
 // run carries the text it judged.
-func (db *DB) UpdateChangeText(ctx context.Context, id, title, intent string, criteria []change.Criterion, at time.Time) error {
+func (db *DB) UpdateChangeText(ctx context.Context, id, title, intent string, criteria []change.Criterion, set *change.CriteriaSetRef, at time.Time) error {
 	if criteria == nil {
 		criteria = []change.Criterion{}
 	}
@@ -310,13 +318,22 @@ func (db *DB) UpdateChangeText(ctx context.Context, id, title, intent string, cr
 	if err != nil {
 		return err
 	}
-	res, err := db.sql.ExecContext(ctx, `UPDATE changes SET title = ?, intent = ?, acceptance_criteria = ?, updated_at = ? WHERE id = ? AND state NOT IN (?, ?)`,
-		title, intent, string(data), formatTime(at), id, string(change.Merged), string(change.Closed))
+	csID, csOwner, csTask, csProblem := criteriaSetColumns(set)
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := freezeCriteriaSet(ctx, tx, set); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE changes SET title = ?, intent = ?, acceptance_criteria = ?, cs_id = ?, cs_owner = ?, cs_task = ?, cs_problem = ?, updated_at = ? WHERE id = ? AND state NOT IN (?, ?)`,
+		title, intent, string(data), csID, csOwner, csTask, csProblem, formatTime(at), id, string(change.Merged), string(change.Closed))
 	if err != nil {
 		return mapErr(err)
 	}
 	if n, _ := res.RowsAffected(); n == 1 {
-		return nil
+		return tx.Commit()
 	}
 	c, err := db.GetChange(ctx, id)
 	if err != nil {
@@ -361,15 +378,19 @@ func scanChange(s scanner) (change.Change, error) {
 	var mAuto sql.NullBool
 	var apReason, apHead, apAt, apBy, apSource string
 	var prNumber int
+	var csID, csOwner, csTask, csProblem string
 	var prURL string
 	if err := s.Scan(&c.ID, &c.RepoID, &c.SourceBranch, &c.TargetBranch, &c.Title, &c.Intent,
 		&criteria, &constraints, &c.SubmittedBy, &state, &created, &updated,
-		&mCommit, &mPrevious, &mStrategy, &mRun, &mBy, &mAuto, &mAt, &c.SourceHead, &apReason, &apHead, &apAt, &apBy, &apSource, &c.PlumbixBranch, &prNumber, &prURL); err != nil {
+		&mCommit, &mPrevious, &mStrategy, &mRun, &mBy, &mAuto, &mAt, &c.SourceHead, &apReason, &apHead, &apAt, &apBy, &apSource, &c.PlumbixBranch, &prNumber, &prURL, &csID, &csOwner, &csTask, &csProblem); err != nil {
 		return change.Change{}, mapErr(err)
 	}
 	c.State = change.State(state)
 	if prNumber > 0 {
 		c.PullRequest = &change.PullRequestRef{Number: prNumber, URL: prURL}
+	}
+	if csID != "" {
+		c.CriteriaSet = &change.CriteriaSetRef{ID: csID, Owner: csOwner, Task: csTask, Problem: csProblem}
 	}
 	if apAt != "" {
 		at, err := parseTime(apAt)
@@ -440,6 +461,34 @@ func (db *DB) UpdateRepoMerging(ctx context.Context, id string, pullRequests boo
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return change.ErrNotFound
+	}
+	return nil
+}
+
+// criteriaSetColumns is a change's criteria-set reference as the four
+// columns hold it; empty strings when the change stated its own criteria.
+func criteriaSetColumns(ref *change.CriteriaSetRef) (id, owner, task, problem string) {
+	if ref == nil {
+		return "", "", "", ""
+	}
+	return ref.ID, ref.Owner, ref.Task, ref.Problem
+}
+
+// freezeCriteriaSet marks the set a change takes its criteria from as
+// frozen, inside the change's own transaction, and only if the set still
+// has the version the criteria were read at (WU-066): a set edited in
+// between is ErrConflict, and the caller reads it again. A reference that
+// carries a problem names a set the change did not use, and freezes nothing.
+func freezeCriteriaSet(ctx context.Context, tx *sql.Tx, ref *change.CriteriaSetRef) error {
+	if ref == nil || ref.Problem != "" {
+		return nil
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE criteria_sets SET frozen = 1 WHERE id = ? AND updated_at = ?`, ref.ID, formatTime(ref.Version))
+	if err != nil {
+		return mapErr(err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("%w: set %s", change.ErrCriteriaSetChanged, ref.ID)
 	}
 	return nil
 }

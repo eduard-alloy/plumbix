@@ -463,6 +463,12 @@ export function ChangePage({ id }: { id: string }) {
                 <span className="mono dim" style={{ fontSize: 12 }}>
                   {v.critCount}
                 </span>
+                {v.criteriaSet && (
+                  <span className="mono dim2 criteria-set" title={v.criteriaSet.problem || undefined} data-testid="criteria-set">
+                    {v.criteriaSet.text}
+                    {v.criteriaSet.problem ? ` · ${v.criteriaSet.problem}` : ''}
+                  </span>
+                )}
               </div>
               <div className="criteria">
                 {v.criteria.map((cr) => {

@@ -6,6 +6,7 @@ import (
 	"encoding/base32"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -104,12 +105,25 @@ func (s *Service) Submit(ctx context.Context, in ChangeInput) (Change, error) {
 		}
 		return Change{}, err
 	}
+	criteria, ref := in.AcceptanceCriteria, in.CriteriaSetRef
+	if in.CriteriaSet != "" {
+		// The set supplies the criteria, frozen as of now (WU-066); the
+		// submission's own list, if any, is not used.
+		cs, err := s.store.GetCriteriaSet(ctx, in.CriteriaSet)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return Change{}, fmt.Errorf("%w: criteria set %s", ErrNotFound, in.CriteriaSet)
+			}
+			return Change{}, err
+		}
+		criteria, ref = CopyCriteria(cs.Criteria), &CriteriaSetRef{ID: cs.ID, Owner: cs.Owner, Task: cs.Task, Version: cs.UpdatedAt}
+	}
 	now := s.now().UTC()
 	c := Change{
 		ID: NewID("c_"), RepoID: in.RepoID, SourceBranch: in.SourceBranch, TargetBranch: in.TargetBranch,
-		Title: in.Title, Intent: in.Intent, AcceptanceCriteria: in.AcceptanceCriteria,
+		Title: in.Title, Intent: in.Intent, AcceptanceCriteria: criteria,
 		Constraints: in.Constraints, SubmittedBy: in.SubmittedBy, PlumbixBranch: in.PlumbixBranch, PullRequest: in.PullRequest,
-		State: Open, CreatedAt: now, UpdatedAt: now,
+		CriteriaSet: ref, State: Open, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.store.CreateChange(ctx, c); err != nil {
 		if errors.Is(err, ErrConflict) {
@@ -143,7 +157,7 @@ func (s *Service) List(ctx context.Context, f Filter) ([]Change, error) {
 // date with the pull request it mirrors (WU-062), under the submission
 // rules; a final change is not touched. No run starts: the next one reads
 // the new text.
-func (s *Service) UpdatePullRequestText(ctx context.Context, id, title, intent string, criteria []Criterion) (Change, error) {
+func (s *Service) UpdatePullRequestText(ctx context.Context, id, title, intent string, criteria []Criterion, set *CriteriaSetRef) (Change, error) {
 	c, err := s.Get(ctx, id)
 	if err != nil {
 		return Change{}, err
@@ -156,10 +170,83 @@ func (s *Service) UpdatePullRequestText(ctx context.Context, id, title, intent s
 	if err != nil {
 		return Change{}, err
 	}
-	if err := s.store.UpdateChangeText(ctx, id, in.Title, in.Intent, in.AcceptanceCriteria, s.now().UTC()); err != nil {
+	if err := s.store.UpdateChangeText(ctx, id, in.Title, in.Intent, in.AcceptanceCriteria, set, s.now().UTC()); err != nil {
 		return Change{}, err
 	}
 	return s.Get(ctx, id)
+}
+
+// CopyCriteria is a set's criteria as a change carries them: the same
+// text and checks, numbered afresh, independent of the set from then on.
+// The pull-request intake uses it too.
+func CopyCriteria(in []Criterion) []Criterion {
+	out := make([]Criterion, len(in))
+	for i, c := range in {
+		out[i] = Criterion{ID: "AC-" + strconv.Itoa(i+1), Text: c.Text}
+		if c.Check != nil {
+			check := *c.Check
+			check.Steps = append([]string(nil), c.Check.Steps...)
+			out[i].Check = &check
+		}
+	}
+	return out
+}
+
+// CreateCriteriaSet stores acceptance criteria written with a
+// specification (WU-066, A43) and returns the set with its id.
+func (s *Service) CreateCriteriaSet(ctx context.Context, in CriteriaSetInput) (CriteriaSet, error) {
+	in, err := normalizeCriteriaSet(in)
+	if err != nil {
+		return CriteriaSet{}, err
+	}
+	now := s.now().UTC()
+	cs := CriteriaSet{ID: NewID("cs_"), Task: in.Task, Title: in.Title, Owner: in.Owner, Source: in.Source, Criteria: in.Criteria, UsedBy: []string{}, CreatedAt: now, UpdatedAt: now}
+	if err := s.store.CreateCriteriaSet(ctx, cs); err != nil {
+		return CriteriaSet{}, err
+	}
+	return cs, nil
+}
+
+// UpdateCriteriaSet replaces a set's title, owner, source and criteria;
+// a set a change has used is frozen (ErrCriteriaSetUsed).
+func (s *Service) UpdateCriteriaSet(ctx context.Context, id string, in CriteriaSetInput) (CriteriaSet, error) {
+	cur, err := s.GetCriteriaSet(ctx, id)
+	if err != nil {
+		return CriteriaSet{}, err
+	}
+	if cur.Frozen || len(cur.UsedBy) > 0 {
+		used := strings.Join(cur.UsedBy, ", ")
+		if used == "" {
+			used = "a change since closed or edited away"
+		}
+		return CriteriaSet{}, fmt.Errorf("%w: set %s was used by %s; a new set is a new id", ErrCriteriaSetUsed, id, used)
+	}
+	in, err = normalizeCriteriaSet(in)
+	if err != nil {
+		return CriteriaSet{}, err
+	}
+	cs := CriteriaSet{ID: id, Task: in.Task, Title: in.Title, Owner: in.Owner, Source: in.Source, Criteria: in.Criteria, UsedBy: []string{}, CreatedAt: cur.CreatedAt, UpdatedAt: s.now().UTC()}
+	if err := s.store.UpdateCriteriaSet(ctx, cs); err != nil {
+		return CriteriaSet{}, err
+	}
+	return s.GetCriteriaSet(ctx, id)
+}
+
+// GetCriteriaSet returns one set, with the changes that used it.
+func (s *Service) GetCriteriaSet(ctx context.Context, id string) (CriteriaSet, error) {
+	cs, err := s.store.GetCriteriaSet(ctx, id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return CriteriaSet{}, fmt.Errorf("%w: criteria set %s", ErrNotFound, id)
+		}
+		return CriteriaSet{}, err
+	}
+	return cs, nil
+}
+
+// ListCriteriaSets lists sets, newest first, those of one task when given.
+func (s *Service) ListCriteriaSets(ctx context.Context, task string) ([]CriteriaSet, error) {
+	return s.store.ListCriteriaSets(ctx, strings.TrimSpace(task))
 }
 
 // Close moves a change to closed unless it is already merged or closed.

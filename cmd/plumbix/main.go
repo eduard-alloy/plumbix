@@ -21,6 +21,9 @@ commands:
                         register a repo, set its pull-request gating, list repos,
                         read a repo's GitHub integration or its runs
   submit -f <file|->    submit a change (JSON)
+  criteria add|update|list|show
+                        acceptance criteria written with the specification, named by
+                        a change (criteria_set) or a pull request (Acceptance criteria: cs_...)
   change list|show|close|validate|merge|runs
                         read, close, revalidate or merge changes
   run show|log          read a run, or a step's log
@@ -61,6 +64,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runRepo(args[1:], stdout, stderr)
 	case "submit":
 		return runSubmit(args[1:], stdin, stdout, stderr)
+	case "criteria":
+		return runCriteria(args[1:], stdin, stdout, stderr)
 	case "change":
 		return runChange(args[1:], stdout, stderr)
 	case "run":

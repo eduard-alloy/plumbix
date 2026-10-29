@@ -9,6 +9,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/alert"
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/host"
+	"github.com/eduard-alloy/plumbix/internal/validation"
 )
 
 // TestSyncOpensChangesForPullRequests: each open pull request becomes one
@@ -390,5 +391,69 @@ func TestAutoMergeIsRecordedAsTheSystemsAct(t *testing.T) {
 		if call == "timeline 1" {
 			t.Error("the timeline was read although the pull request carried the request")
 		}
+	}
+}
+
+// TestPullRequestNamesACriteriaSet: a body line "Acceptance criteria:
+// cs_<id>" gives the change the set's criteria, frozen, with the set
+// recorded; the body's own list is then not used. An unknown set leaves
+// the body's list with the problem recorded (WU-066).
+func TestPullRequestNamesACriteriaSet(t *testing.T) {
+	h := newHarness(t)
+	h.eng.steps = []string{"build", "test"}
+	cs, err := h.svc.CreateCriteriaSet(ctx, change.CriteriaSetInput{Task: "kai:plumbix/X6Q5JY", Owner: "eduard@mac", Criteria: []change.Criterion{{Text: "From the spec", Check: &change.Check{Steps: []string{"test"}}}, {Text: "Reads well"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.gh.prs[1] = pr(1, "t", "Intro.\n\nAcceptance criteria: "+cs.ID+"\n\n## Acceptance criteria\n- Something the author wrote (check: build)\n")
+	h.gh.prs[2] = pr(2, "t", "Acceptance criteria: cs_nosuchset00\n\n## Acceptance criteria\n- The author's own\n")
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	c1, _ := h.db.ChangeByPullRequest(ctx, h.repo.ID, 1)
+	if len(c1.AcceptanceCriteria) != 2 || c1.AcceptanceCriteria[0].Text != "From the spec" || c1.AcceptanceCriteria[0].Check == nil || c1.AcceptanceCriteria[0].ID != "AC-1" || c1.CriteriaSet == nil || c1.CriteriaSet.ID != cs.ID || c1.CriteriaSet.Owner != "eduard@mac" || c1.CriteriaSet.Problem != "" {
+		t.Errorf("change from a set = %+v %+v", c1.AcceptanceCriteria, c1.CriteriaSet)
+	}
+	if got, _ := h.svc.GetCriteriaSet(ctx, cs.ID); len(got.UsedBy) != 1 || got.UsedBy[0] != c1.ID {
+		t.Errorf("used_by = %v", got.UsedBy)
+	}
+	c2, _ := h.db.ChangeByPullRequest(ctx, h.repo.ID, 2)
+	if len(c2.AcceptanceCriteria) != 1 || c2.AcceptanceCriteria[0].Text != "The author's own" || c2.CriteriaSet == nil || c2.CriteriaSet.ID != "cs_nosuchset00" || !strings.Contains(c2.CriteriaSet.Problem, "no criteria set") {
+		t.Errorf("change naming an unknown set = %+v %+v", c2.AcceptanceCriteria, c2.CriteriaSet)
+	}
+	// The gate says where the criteria came from.
+	r := finishedRun()
+	r.Result.Criteria = []validation.CombinedCriterion{{ID: "AC-1", Text: "From the spec", Status: validation.Met}, {ID: "AC-2", Text: "Reads well", Status: validation.Unknown}}
+	g, err := GateCheck(c1, r, t0)
+	if err != nil || !strings.Contains(g.Output.Summary, "Criteria from set "+cs.ID+" (kai:plumbix/X6Q5JY, eduard@mac)") {
+		t.Errorf("gate for a set:\n%s %v", g.Output.Summary, err)
+	}
+	r.Result.Criteria = []validation.CombinedCriterion{{ID: "AC-1", Text: "The author's own", Status: validation.Unknown}}
+	if g, _ := GateCheck(c2, r, t0); !strings.Contains(g.Output.Summary, "Criteria set cs_nosuchset00: no criteria set") {
+		t.Errorf("gate for an unknown set:\n%s", g.Output.Summary)
+	}
+	// An edit that adds the line to the second pull request takes the set.
+	h.gh.prs[2] = pr(2, "t", "Acceptance criteria: "+cs.ID+"\n")
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if c2, _ = h.db.ChangeByPullRequest(ctx, h.repo.ID, 2); c2.CriteriaSet == nil || c2.CriteriaSet.ID != cs.ID || c2.CriteriaSet.Problem != "" || len(c2.AcceptanceCriteria) != 2 {
+		t.Errorf("after the edit = %+v %+v", c2.AcceptanceCriteria, c2.CriteriaSet)
+	}
+	// A set's steps are checked against the head's pipeline like a body item's.
+	cs2, err := h.svc.CreateCriteriaSet(ctx, change.CriteriaSetInput{Task: "kai:plumbix/other", Owner: "eduard@mac", Criteria: []change.Criterion{{Text: "Deploys", Check: &change.Check{Steps: []string{"deploy"}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.gh.prs[3] = pr(3, "t", "Acceptance criteria: "+cs2.ID+"\n")
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if c3, _ := h.db.ChangeByPullRequest(ctx, h.repo.ID, 3); len(c3.AcceptanceCriteria) != 1 || c3.AcceptanceCriteria[0].Check != nil || !strings.Contains(c3.AcceptanceCriteria[0].Note, "deploy") || c3.CriteriaSet == nil || c3.CriteriaSet.ID != cs2.ID {
+		t.Errorf("a set naming a step the pipeline lacks = %+v %+v", c3.AcceptanceCriteria, c3.CriteriaSet)
+	}
+	// A pull request cannot write a set: there is no such form in a body.
+	if _, ok := SetReference("## Acceptance criteria\n- create set cs_abcdef123456 with: x\n"); ok {
+		t.Error("a list item read as a set reference")
 	}
 }

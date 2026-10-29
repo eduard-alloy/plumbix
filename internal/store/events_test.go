@@ -534,3 +534,72 @@ func TestMergeEventCarriesAutoMerge(t *testing.T) {
 		t.Errorf("payload = %+v", p)
 	}
 }
+
+// TestSubmittedEventCarriesTheCriteriaSet: a change opened from a criteria
+// set names it in change.submitted, and the payload validates against the
+// events schema; the set is frozen by the write, inside its transaction,
+// and only at the version the criteria were read at (WU-066).
+func TestSubmittedEventCarriesTheCriteriaSet(t *testing.T) {
+	db := openDB(t)
+	schema := compileEventsSchema(t)
+	if err := db.CreateRepo(ctx, sampleRepo("r_1", "https://github.com/a/b")); err != nil {
+		t.Fatal(err)
+	}
+	cs := change.CriteriaSet{ID: "cs_abc123def456", Task: "kai:plumbix/X6Q5JY", Owner: "eduard@mac", Criteria: []change.Criterion{{ID: "AC-1", Text: "works"}}, CreatedAt: t0, UpdatedAt: t0}
+	if err := db.CreateCriteriaSet(ctx, cs); err != nil {
+		t.Fatal(err)
+	}
+	stale := sampleChange("c_0", "r_1", "stale")
+	stale.CriteriaSet = &change.CriteriaSetRef{ID: cs.ID, Owner: cs.Owner, Task: cs.Task, Version: t0.Add(-time.Minute)}
+	if err := db.CreateChange(ctx, stale); !errors.Is(err, change.ErrCriteriaSetChanged) {
+		t.Fatalf("a reference at another version: %v", err)
+	}
+	if got, _ := db.GetCriteriaSet(ctx, cs.ID); got.Frozen {
+		t.Fatal("a refused write froze the set")
+	}
+	c := sampleChange("c_1", "r_1", "feat")
+	c.CriteriaSet = &change.CriteriaSetRef{ID: cs.ID, Owner: cs.Owner, Task: cs.Task, Version: t0}
+	before, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
+	if err := db.CreateChange(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
+	fresh := after[len(before):]
+	if len(fresh) != 1 || fresh[0].Type != events.ChangeSubmitted {
+		t.Fatalf("events = %+v", fresh)
+	}
+	validateEvent(t, schema, fresh[0])
+	var p events.ChangeSubmittedPayload
+	decodePayload(t, fresh[0], &p)
+	if p.CriteriaSet == nil || p.CriteriaSet.ID != cs.ID || p.CriteriaSet.Owner != "eduard@mac" || p.CriteriaSet.Task != cs.Task {
+		t.Errorf("payload = %+v", p)
+	}
+	got, _ := db.GetCriteriaSet(ctx, cs.ID)
+	if !got.Frozen || len(got.UsedBy) != 1 || got.UsedBy[0] != "c_1" {
+		t.Errorf("set after use = frozen %v used_by %v", got.Frozen, got.UsedBy)
+	}
+	// A pull request edit that drops the reference leaves the set frozen.
+	if err := db.UpdateChangeText(ctx, "c_1", "t", "i", []change.Criterion{{ID: "AC-1", Text: "own"}}, nil, t0.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = db.GetCriteriaSet(ctx, cs.ID)
+	if !got.Frozen || len(got.UsedBy) != 0 {
+		t.Errorf("set after the reference was dropped = frozen %v used_by %v", got.Frozen, got.UsedBy)
+	}
+	cs.Criteria = []change.Criterion{{ID: "AC-1", Text: "changed"}}
+	if err := db.UpdateCriteriaSet(ctx, cs); !errors.Is(err, change.ErrCriteriaSetUsed) {
+		t.Errorf("update of a frozen set: %v", err)
+	}
+	// A reference with a problem names a set the change did not use and freezes nothing.
+	if err := db.CreateCriteriaSet(ctx, change.CriteriaSet{ID: "cs_free00000000", Task: "t", Owner: "o", Criteria: []change.Criterion{{ID: "AC-1", Text: "x"}}, CreatedAt: t0, UpdatedAt: t0}); err != nil {
+		t.Fatal(err)
+	}
+	c2 := sampleChange("c_2", "r_1", "feat2")
+	c2.CriteriaSet = &change.CriteriaSetRef{ID: "cs_free00000000", Problem: "no criteria set cs_free00000000 on this server"}
+	if err := db.CreateChange(ctx, c2); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := db.GetCriteriaSet(ctx, "cs_free00000000"); got.Frozen {
+		t.Error("a set named with a problem was frozen")
+	}
+}

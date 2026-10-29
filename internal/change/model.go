@@ -94,10 +94,79 @@ type Change struct {
 	HumanApproval *HumanApproval `json:"human_approval,omitempty"`
 	// PlumbixBranch says Plumbix created the source branch (the pipeline
 	// editor's changes), so Plumbix may bring the target into it (WU-022).
-	PlumbixBranch bool      `json:"plumbix_branch,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	PlumbixBranch bool `json:"plumbix_branch,omitempty"`
+	// CriteriaSet names the set the change took its criteria from, frozen
+	// at submission (WU-066, A43), or the set it named but could not use.
+	CriteriaSet *CriteriaSetRef `json:"criteria_set,omitempty"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
 }
+
+// CriteriaSet is acceptance criteria written with the specification,
+// before the code, by the person who owns the intent (WU-066, A43): a
+// client such as Kai creates one when a task's spec is settled, and a
+// change or a pull request names it instead of stating criteria of its
+// own. Once a change has used a set, the set is frozen.
+type CriteriaSet struct {
+	ID    string `json:"id"`
+	Task  string `json:"task"` // an opaque reference, such as kai:<project>/<ref>
+	Title string `json:"title,omitempty"`
+	Owner string `json:"owner"` // the person publishing, as the client knew them
+	// Source says which tool published the set, when it says.
+	Source   *CriteriaSource `json:"source,omitempty"`
+	Criteria []Criterion     `json:"criteria"`
+	// UsedBy lists the changes that currently take their criteria from
+	// the set. Frozen is set the first time a change does and never
+	// cleared, so a set stays frozen when a pull request later drops its
+	// reference.
+	UsedBy    []string  `json:"used_by"`
+	Frozen    bool      `json:"frozen"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// CriteriaSource names the tool a criteria set came from.
+type CriteriaSource struct {
+	Kind    string `json:"kind"`
+	Project string `json:"project,omitempty"`
+	Ref     string `json:"ref,omitempty"`
+}
+
+// CriteriaSetInput is what a client sends to create or replace a set.
+type CriteriaSetInput struct {
+	Task     string          `json:"task"`
+	Title    string          `json:"title"`
+	Owner    string          `json:"owner"`
+	Source   *CriteriaSource `json:"source"`
+	Criteria []Criterion     `json:"criteria"`
+}
+
+// CriteriaSetRef is what a change keeps of the set it named: who owned
+// it and which task it belonged to, or, when the set could not be used,
+// why (Problem), the change then carrying the criteria it stated itself.
+type CriteriaSetRef struct {
+	ID      string `json:"id"`
+	Owner   string `json:"owner,omitempty"`
+	Task    string `json:"task,omitempty"`
+	Problem string `json:"problem,omitempty"`
+	// Version is the set's updated_at when its criteria were read; the
+	// store writes the reference only if the set still has it, so a set
+	// edited between the read and the write cannot be recorded as used
+	// with criteria it no longer holds.
+	Version time.Time `json:"-"`
+}
+
+// ErrCriteriaSetUsed means a change took its criteria from the set, so
+// the set can no longer change.
+var ErrCriteriaSetUsed = errors.New("criteria set used by a change")
+
+// ErrCriteriaSetChanged means the set was edited between the moment its
+// criteria were read for a change and the moment the change was written;
+// the caller reads the set again and submits again.
+var ErrCriteriaSetChanged = errors.New("criteria set changed while the change was being written; read it again")
+
+// MaxTaskRef bounds a criteria set's task reference.
+const MaxTaskRef = 200
 
 // HumanApproval records that a person approved a change, who and why.
 type HumanApproval struct {
@@ -193,9 +262,16 @@ type Store interface {
 	// SetChangeState moves a change from one state to another. It returns
 	// ErrConflict if the change is no longer in state from.
 	SetChangeState(ctx context.Context, id string, from, to State, at time.Time) error
-	// UpdateChangeText rewrites a change's title, intent and criteria, as a
-	// pull request's edit asks (WU-062); refused for a final change.
-	UpdateChangeText(ctx context.Context, id, title, intent string, criteria []Criterion, at time.Time) error
+	// UpdateChangeText rewrites a change's title, intent, criteria and
+	// criteria-set reference, as a pull request's edit asks (WU-062,
+	// WU-066); refused for a final change.
+	UpdateChangeText(ctx context.Context, id, title, intent string, criteria []Criterion, set *CriteriaSetRef, at time.Time) error
+	// Criteria sets (WU-066). GetCriteriaSet fills UsedBy; UpdateCriteriaSet
+	// is ErrCriteriaSetUsed once a change has used the set.
+	CreateCriteriaSet(ctx context.Context, cs CriteriaSet) error
+	UpdateCriteriaSet(ctx context.Context, cs CriteriaSet) error
+	GetCriteriaSet(ctx context.Context, id string) (CriteriaSet, error)
+	ListCriteriaSets(ctx context.Context, task string) ([]CriteriaSet, error)
 	// ApproveByPerson records a person's approval at head and moves the
 	// change from state from to approved. ErrConflict if it left state from.
 	ApproveByPerson(ctx context.Context, id string, from State, approval HumanApproval) error

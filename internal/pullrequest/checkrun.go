@@ -196,6 +196,14 @@ func GateCheck(c change.Change, r run.Run, now time.Time) (host.CheckRun, error)
 			fmt.Fprintf(&b, "- %s\n", reason)
 		}
 	}
+	if ref := c.CriteriaSet; ref != nil {
+		switch {
+		case ref.Problem != "":
+			fmt.Fprintf(&b, "\nCriteria set %s: %s.\n", ref.ID, ref.Problem)
+		default:
+			fmt.Fprintf(&b, "\nCriteria from set %s (%s, %s), frozen when the change was opened; the pull request's own list, if any, was not used.\n", ref.ID, ref.Task, ref.Owner)
+		}
+	}
 	if len(res.Criteria) == 0 {
 		b.WriteString("\n" + NoCriteriaNote + "\n")
 	} else {

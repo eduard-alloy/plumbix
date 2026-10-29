@@ -28,6 +28,19 @@ var (
 	commandRe = regexp.MustCompile(`(?i)\((?:run|command|cmd|exec|shell):[^)]*\)\s*$`)
 )
 
+// setRefRe is the one line that names a criteria set in a pull request
+// body (WU-066): "Acceptance criteria: cs_<id>", on a line of its own.
+var setRefRe = regexp.MustCompile(`(?im)^\s*acceptance criteria:\s*(cs_[a-z0-9]{6,32})\s*$`)
+
+// SetReference returns the criteria set a pull request body names, if any.
+func SetReference(body string) (string, bool) {
+	m := setRefRe.FindStringSubmatch(strings.ReplaceAll(body, "\r\n", "\n"))
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
 // NoteCommand is the note on an item that asked for a command.
 const NoteCommand = "names a command, which a pull request cannot run; bind steps with (check: step, step)"
 
@@ -94,6 +107,35 @@ func bind(c *change.Criterion, known func(step string) bool) {
 	default:
 		c.Check = &change.Check{Steps: steps}
 	}
+}
+
+// unbindUnknown leaves a criterion bound to a step the pipeline lacks as
+// text with a note, the way bind treats a body item (WU-062); with no
+// pipeline to check against (known nil) nothing changes.
+func unbindUnknown(criteria []change.Criterion, known func(string) bool) []change.Criterion {
+	if known == nil {
+		return criteria
+	}
+	for i := range criteria {
+		c := &criteria[i]
+		if c.Check == nil || len(c.Check.Steps) == 0 {
+			continue
+		}
+		var unknown []string
+		for _, st := range c.Check.Steps {
+			if !known(st) {
+				unknown = append(unknown, st)
+			}
+		}
+		switch len(unknown) {
+		case 0:
+		case 1:
+			c.Check, c.Note = nil, "names step `"+unknown[0]+"`, which the pipeline has not"
+		default:
+			c.Check, c.Note = nil, "names steps `"+strings.Join(unknown, "`, `")+"`, which the pipeline has not"
+		}
+	}
+	return criteria
 }
 
 // parseItems reads the items under the heading, as text.

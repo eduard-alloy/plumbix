@@ -67,6 +67,14 @@ type (
 		SubmittedBy  string `json:"submitted_by,omitempty"`
 		// PullRequest is the GitHub pull request the change mirrors (WU-054).
 		PullRequest *PullRequestPayload `json:"pull_request,omitempty"`
+		// CriteriaSet is the set the change took its criteria from (WU-066).
+		CriteriaSet *CriteriaSetPayload `json:"criteria_set,omitempty"`
+	}
+	// CriteriaSetPayload names a criteria set, its owner and its task.
+	CriteriaSetPayload struct {
+		ID    string `json:"id"`
+		Owner string `json:"owner,omitempty"`
+		Task  string `json:"task,omitempty"`
 	}
 	// PullRequestPayload names a pull request by number and URL.
 	PullRequestPayload struct {

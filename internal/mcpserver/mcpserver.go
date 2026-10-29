@@ -140,7 +140,8 @@ type (
 		TargetBranch       string      `json:"target_branch,omitempty" jsonschema:"defaults to main"`
 		Title              string      `json:"title"`
 		Intent             string      `json:"intent" jsonschema:"why, in a few sentences; the validators check the diff against it"`
-		AcceptanceCriteria []criterion `json:"acceptance_criteria"`
+		AcceptanceCriteria []criterion `json:"acceptance_criteria,omitempty" jsonschema:"what must hold; may be left out when criteria_set names a set"`
+		CriteriaSet        string      `json:"criteria_set,omitempty" jsonschema:"a criteria set id (cs_...) written with the specification; its criteria are taken, frozen, and acceptance_criteria may be left empty"`
 		Constraints        []string    `json:"constraints,omitempty"`
 		SubmittedBy        string      `json:"submitted_by,omitempty" jsonschema:"ignored: the session identity is used"`
 	}

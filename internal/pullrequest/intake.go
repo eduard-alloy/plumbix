@@ -197,18 +197,53 @@ func (s *Syncer) logFork(repo change.Repo, pr host.PullRequest) {
 	}
 }
 
-// text is what a pull request says: its title, intent and criteria as
-// the change carries them, the criteria bound to the steps of the
-// pipeline at the pull request's head (WU-062).
-func (s *Syncer) text(ctx context.Context, repo change.Repo, pr host.PullRequest) (title, intent string, criteria []change.Criterion) {
-	intent = strings.TrimSpace(pr.Body)
-	if intent == "" {
-		intent = fmt.Sprintf("%s (pull request #%d has no description)", strings.TrimSpace(pr.Title), pr.Number)
+// prText is what a pull request says, as the change carries it.
+type prText struct {
+	title, intent string
+	criteria      []change.Criterion
+	// set is the criteria set the body names (WU-066): when found, the
+	// change takes the set's criteria and ref records it; when not, ref
+	// carries the problem and criteria stays the body's own list.
+	set *change.CriteriaSet
+	ref *change.CriteriaSetRef
+}
+
+// text reads a pull request's title, intent and criteria: the criteria
+// from the set the body names (WU-066), else from the body's own list
+// bound to the steps of the pipeline at the head (WU-062).
+func (s *Syncer) text(ctx context.Context, repo change.Repo, pr host.PullRequest) prText {
+	t := prText{intent: strings.TrimSpace(pr.Body)}
+	if t.intent == "" {
+		t.intent = fmt.Sprintf("%s (pull request #%d has no description)", strings.TrimSpace(pr.Title), pr.Number)
 	}
-	title = truncate(strings.TrimSpace(pr.Title), change.MaxTitle)
-	intent = truncate(intent, change.MaxIntent)
-	criteria = ParseCriteria(pr.Body, s.knownSteps(ctx, repo, pr))
-	return title, intent, criteria
+	t.title = truncate(strings.TrimSpace(pr.Title), change.MaxTitle)
+	t.intent = truncate(t.intent, change.MaxIntent)
+	if id, ok := SetReference(pr.Body); ok {
+		cs, err := s.Changes.GetCriteriaSet(ctx, id)
+		switch {
+		case err == nil:
+			t.set, t.ref = &cs, &change.CriteriaSetRef{ID: cs.ID, Owner: cs.Owner, Task: cs.Task, Version: cs.UpdatedAt}
+			// The set's steps are checked against the head's pipeline like a
+			// body item's (WU-062): one the pipeline lacks stays text with a note.
+			t.criteria = unbindUnknown(change.CopyCriteria(cs.Criteria), s.knownStepsOf(ctx, repo, pr))
+			return t
+		case errors.Is(err, change.ErrNotFound):
+			t.ref = &change.CriteriaSetRef{ID: id, Problem: "no criteria set " + id + " on this server; the pull request's own list was used"}
+		default:
+			t.ref = &change.CriteriaSetRef{ID: id, Problem: "criteria set " + id + " could not be read; the pull request's own list was used"}
+			s.Log.Warn("pull request names a criteria set that could not be read", "repo", repo.ID, "pr", pr.Number, "set", id, "err", err)
+		}
+	}
+	t.criteria = ParseCriteria(pr.Body, s.knownSteps(ctx, repo, pr))
+	return t
+}
+
+// sameRef compares two criteria-set references.
+func sameRef(a, b *change.CriteriaSetRef) bool {
+	if (a == nil) != (b == nil) {
+		return false
+	}
+	return a == nil || (a.ID == b.ID && a.Owner == b.Owner && a.Task == b.Task && a.Problem == b.Problem)
 }
 
 // knownSteps reads the pipeline at the pull request's head and reports
@@ -218,6 +253,12 @@ func (s *Syncer) knownSteps(ctx context.Context, repo change.Repo, pr host.PullR
 	if !strings.Contains(pr.Body, "(") && !strings.Contains(pr.Body, "（") {
 		return nil // nothing to bind; spare the fetch
 	}
+	return s.knownStepsOf(ctx, repo, pr)
+}
+
+// knownStepsOf reads the pipeline at the pull request's head and reports
+// whether a step exists there; nil when it cannot be read.
+func (s *Syncer) knownStepsOf(ctx context.Context, repo change.Repo, pr host.PullRequest) func(string) bool {
 	v, err := s.Engine.PipelineFile(ctx, repo.ID, pr.Head.Branch)
 	if err != nil {
 		s.Log.Warn("pull request criteria: the pipeline could not be read; step names checked for form only", "repo", repo.ID, "pr", pr.Number, "err", err)
@@ -240,17 +281,17 @@ func (s *Syncer) follow(ctx context.Context, repo change.Repo, c change.Change, 
 	if c.State.Final() {
 		return nil
 	}
-	title, intent, criteria := s.text(ctx, repo, pr)
-	if title == c.Title && intent == c.Intent && sameCriteria(criteria, c.AcceptanceCriteria) {
+	t := s.text(ctx, repo, pr)
+	if t.title == c.Title && t.intent == c.Intent && sameCriteria(t.criteria, c.AcceptanceCriteria) && sameRef(t.ref, c.CriteriaSet) {
 		return nil
 	}
-	if _, err := s.Changes.UpdatePullRequestText(ctx, c.ID, title, intent, criteria); err != nil {
+	if _, err := s.Changes.UpdatePullRequestText(ctx, c.ID, t.title, t.intent, t.criteria, t.ref); err != nil {
 		if errors.Is(err, change.ErrInvalidState) {
 			return nil
 		}
 		return fmt.Errorf("follow the edited pull request: %w", err)
 	}
-	s.Log.Info("pull request edited, change updated", "repo", repo.ID, "pr", pr.Number, "change", c.ID, "criteria", len(criteria))
+	s.Log.Info("pull request edited, change updated", "repo", repo.ID, "pr", pr.Number, "change", c.ID, "criteria", len(t.criteria))
 	return nil
 }
 
@@ -274,11 +315,11 @@ func sameCriteria(a, b []change.Criterion) bool {
 
 // open submits the change a pull request describes and starts its run.
 func (s *Syncer) open(ctx context.Context, repo change.Repo, pr host.PullRequest) error {
-	title, intent, criteria := s.text(ctx, repo, pr)
+	t := s.text(ctx, repo, pr)
 	in := change.ChangeInput{
 		RepoID: repo.ID, SourceBranch: pr.Head.Branch, TargetBranch: pr.Base.Branch,
-		Title: title, Intent: intent,
-		AcceptanceCriteria: criteria, AllowNoCriteria: true,
+		Title: t.title, Intent: t.intent,
+		AcceptanceCriteria: t.criteria, AllowNoCriteria: true, CriteriaSetRef: t.ref,
 		SubmittedBy: Submitter(pr.Author),
 		PullRequest: &change.PullRequestRef{Number: pr.Number, URL: pr.URL},
 	}

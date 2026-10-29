@@ -155,8 +155,8 @@ Landed so far: WU-053 (validator usage on the run), WU-054 and WU-055 (the gate 
 | WU-059 | Plumbix's own merges satisfy a required `plumbix/gate`: the landing commit goes to a holding ref, the gate check is posted on it, then the target moves; a push refused by repository rules is reported as such | F-010, F-001 | ✅ |
 | WU-060 | A person's approval names the person: `change.approved_by_person` and the change's approval carry who approved and through which surface (Approve action or GitHub review) | F-010, F-001 | ✅ |
 | WU-062 | Pull-request criteria bound to pipeline steps: `(check: build, test)` on an item becomes `check.steps`; unknown steps stay text with a note the gate shows; never a command; edited pull requests update the change (Chart-AI ask 1) | F-010, F-006 | ✅ |
-| WU-066 | Criteria sets: criteria as a first-class object created at specification time (Kai first), referenced by id from a submission or a pull request, frozen at intake (A43); after WU-063 | F-001, F-010, F-011 | ⚪ |
 | WU-063 | Auto-merge recorded: `change.merged` carries `auto_merge` when GitHub merged on the requester's behalf (Chart-AI ask 2) | F-010 | ✅ |
+| WU-066 | Criteria sets: criteria as a first-class object created at specification time (Kai first), referenced by id from a submission or a pull request, frozen at intake (A43); after WU-063 | F-001, F-010, F-011 | ✅ |
 | WU-064 | Merge strategy settable after registration (Chart-AI ask 3) | F-001, F-010 | ⚪ |
 | WU-065 | A repository can be paused or removed (Chart-AI ask 4) | F-001 | ⚪ |
 | WU-056 | Pull requests with `merger: plumbix`: close the pull request after the merge or document the shape as unsupported; never reopen a change for a merged head | F-010 | ⚪ |

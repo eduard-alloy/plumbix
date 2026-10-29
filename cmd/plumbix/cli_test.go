@@ -142,6 +142,26 @@ func TestCLIFlow(t *testing.T) {
 		}
 	}
 
+	// Criteria sets (WU-066): written with the specification, named by a change.
+	setFile := filepath.Join(t.TempDir(), "set.json")
+	if err := os.WriteFile(setFile, []byte(`{"task": "kai:plumbix/X6Q5JY", "owner": "eduard@mac", "criteria": [{"text": "works", "check": {"steps": ["test"]}}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cset := c.mustRun("", "criteria", "add", "-f", setFile)
+	setID, _ := cset["id"].(string)
+	if !strings.HasPrefix(setID, "cs_") {
+		t.Fatalf("criteria add = %v", cset)
+	}
+	if listed := c.mustRun("", "criteria", "list", "--task", "kai:plumbix/X6Q5JY")["criteria_sets"].([]any); len(listed) != 1 {
+		t.Errorf("criteria list = %v", listed)
+	}
+	if shown := c.mustRun("", "criteria", "show", setID); shown["owner"] != "eduard@mac" {
+		t.Errorf("criteria show = %v", shown)
+	}
+	if code, _, errOut := c.run("", "criteria", "add"); code != 2 || !strings.Contains(errOut, "-f") {
+		t.Errorf("criteria add without a file: exit %d, stderr %q", code, errOut)
+	}
+
 	changeJSON := `{"repo_id": "` + repoID + `", "source_branch": "feat", "target_branch": "main", "title": "T", "intent": "I", "acceptance_criteria": [{"text": "works"}]}`
 	file := filepath.Join(t.TempDir(), "change.json")
 	if err := os.WriteFile(file, []byte(changeJSON), 0o600); err != nil {

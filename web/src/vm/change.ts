@@ -98,6 +98,8 @@ export interface ChangeView {
   constraints: string[]
   critCount: string
   criteria: CriterionVM[]
+  /** Where the criteria came from (WU-066): a set, in words, or the problem with the set the change named. */
+  criteriaSet: { id: string; text: string; problem: string } | null
   judged: boolean
   verdict: {
     runId: string
@@ -216,6 +218,11 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       more: rest.map((a) => ({ validator: a.validator, status: a.status, reason: a.reason, evidence: a.evidence ?? [], advisory: !!a.advisory })),
     }
   })
+  const criteriaSet = c.criteria_set
+    ? c.criteria_set.problem
+      ? { id: c.criteria_set.id, text: `set ${c.criteria_set.id} not used`, problem: c.criteria_set.problem }
+      : { id: c.criteria_set.id, text: `from set ${c.criteria_set.id} · ${c.criteria_set.task ?? ''} · ${c.criteria_set.owner ?? ''}`, problem: '' }
+    : null
   const met = criteria.filter((x) => x.status === 'met').length
   const tot = criteria.length
   const findingsAll = result?.findings ?? []
@@ -270,6 +277,7 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
     constraints: c.constraints ?? [],
     critCount: judged ? `${met} of ${tot} met` : `${tot} pending`,
     criteria,
+    criteriaSet,
     judged,
     verdict: {
       runId: cur?.id ?? 'no run yet',

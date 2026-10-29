@@ -107,6 +107,12 @@ type ChangeInput struct {
 	// rather than inventing one.
 	PullRequest     *PullRequestRef `json:"-"`
 	AllowNoCriteria bool            `json:"-"`
+	// CriteriaSet names the set to take the criteria from (WU-066); the
+	// submission's own acceptance_criteria are then ignored. CriteriaSetRef
+	// is set by the server when a pull request named a set it could not
+	// use, with the problem; a client cannot claim it.
+	CriteriaSet    string          `json:"criteria_set"`
+	CriteriaSetRef *CriteriaSetRef `json:"-"`
 }
 
 // normalizeRepo fills defaults and checks every rule.
@@ -187,33 +193,68 @@ func normalizeChange(in ChangeInput) (ChangeInput, error) {
 		ps.add("submitted_by", "must be at most %d characters", MaxSubmittedBy)
 	}
 
-	switch n := len(in.AcceptanceCriteria); {
-	case n == 0 && !in.AllowNoCriteria:
-		ps.add("acceptance_criteria", "must contain at least one criterion")
-	case n > MaxCriteria:
-		ps.add("acceptance_criteria", "must contain at most %d criteria", MaxCriteria)
+	in.CriteriaSet = strings.TrimSpace(in.CriteriaSet)
+	if in.CriteriaSet != "" && !criteriaSetID.MatchString(in.CriteriaSet) {
+		ps.add("criteria_set", "must look like cs_<id>")
 	}
-	criteria := make([]Criterion, len(in.AcceptanceCriteria))
+	// A named set supplies the criteria; the submission's own list is not
+	// required then (WU-066).
+	in.AcceptanceCriteria = normalizeCriteria(&ps, "acceptance_criteria", in.AcceptanceCriteria, in.AllowNoCriteria || in.CriteriaSet != "", true)
+
+	if len(in.Constraints) > MaxConstraints {
+		ps.add("constraints", "must contain at most %d items", MaxConstraints)
+	}
+	constraints := make([]string, 0, len(in.Constraints))
+	for i, c := range in.Constraints {
+		c = strings.TrimSpace(c)
+		text(fmt.Sprintf("constraints[%d]", i), c, MaxText)
+		constraints = append(constraints, c)
+	}
+	in.Constraints = constraints
+	return in, ps.err()
+}
+
+var criteriaSetID = regexp.MustCompile(`^cs_[a-z0-9]{6,32}$`)
+
+// normalizeCriteria trims, bounds and ids a list of criteria, the same
+// way for a submission and for a criteria set (WU-066). commands says
+// whether a check may be a command: a submission may, a set may not.
+func normalizeCriteria(ps *problems, field string, in []Criterion, allowEmpty, commands bool) []Criterion {
+	switch n := len(in); {
+	case n == 0 && !allowEmpty:
+		ps.add(field, "must contain at least one criterion")
+	case n > MaxCriteria:
+		ps.add(field, "must contain at most %d criteria", MaxCriteria)
+	}
+	criteria := make([]Criterion, len(in))
 	used := map[string]bool{}
-	for i, c := range in.AcceptanceCriteria {
-		field := fmt.Sprintf("acceptance_criteria[%d]", i)
+	for i, c := range in {
+		item := fmt.Sprintf("%s[%d]", field, i)
 		c.Text = strings.TrimSpace(c.Text)
-		text(field+".text", c.Text, MaxText)
+		switch {
+		case c.Text == "":
+			ps.add(item+".text", "is required")
+		case utf8.RuneCountInString(c.Text) > MaxText:
+			ps.add(item+".text", "must be at most %d characters", MaxText)
+		}
 		if c.ID != "" {
 			switch {
 			case !criterionID.MatchString(c.ID):
-				ps.add(field+".id", "must look like AC-<number>")
+				ps.add(item+".id", "must look like AC-<number>")
 			case used[c.ID]:
-				ps.add(field+".id", "duplicate id %q", c.ID)
+				ps.add(item+".id", "duplicate id %q", c.ID)
 			}
 			used[c.ID] = true
 		}
 		if c.Check != nil {
-			checkProblems(&ps, field+".check", c.Check)
+			checkProblems(ps, item+".check", c.Check)
+			if !commands && strings.TrimSpace(c.Check.Command) != "" {
+				ps.add(item+".check.command", "is not allowed in a criteria set: a set binds steps only, since any change may name it")
+			}
 		}
 		c.Note = strings.TrimSpace(c.Note)
 		if utf8.RuneCountInString(c.Note) > MaxText {
-			ps.add(field+".note", "must be at most %d characters", MaxText)
+			ps.add(item+".note", "must be at most %d characters", MaxText)
 		}
 		criteria[i] = c
 	}
@@ -228,18 +269,46 @@ func normalizeChange(in ChangeInput) (ChangeInput, error) {
 		criteria[i].ID = "AC-" + strconv.Itoa(next)
 		used[criteria[i].ID] = true
 	}
-	in.AcceptanceCriteria = criteria
+	return criteria
+}
 
-	if len(in.Constraints) > MaxConstraints {
-		ps.add("constraints", "must contain at most %d items", MaxConstraints)
+// normalizeCriteriaSet trims and checks a criteria set's input (WU-066).
+func normalizeCriteriaSet(in CriteriaSetInput) (CriteriaSetInput, error) {
+	var ps problems
+	in.Task, in.Title, in.Owner = strings.TrimSpace(in.Task), strings.TrimSpace(in.Title), strings.TrimSpace(in.Owner)
+	switch {
+	case in.Task == "":
+		ps.add("task", "is required: the specification the criteria belong to, such as kai:<project>/<ref>")
+	case utf8.RuneCountInString(in.Task) > MaxTaskRef:
+		ps.add("task", "must be at most %d characters", MaxTaskRef)
 	}
-	constraints := make([]string, 0, len(in.Constraints))
-	for i, c := range in.Constraints {
-		c = strings.TrimSpace(c)
-		text(fmt.Sprintf("constraints[%d]", i), c, MaxText)
-		constraints = append(constraints, c)
+	if utf8.RuneCountInString(in.Title) > MaxTitle {
+		ps.add("title", "must be at most %d characters", MaxTitle)
 	}
-	in.Constraints = constraints
+	switch {
+	case in.Owner == "":
+		ps.add("owner", "is required: the person the criteria belong to")
+	case utf8.RuneCountInString(in.Owner) > MaxSubmittedBy:
+		ps.add("owner", "must be at most %d characters", MaxSubmittedBy)
+	}
+	if in.Source != nil {
+		src := *in.Source
+		src.Kind, src.Project, src.Ref = strings.TrimSpace(src.Kind), strings.TrimSpace(src.Project), strings.TrimSpace(src.Ref)
+		if src.Kind == "" {
+			ps.add("source.kind", "is required when a source is given")
+		}
+		for name, v := range map[string]string{"source.kind": src.Kind, "source.project": src.Project, "source.ref": src.Ref} {
+			if utf8.RuneCountInString(v) > MaxSubmittedBy {
+				ps.add(name, "must be at most %d characters", MaxSubmittedBy)
+			}
+		}
+		in.Source = &src
+	}
+	for i := range in.Criteria {
+		in.Criteria[i].ID = "" // a set numbers its own criteria
+		in.Criteria[i].Note = ""
+	}
+	in.Criteria = normalizeCriteria(&ps, "criteria", in.Criteria, false, false)
 	return in, ps.err()
 }
 

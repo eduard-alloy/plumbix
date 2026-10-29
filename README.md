@@ -61,6 +61,18 @@ claude mcp add plumbix -- plumbix mcp
 
 The session then has tools to register a repository (without a token), submit a change, wait for its verdict, read what the validators found, merge or refresh it, and to act as an external reviewer (`next_review`, `post_verdict`). Each session acts under its own identity, so it never reviews a change it submitted. Approving a `needs_human` change stays a person's act: the tool for it appears only when you start the server with `--allow-approve`, for a session you drive yourself.
 
+## Criteria written with the specification
+
+Acceptance criteria belong with the specification, before the code, owned by the person who owns the intent (A43). A specification tool posts them as a **criteria set** when the spec is settled, and a change only names the set:
+
+```sh
+plumbix criteria add -f set.json      # {"task": "kai:plumbix/X6Q5JY", "owner": "eduard@mac", "criteria": [{"text": "...", "check": {"steps": ["test"]}}]}
+plumbix criteria list --task kai:plumbix/X6Q5JY
+plumbix criteria show cs_abc123def456
+```
+
+An API submission names it with `"criteria_set": "cs_…"` and may leave `acceptance_criteria` out; a pull request names it with one line in its description, `Acceptance criteria: cs_…`, and its own checklist is then not used. The change takes the set's criteria frozen at that moment, with the set's id, owner and task recorded on the change and in `change.submitted`; the gate check says where the criteria came from. Once any change has used a set, the set is frozen: `PUT /api/v1/criteria-sets/{id}` answers `criteria_set_used`, and a new set is a new id. A set binds pipeline steps only, never a command, since any change may name it. A pull request can name a set but never write one; a set it names that does not exist leaves the change with the checklist from the description and the problem recorded. Kai publishes a task's criteria with `kai plan <project> publish <ref>`.
+
 ## Gate GitHub pull requests
 
 Plumbix can run beside a GitHub pull request instead of replacing it: validators run on the pull request, every verdict lands as a check run on its head commit, the hold is a required check, a review approval by a person counts as Plumbix's approval, and GitHub merges. Nothing about the enterprise's workflow changes; Plumbix adds the structured verdict, the per-criterion judgment and the validator's model usage to GitHub's own surfaces (`contracts/github-check-runs.md`).

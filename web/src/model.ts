@@ -119,8 +119,9 @@ export interface Change {
   pull_request?: { number: number; url: string }
   state: ChangeState
   merge?: Merge
-  /** Set while a person's approval stands; a new run clears it. */
-  /** A person's standing approval; by and source name the person and the surface (WU-060), absent on older records. */
+  /** The criteria set the change took its criteria from (WU-066), or the set it named but could not use, with the problem. */
+  criteria_set?: { id: string; owner?: string; task?: string; problem?: string }
+  /** A person's standing approval, set while it stands and cleared by a new run; by and source name the person and the surface (WU-060), absent on older records. */
   human_approval?: { reason: string; head: string; at: string; by?: string; source?: 'plumbix' | 'github_review' }
   /** True when Plumbix created the source branch (a pipeline editor change); it can be updated from its target. */
   plumbix_branch?: boolean

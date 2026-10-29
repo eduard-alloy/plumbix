@@ -32,6 +32,7 @@ func registerChangeRoutes(mux *http.ServeMux, h *changeHandlers) {
 	mux.HandleFunc("POST /api/v1/changes/{id}/close", h.close)
 	mux.HandleFunc("POST /api/v1/changes/{id}/approve", h.approve)
 	mux.HandleFunc("POST /api/v1/changes/{id}/refresh", h.refresh)
+	registerCriteriaSetRoutes(mux, h)
 }
 
 func (h *changeHandlers) createRepo(w http.ResponseWriter, r *http.Request) {
@@ -161,6 +162,10 @@ func (h *changeHandlers) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "invalid_state", err.Error())
 	case errors.Is(err, change.ErrConflict):
 		writeError(w, http.StatusConflict, "conflict", err.Error())
+	case errors.Is(err, change.ErrCriteriaSetUsed):
+		writeError(w, http.StatusConflict, "criteria_set_used", err.Error())
+	case errors.Is(err, change.ErrCriteriaSetChanged):
+		writeError(w, http.StatusConflict, "criteria_set_changed", err.Error())
 	case errors.Is(err, engine.ErrSourceMoved):
 		writeError(w, http.StatusConflict, "source_moved", err.Error())
 	case errors.Is(err, engine.ErrTargetMoved):

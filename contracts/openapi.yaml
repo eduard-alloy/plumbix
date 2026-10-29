@@ -999,6 +999,99 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /criteria-sets:
+    post:
+      operationId: createCriteriaSet
+      summary: Create a criteria set, acceptance criteria written with the specification.
+      description: >
+        A client such as Kai posts a task's acceptance criteria when the specification is settled (WU-066, A43).
+        A change names the set (criteria_set on a submission) or a pull request does (a line "Acceptance criteria: cs_<id>"
+        in its body), and takes the set's criteria frozen at that moment, with the set's id, owner and task recorded on
+        the change. A set binds pipeline steps only, never a command, since any change may name it. Written only through
+        the API token or a browser session; a pull request can name a set but never write one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriteriaSetInput"
+      responses:
+        "201":
+          description: The set, with its id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CriteriaSet"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    get:
+      operationId: listCriteriaSets
+      summary: List criteria sets, newest first, those of one task when task is given.
+      parameters:
+        - name: task
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The sets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CriteriaSetList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /criteria-sets/{id}:
+    get:
+      operationId: getCriteriaSet
+      summary: Read one criteria set, with the changes that used it.
+      parameters:
+        - $ref: "#/components/parameters/CriteriaSetID"
+      responses:
+        "200":
+          description: The set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CriteriaSet"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateCriteriaSet
+      summary: Replace a criteria set no change has used yet.
+      description: Once a change took its criteria from the set, the set is frozen; a new set is a new id.
+      parameters:
+        - $ref: "#/components/parameters/CriteriaSetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriteriaSetInput"
+      responses:
+        "200":
+          description: The replaced set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CriteriaSet"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Code criteria_set_used, the set was used by a change and is frozen.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /login-links:
     post:
       operationId: createLoginLink
@@ -1696,6 +1789,13 @@ components:
       required: true
       schema:
         type: string
+
+    CriteriaSetID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
     SecretKey:
       name: key
       in: path
@@ -1864,6 +1964,88 @@ components:
             Why a pull request's item was not bound to the steps it named (WU-062), such as an unknown step or a
             command, which a pull request cannot run. Never set on an API submission.
           type: string
+    CriteriaSetInput:
+      description: Acceptance criteria written with the specification (WU-066). A set binds pipeline steps only; a command is refused.
+      type: object
+      additionalProperties: false
+      required: [task, owner, criteria]
+      properties:
+        task:
+          description: The specification the criteria belong to, as an opaque reference such as kai:<project>/<ref>.
+          type: string
+          minLength: 1
+          maxLength: 200
+        title:
+          type: string
+          maxLength: 200
+        owner:
+          description: The person the criteria belong to, as the client knows them.
+          type: string
+          minLength: 1
+          maxLength: 100
+        source:
+          $ref: "#/components/schemas/CriteriaSource"
+        criteria:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/CriterionInput"
+    CriteriaSource:
+      description: The tool a criteria set came from.
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+        project:
+          type: string
+        ref:
+          type: string
+    CriteriaSet:
+      type: object
+      additionalProperties: false
+      required: [id, task, owner, criteria, used_by, frozen, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          pattern: "^cs_[a-z0-9]+$"
+        task:
+          type: string
+        title:
+          type: string
+        owner:
+          type: string
+        source:
+          $ref: "#/components/schemas/CriteriaSource"
+        criteria:
+          type: array
+          items:
+            $ref: "#/components/schemas/Criterion"
+        used_by:
+          description: The changes that currently take their criteria from the set.
+          type: array
+          items:
+            type: string
+        frozen:
+          description: Set the first time a change takes its criteria from the set and never cleared; a frozen set cannot be edited.
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CriteriaSetList:
+      type: object
+      additionalProperties: false
+      required: [criteria_sets]
+      properties:
+        criteria_sets:
+          type: array
+          items:
+            $ref: "#/components/schemas/CriteriaSet"
     CriterionInput:
       description: Like Criterion, but id is optional. Missing ids get the smallest unused AC-<n>.
       type: object
@@ -1882,10 +2064,16 @@ components:
     ChangeInput:
       type: object
       additionalProperties: false
-      required: [repo_id, source_branch, target_branch, title, intent, acceptance_criteria]
+      required: [repo_id, source_branch, target_branch, title, intent]
       properties:
         repo_id:
           type: string
+        criteria_set:
+          description: >-
+            A criteria set to take the criteria from (WU-066); acceptance_criteria may then be left out and is not
+            used. Without it, acceptance_criteria needs at least one criterion.
+          type: string
+          pattern: "^cs_[a-z0-9]{6,32}$"
         source_branch:
           $ref: "#/components/schemas/Branch"
         target_branch:
@@ -1947,6 +2135,22 @@ components:
             type: string
         submitted_by:
           type: string
+        criteria_set:
+          description: >-
+            The criteria set the change took its criteria from, frozen at submission (WU-066), or the set it named
+            but could not use, with the problem; absent when the change stated its own criteria.
+          type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id:
+              type: string
+            owner:
+              type: string
+            task:
+              type: string
+            problem:
+              type: string
         pull_request:
           description: The GitHub pull request the change mirrors (WU-054).
           type: object

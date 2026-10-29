@@ -272,3 +272,14 @@ describe('merge record (WU-063)', () => {
     expect(changeView({ ...base, merge: { commit: 'abc'.padEnd(40, '0'), previous: 'def'.padEnd(40, '0'), strategy: 'github', run_id: 'r', merged_by: 'eduard', auto_merge: true, merged_at: at } }, approvedRuns, plumbix, undefined, NOW).verdict.record?.mergedBy).toBe('GitHub auto-merge, requested by eduard')
   })
 })
+
+describe('criteria sets (WU-066)', () => {
+  it('says where the criteria came from, or why the named set was not used', () => {
+    const own = changeView(needsHuman, needsHumanRuns, repos[1], undefined, NOW)
+    expect(own.criteriaSet).toBeNull()
+    const fromSet = changeView({ ...needsHuman, criteria_set: { id: 'cs_abc123def456', owner: 'eduard@mac', task: 'kai:plumbix/X6Q5JY' } }, needsHumanRuns, repos[1], undefined, NOW)
+    expect(fromSet.criteriaSet).toEqual({ id: 'cs_abc123def456', text: 'from set cs_abc123def456 · kai:plumbix/X6Q5JY · eduard@mac', problem: '' })
+    const missing = changeView({ ...needsHuman, criteria_set: { id: 'cs_nosuchset00', problem: 'no criteria set cs_nosuchset00 on this server; the pull request\'s own list was used' } }, needsHumanRuns, repos[1], undefined, NOW)
+    expect(missing.criteriaSet?.problem).toContain('no criteria set cs_nosuchset00')
+  })
+})

@@ -677,3 +677,60 @@ func defaultApprover() string {
 	}
 	return user + "@" + host
 }
+
+// runCriteria handles "plumbix criteria add|update|list|show" (WU-066):
+// acceptance criteria written with the specification, which a change or
+// a pull request names instead of stating its own.
+func runCriteria(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	c := newClientCmd("criteria", stdout, stderr)
+	file := c.fs.String("f", "", "criteria set JSON file, or - for standard input (criteria add|update)")
+	task := c.fs.String("task", "", "list the sets of one task reference (criteria list)")
+	pos, ok := c.parse(args)
+	if !ok {
+		return 2
+	}
+	readBody := func() ([]byte, bool) {
+		if *file == "" {
+			_ = usageError(stderr, "usage: plumbix criteria add -f <set.json | ->")
+			return nil, false
+		}
+		var body []byte
+		var err error
+		if *file == "-" {
+			if stdin == nil {
+				stdin = os.Stdin
+			}
+			body, err = io.ReadAll(stdin)
+		} else {
+			body, err = os.ReadFile(*file)
+		}
+		if err != nil {
+			fmt.Fprintf(stderr, "plumbix: read criteria set: %v\n", err)
+			return nil, false
+		}
+		return body, true
+	}
+	switch {
+	case len(pos) == 1 && pos[0] == "add":
+		body, ok := readBody()
+		if !ok {
+			return 2
+		}
+		return c.call(http.MethodPost, "/api/v1/criteria-sets", body)
+	case len(pos) == 2 && pos[0] == "update":
+		body, ok := readBody()
+		if !ok {
+			return 2
+		}
+		return c.call(http.MethodPut, "/api/v1/criteria-sets/"+url.PathEscape(pos[1]), body)
+	case len(pos) == 1 && pos[0] == "list":
+		path := "/api/v1/criteria-sets"
+		if *task != "" {
+			path += "?task=" + url.QueryEscape(*task)
+		}
+		return c.call(http.MethodGet, path, nil)
+	case len(pos) == 2 && pos[0] == "show":
+		return c.call(http.MethodGet, "/api/v1/criteria-sets/"+url.PathEscape(pos[1]), nil)
+	}
+	return usageError(stderr, "usage: plumbix criteria add -f <set.json | -> | criteria update <id> -f <set.json | -> | criteria list [--task <ref>] | criteria show <id>")
+}

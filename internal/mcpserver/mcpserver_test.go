@@ -168,6 +168,15 @@ func TestToolsWrapTheAPIUnderTheSessionIdentity(t *testing.T) {
 	if !strings.Contains(text(res), `"c_1"`) {
 		t.Errorf("submit result = %s", text(res))
 	}
+	// A submission may name a criteria set instead of stating criteria (WU-066); the id reaches the API.
+	res = call(t, cs, "submit_change", map[string]any{"repo_id": "r_1", "source_branch": "feat2", "title": "t", "intent": "i", "criteria_set": "cs_abc123def456"})
+	if res.IsError {
+		t.Fatalf("submit with a set: %s", text(res))
+	}
+	_ = json.Unmarshal([]byte(api.bodies["POST /api/v1/changes"]), &sent)
+	if sent["criteria_set"] != "cs_abc123def456" {
+		t.Errorf("submitted body = %v; want criteria_set forwarded", sent)
+	}
 	// With --allow-approve the tool exists, and a refusal is a tool error carrying the API's code.
 	approver, _ := connect(t, api, "eduard", func(o *Options) { o.AllowApprove = true })
 	res = call(t, approver, "approve_change", map[string]any{"change_id": "c_1", "reason": "fine"})
