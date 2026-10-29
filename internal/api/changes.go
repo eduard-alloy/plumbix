@@ -26,6 +26,7 @@ type changeHandlers struct {
 func registerChangeRoutes(mux *http.ServeMux, h *changeHandlers) {
 	mux.HandleFunc("POST /api/v1/repos", h.createRepo)
 	mux.HandleFunc("GET /api/v1/repos", h.listRepos)
+	mux.HandleFunc("DELETE /api/v1/repos/{id}", h.removeRepo)
 	mux.HandleFunc("POST /api/v1/changes", h.submit)
 	mux.HandleFunc("GET /api/v1/changes", h.list)
 	mux.HandleFunc("GET /api/v1/changes/{id}", h.get)
@@ -55,6 +56,33 @@ func (h *changeHandlers) listRepos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"repos": repos})
+}
+
+// removeRepo retires a repository at a person's request (WU-065). The
+// mirror on disk goes with it, best effort; the record stays.
+func (h *changeHandlers) removeRepo(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		By string `json:"by"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	repo, err := h.svc.GetRepo(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	if err := h.svc.RemoveRepo(r.Context(), repo.ID, body.By); err != nil {
+		h.fail(w, err)
+		return
+	}
+	if h.engine != nil {
+		if err := h.engine.RemoveMirror(repo); err != nil {
+			h.log.Warn("repository removed, its mirror stays on disk", "repo", repo.ID, "err", err)
+		}
+	}
+	h.log.Info("repository removed", "repo", repo.ID, "url", repo.URL, "by", strings.TrimSpace(body.By))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *changeHandlers) submit(w http.ResponseWriter, r *http.Request) {
@@ -166,6 +194,8 @@ func (h *changeHandlers) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "criteria_set_used", err.Error())
 	case errors.Is(err, change.ErrCriteriaSetChanged):
 		writeError(w, http.StatusConflict, "criteria_set_changed", err.Error())
+	case errors.Is(err, change.ErrRepoBusy):
+		writeError(w, http.StatusConflict, "repo_busy", err.Error())
 	case errors.Is(err, engine.ErrSourceMoved):
 		writeError(w, http.StatusConflict, "source_moved", err.Error())
 	case errors.Is(err, engine.ErrTargetMoved):

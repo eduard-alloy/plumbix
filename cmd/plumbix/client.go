@@ -157,11 +157,19 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 	c.fs.BoolVar(&in.PullRequests, "pull-requests", false, "gate the repository's GitHub pull requests with check runs (repo add, repo set)")
 	c.fs.StringVar(&in.Merger, "merger", "", "who lands changes: plumbix or github (repo add, repo set; default github with --pull-requests, else plumbix)")
 	branch := c.fs.String("branch", "", "only runs of this branch (repo runs)")
+	paused := c.fs.Bool("paused", false, "stop polling and pull-request intake for the repository; --paused=false resumes (repo set)")
+	by := c.fs.String("by", defaultApprover(), "who removes the repository, as Plumbix should record it (repo remove)")
 	pos, ok := c.parse(args)
 	if !ok {
 		return 2
 	}
 	switch {
+	case len(pos) == 2 && pos[0] == "remove":
+		if strings.TrimSpace(*by) == "" {
+			return usageError(stderr, "plumbix repo remove needs --by: name the person removing the repository")
+		}
+		body, _ := json.Marshal(map[string]string{"by": strings.TrimSpace(*by)})
+		return c.call(http.MethodDelete, "/api/v1/repos/"+url.PathEscape(pos[1]), body)
 	case len(pos) == 1 && pos[0] == "add":
 		body, _ := json.Marshal(in)
 		return c.call(http.MethodPost, "/api/v1/repos", body)
@@ -176,10 +184,12 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 				set["merger"] = in.Merger
 			case "merge-strategy":
 				set["merge_strategy"] = in.MergeStrategy
+			case "paused":
+				set["paused"] = *paused
 			}
 		})
 		if len(set) == 0 {
-			return usageError(stderr, "usage: plumbix repo set <id> [--pull-requests[=false]] [--merger plumbix|github] [--merge-strategy squash|merge|rebase]")
+			return usageError(stderr, "usage: plumbix repo set <id> [--pull-requests[=false]] [--merger plumbix|github] [--merge-strategy squash|merge|rebase] [--paused[=false]]")
 		}
 		body, _ := json.Marshal(set)
 		return c.call(http.MethodPut, "/api/v1/repos/"+url.PathEscape(pos[1])+"/settings", body)
@@ -194,7 +204,7 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 		}
 		return c.call(http.MethodGet, path, nil)
 	}
-	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> [--pull-requests] [--merger plumbix|github] | repo set <id> [--pull-requests[=false]] [--merger plumbix|github] [--merge-strategy squash|merge|rebase] | repo list | repo github <id> | repo runs <id> [--branch <b>]")
+	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> [--pull-requests] [--merger plumbix|github] | repo set <id> [--pull-requests[=false]] [--merger plumbix|github] [--merge-strategy squash|merge|rebase] [--paused[=false]] | repo remove <id> [--by <name>] | repo list | repo github <id> | repo runs <id> [--branch <b>]")
 }
 
 // runSubmit handles "plumbix submit -f <file|->".

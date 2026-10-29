@@ -397,3 +397,35 @@ func TestPullRequestsSyncedBeforeHeads(t *testing.T) {
 		t.Errorf("sync ran after the heads were judged: synced %v, engine had validated %v", rec.synced, rec.before[1])
 	}
 }
+
+// TestPausedRepoIsNotPolled: a paused repository's pushes start nothing
+// and its heads are not recorded; resumed, it is polled again (WU-065).
+func TestPausedRepoIsNotPolled(t *testing.T) {
+	h := newHarness(t, "r_1")
+	h.eng.push("r_1", "main", "m1")
+	if err := h.p.PollOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.db.UpdateRepoPaused(ctx, "r_1", true); err != nil {
+		t.Fatal(err)
+	}
+	h.eng.push("r_1", "main", "m2")
+	if err := h.p.PollOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if v, b := h.eng.triggers(); len(v)+len(b) != 0 {
+		t.Errorf("a paused repository triggered %v %v", v, b)
+	}
+	if heads, _, _ := h.db.KnownHeads(ctx, "r_1"); heads["main"] != "m1" {
+		t.Errorf("a paused repository's heads moved: %v", heads)
+	}
+	if err := h.db.UpdateRepoPaused(ctx, "r_1", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.p.PollOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if heads, _, _ := h.db.KnownHeads(ctx, "r_1"); heads["main"] != "m2" {
+		t.Errorf("after resuming, heads = %v", heads)
+	}
+}

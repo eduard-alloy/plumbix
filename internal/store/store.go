@@ -21,6 +21,7 @@ import (
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/events"
+	"github.com/eduard-alloy/plumbix/internal/run"
 )
 
 //go:embed migrations/*.sql
@@ -155,16 +156,16 @@ func (db *DB) CreateRepo(ctx context.Context, r change.Repo) error {
 	return mapErr(err)
 }
 
-const repoColumns = `id, host, url, protected_branches, merge_strategy, pull_requests, merger, created_at`
+const repoColumns = `id, host, url, protected_branches, merge_strategy, pull_requests, merger, paused, created_at`
 
 // GetRepo returns one repo.
 func (db *DB) GetRepo(ctx context.Context, id string) (change.Repo, error) {
-	return scanRepo(db.sql.QueryRowContext(ctx, `SELECT `+repoColumns+` FROM repos WHERE id = ?`, id))
+	return scanRepo(db.sql.QueryRowContext(ctx, `SELECT `+repoColumns+` FROM repos WHERE id = ? AND removed_at = ''`, id))
 }
 
 // ListRepos returns every repo, oldest first.
 func (db *DB) ListRepos(ctx context.Context) ([]change.Repo, error) {
-	rows, err := db.sql.QueryContext(ctx, `SELECT `+repoColumns+` FROM repos ORDER BY created_at, id`)
+	rows, err := db.sql.QueryContext(ctx, `SELECT `+repoColumns+` FROM repos WHERE removed_at = '' ORDER BY created_at, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +186,7 @@ type scanner interface{ Scan(dest ...any) error }
 func scanRepo(s scanner) (change.Repo, error) {
 	var r change.Repo
 	var branches, created string
-	if err := s.Scan(&r.ID, &r.Host, &r.URL, &branches, &r.MergeStrategy, &r.PullRequests, &r.Merger, &created); err != nil {
+	if err := s.Scan(&r.ID, &r.Host, &r.URL, &branches, &r.MergeStrategy, &r.PullRequests, &r.Merger, &r.Paused, &created); err != nil {
 		return change.Repo{}, mapErr(err)
 	}
 	if err := json.Unmarshal([]byte(branches), &r.ProtectedBranches); err != nil {
@@ -219,6 +220,15 @@ func (db *DB) CreateChange(ctx context.Context, c change.Change) error {
 		csPayload = &events.CriteriaSetPayload{ID: csID, Owner: csOwner, Task: csTask}
 	}
 	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		// The repository must still be registered when the change is
+		// written, not only when the submission was checked (WU-065).
+		var present int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM repos WHERE id = ? AND removed_at = ''`, c.RepoID).Scan(&present); err != nil {
+			return mapErr(err)
+		}
+		if present == 0 {
+			return fmt.Errorf("%w: repo %s", change.ErrNotFound, c.RepoID)
+		}
 		if err := freezeCriteriaSet(ctx, tx, c.CriteriaSet); err != nil {
 			return err
 		}
@@ -450,6 +460,52 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// UpdateRepoPaused sets whether polling and pull-request intake stop for
+// the repository (WU-065).
+func (db *DB) UpdateRepoPaused(ctx context.Context, id string, paused bool) error {
+	res, err := db.sql.ExecContext(ctx, `UPDATE repos SET paused = ? WHERE id = ? AND removed_at = ''`, paused, id)
+	if err != nil {
+		return mapErr(err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return change.ErrNotFound
+	}
+	return nil
+}
+
+// RemoveRepo retires a repository (WU-065): it leaves every listing and
+// lookup, its changes, runs, merges and events stay for the record, and
+// repo.removed names who asked. ErrRepoBusy while a change of it is open
+// or running, checked in the same transaction as the write.
+func (db *DB) RemoveRepo(ctx context.Context, id, by string, at time.Time) error {
+	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		var host, url string
+		if err := tx.QueryRowContext(ctx, `SELECT host, url FROM repos WHERE id = ? AND removed_at = ''`, id).Scan(&host, &url); err != nil {
+			return mapErr(err)
+		}
+		var busy, running int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM changes WHERE repo_id = ? AND state NOT IN (?, ?)`, id, string(change.Merged), string(change.Closed)).Scan(&busy); err != nil {
+			return mapErr(err)
+		}
+		// Triggered and branch runs belong to no change; a running one holds
+		// the mirror the removal would delete.
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM runs WHERE repo_id = ? AND status = ?`, id, string(run.Running)).Scan(&running); err != nil {
+			return mapErr(err)
+		}
+		switch {
+		case busy > 0:
+			return fmt.Errorf("%w: %d still open or running", change.ErrRepoBusy, busy)
+		case running > 0:
+			return fmt.Errorf("%w: %d run still running", change.ErrRepoBusy, running)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE repos SET removed_at = ?, removed_by = ?, paused = 1 WHERE id = ?`, formatTime(at), by, id); err != nil {
+			return mapErr(err)
+		}
+		_, err := emit(events.Event{Type: events.RepoRemoved, Time: at, RepoID: id, Payload: events.RepoRemovedPayload{Host: host, URL: url, By: by}})
+		return err
+	})
 }
 
 // UpdateRepoMergeStrategy sets how Plumbix's own merges land on the

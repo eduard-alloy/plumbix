@@ -251,6 +251,84 @@ function MergeStrategyPicker({ repo }: { repo: Repo }) {
   )
 }
 
+// RepoLifecycle holds the card's pause and remove actions (WU-065). Pause
+// stops polling and intake with one click; remove asks for the person's
+// name, remembered as the approver's, and an inline confirm, and is
+// refused by the server while a change is open or running.
+function RepoLifecycle({ repo, onChanged }: { repo: Repo; onChanged: () => void }) {
+  const name = repoName(repo)
+  const [paused, setPaused] = useState(!!repo.paused)
+  useEffect(() => setPaused(!!repo.paused), [repo.paused])
+  const [confirming, setConfirming] = useState(false)
+  const [by, setBy] = useState(() => {
+    try {
+      return window.localStorage.getItem('plumbix.approver') ?? ''
+    } catch {
+      return ''
+    }
+  })
+  const [status, setStatus] = useState('')
+  const [busy, setBusy] = useState(false)
+  const act = async (fn: () => Promise<void>) => {
+    setBusy(true)
+    setStatus('')
+    try {
+      await fn()
+    } catch (err) {
+      setStatus(err instanceof ApiError ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const togglePause = () =>
+    act(async () => {
+      const s = await api.updateRepoSettings(repo.id, { paused: !paused })
+      setPaused(!!s.paused)
+      onChanged()
+    })
+  const remove = () =>
+    act(async () => {
+      await api.removeRepo(repo.id, by.trim())
+      try {
+        window.localStorage.setItem('plumbix.approver', by.trim())
+      } catch {
+        // nothing to remember with
+      }
+      setConfirming(false)
+      onChanged()
+    })
+  return (
+    <>
+      <button className="quiet" onClick={() => void togglePause()} disabled={busy}>
+        {paused ? 'Resume' : 'Pause'}
+      </button>
+      <button className="quiet" aria-expanded={confirming} onClick={() => setConfirming(!confirming)} disabled={busy}>
+        Remove
+      </button>
+      {confirming && (
+        <form
+          className="remove-confirm"
+          aria-label={`Remove ${name}`}
+          onSubmit={(e) => {
+            e.preventDefault()
+            void remove()
+          }}
+        >
+          <span>Remove {name}? Its changes stay for the record; it is refused while one is open or running.</span>
+          <input type="text" aria-label="Your name" maxLength={100} value={by} onChange={(e) => setBy(e.target.value)} placeholder="Your name, recorded on the removal" />
+          <button className="primary small" type="submit" disabled={busy || !by.trim()}>
+            Confirm removal
+          </button>
+          <button className="quiet" type="button" onClick={() => setConfirming(false)}>
+            Keep
+          </button>
+        </form>
+      )}
+      {status && <span className="status-text error">{status}</span>}
+    </>
+  )
+}
+
 export function ReposPage() {
   const { state, actions } = useStore()
   const [importing, setImporting] = useState(false)
@@ -316,6 +394,7 @@ export function ReposPage() {
                     </span>
                     <MergeStrategyPicker repo={r} />
                     {gated.pull_requests && <span className="host-badge">Pull requests · {gated.merger === 'github' ? 'GitHub' : 'Plumbix'} merges</span>}
+                    {r.paused && <span className="host-badge paused">Paused</span>}
                     <span className="spacer" />
                     {r.host !== 'git' && (
                       <button className="quiet" aria-expanded={panel === 'token'} onClick={() => toggle('token')}>
@@ -330,6 +409,7 @@ export function ReposPage() {
                     <button className="quiet" aria-expanded={panel === 'guidance'} onClick={() => toggle('guidance')}>
                       Guidance
                     </button>
+                    <RepoLifecycle repo={r} onChanged={actions.reloadAll} />
                   </div>
                   <div className="repo-line bottom">
                     <span className="mono url" title={r.url}>

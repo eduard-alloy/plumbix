@@ -302,6 +302,10 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 .repo-line.bottom .url { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .host-badge { padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; font-size: 11px; line-height: 18px; color: var(--text-2); }
 .criteria-set { font-size: 12px; margin-left: 8px; }
+.host-badge.paused { border-color: var(--s-amber, #c98a1b); color: var(--s-amber, #c98a1b); }
+.repo-line.top { flex-wrap: wrap; }
+.remove-confirm { flex-basis: 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 12px; color: var(--text-2); }
+.remove-confirm input { height: 26px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--bg); color: var(--text); font: 12px var(--ui); }
 .quiet-select { border: 0; background: transparent; color: inherit; font: inherit; padding: 0; cursor: pointer; }
 .quiet-select:hover { color: var(--text); }
 .footnote { margin: 14px 0 0; font-size: 12px; color: var(--text-3); }

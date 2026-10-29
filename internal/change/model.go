@@ -63,9 +63,16 @@ type Repo struct {
 	// Merger is who lands a change: MergerPlumbix or MergerGitHub. GitHub
 	// merges only pull requests; a change without one still merges through
 	// Plumbix.
-	Merger    string    `json:"merger"`
+	Merger string `json:"merger"`
+	// Paused stops polling and pull-request intake for the repository
+	// (WU-065); changes submitted through the API still run and merge.
+	Paused    bool      `json:"paused,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// ErrRepoBusy means a repository still has a change that is open or
+// running, so it cannot be removed (WU-065).
+var ErrRepoBusy = errors.New("repository has open or running changes")
 
 // PullRequestRef ties a change to the pull request it mirrors (WU-054).
 type PullRequestRef struct {
@@ -258,6 +265,12 @@ type Store interface {
 	UpdateRepoMerging(ctx context.Context, id string, pullRequests bool, merger string) error
 	// UpdateRepoMergeStrategy sets the strategy of Plumbix's own merges (WU-064).
 	UpdateRepoMergeStrategy(ctx context.Context, id, strategy string) error
+	// UpdateRepoPaused sets whether polling and intake stop for the
+	// repository (WU-065). RemoveRepo retires it: it leaves every listing
+	// and lookup, its changes stay readable, and repo.removed names who
+	// asked; ErrRepoBusy while a change is open or running.
+	UpdateRepoPaused(ctx context.Context, id string, paused bool) error
+	RemoveRepo(ctx context.Context, id, by string, at time.Time) error
 	CreateChange(ctx context.Context, c Change) error         // ErrConflict if another change is open on the branch
 	GetChange(ctx context.Context, id string) (Change, error) // ErrNotFound
 	ListChanges(ctx context.Context, f Filter) ([]Change, error)

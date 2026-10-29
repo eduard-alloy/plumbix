@@ -61,6 +61,10 @@ claude mcp add plumbix -- plumbix mcp
 
 The session then has tools to register a repository (without a token), submit a change, wait for its verdict, read what the validators found, merge or refresh it, and to act as an external reviewer (`next_review`, `post_verdict`). Each session acts under its own identity, so it never reviews a change it submitted. Approving a `needs_human` change stays a person's act: the tool for it appears only when you start the server with `--allow-approve`, for a session you drive yourself.
 
+## Pause or remove a repository
+
+`plumbix repo set <id> --paused` stops polling and pull-request intake for a repository (`--paused=false` resumes; the card has Pause and Resume); changes submitted through the API still run and merge, since pausing is about what Plumbix watches, not what a person asks. `plumbix repo remove <id> --by <name>` (`DELETE /api/v1/repos/{id}`, the card's Remove with its confirm) retires a repository: refused with `repo_busy` while a change of it is open or running; afterwards it is gone from every listing and lookup, its bare mirror is deleted from the data directory, its changes, runs, merges and events stay for the record (their diffs and refreshes go with the mirror), and `repo.removed` in the event stream names who asked (WU-065). Removal is also refused while a triggered or branch run of the repository is running. A stale second registration of the same remote, the case this was built for, otherwise keeps polling and raises `bypass_commit` for commits that passed the gate on the other one.
+
 ## Criteria written with the specification
 
 Acceptance criteria belong with the specification, before the code, owned by the person who owns the intent (A43). A specification tool posts them as a **criteria set** when the spec is settled, and a change only names the set:

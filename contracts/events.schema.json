@@ -260,6 +260,20 @@
         "change_id",
         "run_id"
       ]
+    },
+    {
+      "description": "A person retired a repository (WU-065): it left every listing and lookup, its changes and events stay for the record.",
+      "properties": {
+        "type": {
+          "const": "repo.removed"
+        },
+        "payload": {
+          "$ref": "#/$defs/repoRemoved"
+        }
+      },
+      "required": [
+        "repo_id"
+      ]
     }
   ],
   "$defs": {
@@ -404,15 +418,23 @@
           }
         },
         "criteria_set": {
-         "description": "The criteria set the change took its criteria from, frozen at submission (WU-066); absent when the change stated its own.",
-         "type": "object",
-         "additionalProperties": false,
-         "required": ["id"],
-         "properties": {
-          "id": {"type": "string"},
-          "owner": {"type": "string"},
-          "task": {"type": "string"}
-         }
+          "description": "The criteria set the change took its criteria from, frozen at submission (WU-066); absent when the change stated its own.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "task": {
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -729,7 +751,31 @@
         "source": {
           "description": "Where the approval came from: plumbix (the Approve action) or github_review.",
           "type": "string",
-          "enum": ["plumbix", "github_review"]
+          "enum": [
+            "plumbix",
+            "github_review"
+          ]
+        }
+      }
+    },
+    "repoRemoved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host",
+        "url",
+        "by"
+      ],
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "by": {
+          "description": "The person who asked, as the surface knew them.",
+          "type": "string"
         }
       }
     }

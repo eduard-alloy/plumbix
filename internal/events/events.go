@@ -26,6 +26,8 @@ const (
 	VerdictIssued Type = "verdict.issued"
 	AlertRaised   Type = "alert.raised"
 	AlertResolved Type = "alert.resolved"
+	// RepoRemoved: a person retired a repository (WU-065).
+	RepoRemoved Type = "repo.removed"
 	// ApprovedByPerson: a person approved a needs_human or escalated change.
 	ApprovedByPerson Type = "change.approved_by_person"
 	// ChangeRefreshed: Plumbix merged the target branch into a branch it
@@ -42,7 +44,7 @@ const (
 )
 
 // Types lists every event type.
-var Types = []Type{ChangeSubmitted, StateChanged, ChangeMerged, RunStarted, StepFinished, RunFinished, VerdictIssued, AlertRaised, AlertResolved, ApprovedByPerson, ChangeRefreshed, ReviewRequested, ReviewClaimed, ReviewReleased, StepStarted}
+var Types = []Type{ChangeSubmitted, StateChanged, ChangeMerged, RunStarted, StepFinished, RunFinished, VerdictIssued, AlertRaised, AlertResolved, ApprovedByPerson, ChangeRefreshed, ReviewRequested, ReviewClaimed, ReviewReleased, StepStarted, RepoRemoved}
 
 // Event is the envelope every event shares. The three optional ids are the
 // filter keys; Payload holds what the type needs and is one of the payload
@@ -194,6 +196,12 @@ type (
 		AlertID string `json:"alert_id"`
 		Kind    string `json:"kind"`
 		Key     string `json:"key"`
+	}
+	// RepoRemovedPayload: who retired the repository, and which one it was.
+	RepoRemovedPayload struct {
+		Host string `json:"host"`
+		URL  string `json:"url"`
+		By   string `json:"by"`
 	}
 )
 

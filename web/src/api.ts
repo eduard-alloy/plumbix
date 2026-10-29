@@ -100,6 +100,7 @@ export const api = {
   imageBuild: (id: string) => request<ImageBuild>('GET', `/api/v1/images/builds/${encodeURIComponent(id)}`),
   repoSettings: (id: string) => request<RepoSettings>('GET', `/api/v1/repos/${encodeURIComponent(id)}/settings`),
   updateRepoSettings: (id: string, patch: RepoSettingsPatch) => request<RepoSettings>('PUT', `/api/v1/repos/${encodeURIComponent(id)}/settings`, patch),
+  removeRepo: (id: string, by: string) => request<void>('DELETE', `/api/v1/repos/${encodeURIComponent(id)}`, { by }),
   repoGitHub: (id: string) => request<GitHubReport>('GET', `/api/v1/repos/${encodeURIComponent(id)}/github`),
   registerRepo: (input: RepoInput) => request<Repo>('POST', '/api/v1/repos', input),
   inspectFolder: (path: string) => request<RepoFolder>('POST', '/api/v1/repos/inspect', { path }),

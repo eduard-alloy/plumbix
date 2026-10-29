@@ -120,3 +120,52 @@ func TestSetRepoMergeStrategy(t *testing.T) {
 		t.Errorf("unknown repo: %v", err)
 	}
 }
+
+// TestRepoPausedAndRemoved: a repository can be paused and resumed, and
+// removed by a named person once no change of it is open or running;
+// removed, it leaves every listing and lookup (WU-065).
+func TestRepoPausedAndRemoved(t *testing.T) {
+	s := newService(t)
+	r, err := s.RegisterRepo(ctx, change.RepoInput{Host: "github", URL: "https://github.com/a/retire"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.SetRepoPaused(ctx, r.ID, true); err != nil || !got.Paused {
+		t.Fatalf("pause = %+v, %v", got, err)
+	}
+	if stored, _ := s.GetRepo(ctx, r.ID); !stored.Paused {
+		t.Error("pause not stored")
+	}
+	if got, err := s.SetRepoPaused(ctx, r.ID, false); err != nil || got.Paused {
+		t.Fatalf("resume = %+v, %v", got, err)
+	}
+	c, err := s.Submit(ctx, change.ChangeInput{RepoID: r.ID, SourceBranch: "feat", TargetBranch: "main", Title: "t", Intent: "i", AcceptanceCriteria: []change.Criterion{{Text: "x"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RemoveRepo(ctx, r.ID, "eduard@mac"); !errors.Is(err, change.ErrRepoBusy) {
+		t.Errorf("remove with an open change: %v", err)
+	}
+	if err := s.RemoveRepo(ctx, r.ID, " "); problems(t, err)["by"] == "" {
+		t.Errorf("remove without a person: %v", err)
+	}
+	if _, err := s.Close(ctx, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RemoveRepo(ctx, r.ID, "eduard@mac"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetRepo(ctx, r.ID); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("a removed repository is still found: %v", err)
+	}
+	if repos, _ := s.ListRepos(ctx); len(repos) != 0 {
+		t.Errorf("a removed repository is still listed: %+v", repos)
+	}
+	// Its changes stay for the record.
+	if got, err := s.Get(ctx, c.ID); err != nil || got.State != change.Closed {
+		t.Errorf("the change of a removed repository: %+v, %v", got, err)
+	}
+	if err := s.RemoveRepo(ctx, r.ID, "eduard@mac"); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("remove twice: %v", err)
+	}
+}

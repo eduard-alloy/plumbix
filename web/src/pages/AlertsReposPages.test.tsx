@@ -159,6 +159,38 @@ describe('Repositories page', () => {
     await waitFor(() => expect(within(lines).getAllByRole('listitem')[3].querySelector('strong')?.textContent).toBe('Webhook, nothing yet'))
   })
 
+  it('pauses and resumes a repository from the card (WU-065)', async () => {
+    window.history.replaceState(null, '', '/repos')
+    render(<App />)
+    const ledger = await screen.findByRole('listitem', { name: 'Repository ledger-api' })
+    fireEvent.click(within(ledger).getByRole('button', { name: 'Pause' }))
+    await waitFor(() => expect(db.repos[1].paused).toBe(true))
+    await waitFor(() => expect(within(screen.getByRole('listitem', { name: 'Repository ledger-api' })).getByText('Paused')).toBeTruthy())
+    fireEvent.click(within(screen.getByRole('listitem', { name: 'Repository ledger-api' })).getByRole('button', { name: 'Resume' }))
+    await waitFor(() => expect(db.repos[1].paused).toBe(false))
+  })
+
+  it('removes a repository after a named confirm, and says why when one cannot go (WU-065)', async () => {
+    window.localStorage.setItem('plumbix.approver', 'Eduard')
+    window.history.replaceState(null, '', '/repos')
+    render(<App />)
+    // plumbix has open changes in the fixtures: refused with the reason.
+    const plumbix = await screen.findByRole('listitem', { name: 'Repository plumbix' })
+    fireEvent.click(within(plumbix).getByRole('button', { name: 'Remove' }))
+    const form = within(plumbix).getByRole('form', { name: 'Remove plumbix' })
+    expect((within(form).getByLabelText('Your name') as HTMLInputElement).value).toBe('Eduard')
+    fireEvent.click(within(form).getByRole('button', { name: 'Confirm removal' }))
+    await waitFor(() => expect(plumbix.textContent).toContain('open or running'))
+    expect(db.repos.some((r) => r.id === 'r_plumbix00001')).toBe(true)
+    // With ledger-api's changes closed, it goes.
+    db.changes.filter((c) => c.repo_id === 'r_ledgerapi001').forEach((c) => (c.state = 'closed'))
+    const ledger = screen.getByRole('listitem', { name: 'Repository ledger-api' })
+    fireEvent.click(within(ledger).getByRole('button', { name: 'Remove' }))
+    fireEvent.click(within(within(ledger).getByRole('form', { name: 'Remove ledger-api' })).getByRole('button', { name: 'Confirm removal' }))
+    await waitFor(() => expect(db.repos.some((r) => r.id === 'r_ledgerapi001')).toBe(false))
+    await waitFor(() => expect(screen.queryByRole('listitem', { name: 'Repository ledger-api' })).toBeNull())
+  })
+
   it('sets the merge strategy from the card, for every host (WU-064)', async () => {
     window.history.replaceState(null, '', '/repos')
     render(<App />)

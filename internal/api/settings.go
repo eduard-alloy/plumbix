@@ -319,6 +319,8 @@ type repoSettings struct {
 	Merger       string `json:"merger"`
 	// MergeStrategy is how Plumbix's own merges land (WU-064), settable here.
 	MergeStrategy string `json:"merge_strategy"`
+	// Paused stops polling and pull-request intake (WU-065).
+	Paused bool `json:"paused"`
 }
 
 func (h *settingsHandlers) repoView(ctx context.Context, repo change.Repo) (repoSettings, error) {
@@ -326,7 +328,7 @@ func (h *settingsHandlers) repoView(ctx context.Context, repo change.Repo) (repo
 	if err != nil {
 		return repoSettings{}, err
 	}
-	v := repoSettings{Guidance: g.Repository, PullRequests: repo.PullRequests, Merger: repo.Merger, MergeStrategy: repo.MergeStrategy}
+	v := repoSettings{Guidance: g.Repository, PullRequests: repo.PullRequests, Merger: repo.Merger, MergeStrategy: repo.MergeStrategy, Paused: repo.Paused}
 	key := host.RepoTokenKey(repo.ID)
 	if _, set := h.secrets.Get(key); set {
 		v.TokenSet = true
@@ -438,6 +440,7 @@ func (h *settingsHandlers) updateRepo(w http.ResponseWriter, r *http.Request) {
 		PullRequests  *bool   `json:"pull_requests"`
 		Merger        *string `json:"merger"`
 		MergeStrategy *string `json:"merge_strategy"`
+		Paused        *bool   `json:"paused"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -489,6 +492,13 @@ func (h *settingsHandlers) updateRepo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.log.Info("repository merge strategy set", "repo", repo.ID, "merge_strategy", strings.TrimSpace(*body.MergeStrategy))
+	}
+	if body.Paused != nil {
+		if _, err := h.changes.SetRepoPaused(r.Context(), repo.ID, *body.Paused); err != nil {
+			h.fail(w, err)
+			return
+		}
+		h.log.Info("repository paused set", "repo", repo.ID, "paused", *body.Paused)
 	}
 	h.getRepo(w, r)
 }

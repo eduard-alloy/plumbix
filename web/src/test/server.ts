@@ -349,10 +349,11 @@ export function fakeFetch(db: FakeDB): typeof fetch {
       if (!db.repos.some((r) => r.id === id)) return error(404, 'not_found', `repo ${id}`)
       const repo = db.repos.find((r) => r.id === id)!
       if (method === 'PUT') {
-        const body = JSON.parse(String(init?.body)) as { guidance?: string; pull_requests?: boolean; merger?: 'plumbix' | 'github' | ''; merge_strategy?: string }
+        const body = JSON.parse(String(init?.body)) as { guidance?: string; pull_requests?: boolean; merger?: 'plumbix' | 'github' | ''; merge_strategy?: string; paused?: boolean }
         if (body.merge_strategy !== undefined && !['squash', 'merge', 'rebase'].includes(body.merge_strategy)) return problems([{ field: 'merge_strategy', message: 'must be squash, merge or rebase' }])
         if (body.guidance !== undefined) db.repoGuidance[id] = body.guidance.trim()
         if (body.merge_strategy !== undefined) repo.merge_strategy = body.merge_strategy as Repo['merge_strategy']
+        if (body.paused !== undefined) repo.paused = body.paused
         if (body.pull_requests !== undefined || body.merger !== undefined) {
           // The server's rules (change.normalizeMerging): a field left out stays; an empty merger takes the default.
           const pull_requests = body.pull_requests ?? repo.pull_requests ?? false
@@ -366,7 +367,18 @@ export function fakeFetch(db: FakeDB): typeof fetch {
           repo.merger = merger
         }
       }
-      return json(200, { guidance: db.repoGuidance[id] ?? '', token_set: id in db.repoTokens, token_updated_at: id in db.repoTokens ? new Date().toISOString() : undefined, pull_requests: repo.pull_requests ?? false, merger: repo.merger, merge_strategy: repo.merge_strategy })
+      return json(200, { guidance: db.repoGuidance[id] ?? '', token_set: id in db.repoTokens, token_updated_at: id in db.repoTokens ? new Date().toISOString() : undefined, pull_requests: repo.pull_requests ?? false, merger: repo.merger, merge_strategy: repo.merge_strategy, paused: repo.paused ?? false })
+    }
+    const repoRemove = path.match(/^\/api\/v1\/repos\/([^/]+)$/)
+    if (repoRemove && method === 'DELETE') {
+      const repo = db.repos.find((r) => r.id === repoRemove[1])
+      if (!repo) return error(404, 'not_found', `repo ${repoRemove[1]}`)
+      const body = JSON.parse(String(init?.body)) as { by?: string }
+      if (!body.by?.trim()) return problems([{ field: 'by', message: 'is required: name the person removing the repository' }])
+      const busy = db.changes.filter((c) => c.repo_id === repo.id && !['merged', 'closed'].includes(c.state)).length
+      if (busy) return error(409, 'repo_busy', `repository has open or running changes: ${busy} still open or running`)
+      db.repos = db.repos.filter((r) => r.id !== repo.id)
+      return new Response(null, { status: 204 })
     }
     const repoGitHub = path.match(/^\/api\/v1\/repos\/([^/]+)\/github$/)
     if (repoGitHub && method === 'GET') {

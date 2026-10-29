@@ -630,6 +630,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /repos/{id}:
+    delete:
+      operationId: removeRepo
+      summary: Retire a repository at a person's request.
+      description: >
+        Refused with repo_busy while a change of the repository is open or running. Afterwards the repository
+        is gone from every listing and lookup, its bare mirror is deleted from the data directory, and its
+        changes, runs, merges and events stay for the record, though their diffs and refreshes go with the mirror;
+        repo.removed names who asked (WU-065). A running triggered or branch run of the repository refuses the
+        removal too.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [by]
+              properties:
+                by:
+                  description: Who removes the repository, as Plumbix should record it.
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+      responses:
+        "204":
+          description: Removed.
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Code repo_busy, a change of the repository is open or running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /repos/{id}/settings:
     get:
       operationId: getRepoSettings
@@ -1915,6 +1956,9 @@ components:
           description: Who lands a change. plumbix pushes the validated tree; github merges the pull request and Plumbix records it (a change without a pull request still merges through Plumbix). The server always sends it; it is optional here so repository objects recorded before WU-054 still validate.
           type: string
           enum: [plumbix, github]
+        paused:
+          description: Polling and pull-request intake are stopped for the repository (WU-065).
+          type: boolean
         created_at:
           type: string
           format: date-time
@@ -2769,6 +2813,9 @@ components:
           description: How Plumbix's own merges land (squash, merge or rebase); GitHub's merges of pull requests are not affected. Settable after registration (WU-064).
           type: string
           enum: [squash, merge, rebase]
+        paused:
+          description: Stops polling and pull-request intake for the repository (WU-065); changes submitted through the API still run and merge.
+          type: boolean
     LoginLink:
       type: object
       additionalProperties: false

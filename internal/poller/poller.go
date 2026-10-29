@@ -116,6 +116,9 @@ func (p *Poller) PollOnce(ctx context.Context) error {
 	}
 	var errs []error
 	for _, repo := range repos {
+		if repo.Paused {
+			continue // WU-065: a paused repository is not watched
+		}
 		if err := p.pollRepo(ctx, repo); err != nil {
 			errs = append(errs, fmt.Errorf("repo %s: %w", repo.ID, err))
 		}

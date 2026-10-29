@@ -230,6 +230,16 @@ func (e *Engine) launch(key string, r run.Run, work func(context.Context) ([]run
 	}()
 }
 
+// RemoveMirror deletes the repository's bare mirror from the data directory
+// once the repository is retired (WU-065); a mirror that is not there is
+// fine. It takes the repository's lock, so no fetch runs meanwhile.
+func (e *Engine) RemoveMirror(repo change.Repo) error {
+	lock := e.repoLock(repo.ID)
+	lock.Lock()
+	defer lock.Unlock()
+	return os.RemoveAll(filepath.Join(e.cfg.DataDir, mirrorsDir, repo.ID+".git"))
+}
+
 // mirror returns the repo's mirror, authenticated when the host has a token.
 func (e *Engine) mirror(repo change.Repo) (*gitops.Mirror, error) {
 	m := gitops.Open(filepath.Join(e.cfg.DataDir, mirrorsDir, repo.ID+".git"), repo.URL)

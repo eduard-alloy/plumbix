@@ -17,9 +17,9 @@ const usage = `usage: plumbix <command> [flags]
 
 commands:
   serve                 start the Plumbix server (local addresses only)
-  repo add|set|list|github|runs
-                        register a repo, set its pull-request gating, list repos,
-                        read a repo's GitHub integration or its runs
+  repo add|set|remove|list|github|runs
+                        register a repo, set its gating, strategy or pause, remove
+                        it, list repos, read a repo's GitHub integration or its runs
   submit -f <file|->    submit a change (JSON)
   criteria add|update|list|show
                         acceptance criteria written with the specification, named by

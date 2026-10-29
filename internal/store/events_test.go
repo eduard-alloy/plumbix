@@ -229,6 +229,13 @@ func TestLifecycleEmitsEvents(t *testing.T) {
 		}
 	}
 
+	// A retired repository emits repo.removed (WU-065): one with no change left.
+	if err := db.CreateRepo(ctx, sampleRepo("r_9", "https://github.com/a/retired")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RemoveRepo(ctx, "r_9", "eduard@mac", at.Add(30*time.Second)); err != nil {
+		t.Fatal(err)
+	}
 	stored, err := db.EventsAfter(ctx, 0, events.Filter{}, 100)
 	if err != nil {
 		t.Fatal(err)
@@ -601,5 +608,77 @@ func TestSubmittedEventCarriesTheCriteriaSet(t *testing.T) {
 	}
 	if got, _ := db.GetCriteriaSet(ctx, "cs_free00000000"); got.Frozen {
 		t.Error("a set named with a problem was frozen")
+	}
+}
+
+// TestRepoRemovedEvent: retiring a repository emits repo.removed naming
+// who asked, valid against the schema, and is refused inside the same
+// transaction while a change of it is open (WU-065).
+func TestRepoRemovedEvent(t *testing.T) {
+	db := openDB(t)
+	schema := compileEventsSchema(t)
+	if err := db.CreateRepo(ctx, sampleRepo("r_1", "https://github.com/a/b")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateChange(ctx, sampleChange("c_1", "r_1", "feat")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RemoveRepo(ctx, "r_1", "eduard@mac", t0); !errors.Is(err, change.ErrRepoBusy) {
+		t.Fatalf("remove with an open change: %v", err)
+	}
+	if err := db.SetChangeState(ctx, "c_1", change.Open, change.Closed, t0); err != nil {
+		t.Fatal(err)
+	}
+	// A running run of the repository, a branch run with no change, holds the mirror.
+	if err := db.CreateRun(ctx, run.Run{ID: "run_b", RepoID: "r_1", Branch: "main", Iteration: 1, Status: run.Running, StartedAt: t0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RemoveRepo(ctx, "r_1", "eduard@mac", t0); !errors.Is(err, change.ErrRepoBusy) {
+		t.Fatalf("remove with a running branch run: %v", err)
+	}
+	if err := db.FinishRun(ctx, "run_b", run.Finish{Status: run.Finished, Steps: []run.Step{}, At: t0.Add(time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
+	if err := db.RemoveRepo(ctx, "r_1", "eduard@mac", t0.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	// A change written after the removal is refused in the write itself.
+	if err := db.CreateChange(ctx, sampleChange("c_late", "r_1", "late")); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("a change on a removed repository: %v", err)
+	}
+	after, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
+	fresh := after[len(before):]
+	if len(fresh) != 1 || fresh[0].Type != events.RepoRemoved || fresh[0].RepoID != "r_1" {
+		t.Fatalf("events = %+v", fresh)
+	}
+	validateEvent(t, schema, fresh[0])
+	var p events.RepoRemovedPayload
+	decodePayload(t, fresh[0], &p)
+	if p.By != "eduard@mac" || p.URL != "https://github.com/a/b" || p.Host != "github" {
+		t.Errorf("payload = %+v", p)
+	}
+	if _, err := db.GetRepo(ctx, "r_1"); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("removed repository found: %v", err)
+	}
+	if err := db.RemoveRepo(ctx, "r_1", "again", t0); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("remove twice: %v", err)
+	}
+}
+
+// TestPausedRepoIsListedAsPaused: the paused flag round-trips through the
+// single lookup and the listing (WU-065).
+func TestPausedRepoIsListedAsPaused(t *testing.T) {
+	db := openDB(t)
+	if err := db.CreateRepo(ctx, sampleRepo("r_1", "https://github.com/a/b")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpdateRepoPaused(ctx, "r_1", true); err != nil {
+		t.Fatal(err)
+	}
+	one, _ := db.GetRepo(ctx, "r_1")
+	all, _ := db.ListRepos(ctx)
+	if !one.Paused || len(all) != 1 || !all[0].Paused {
+		t.Errorf("one = %+v, all = %+v", one.Paused, all)
 	}
 }

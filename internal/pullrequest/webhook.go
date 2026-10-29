@@ -200,7 +200,7 @@ func (w *Webhook) repoFor(ctx context.Context, url string) (change.Repo, bool, e
 	}
 	want := normalizeURL(url)
 	for _, r := range repos {
-		if r.Host == change.HostGitHub && r.PullRequests && normalizeURL(r.URL) == want {
+		if r.Host == change.HostGitHub && r.PullRequests && !r.Paused && normalizeURL(r.URL) == want {
 			return r, true, nil
 		}
 	}

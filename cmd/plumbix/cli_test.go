@@ -123,6 +123,13 @@ func TestCLIFlow(t *testing.T) {
 	if unset := c.mustRun("", "repo", "set", repoID, "--pull-requests=false"); unset["pull_requests"] == true || unset["merger"] != "plumbix" {
 		t.Errorf("repo set off = %v", unset)
 	}
+	// Pause and remove (WU-065).
+	if got := c.mustRun("", "repo", "set", repoID, "--paused"); got["paused"] != true {
+		t.Errorf("repo set --paused = %v", got)
+	}
+	if got := c.mustRun("", "repo", "set", repoID, "--paused=false"); got["paused"] == true {
+		t.Errorf("repo set --paused=false = %v", got)
+	}
 	// The merge strategy follows the same path (WU-064).
 	if got := c.mustRun("", "repo", "set", repoID, "--merge-strategy", "merge"); got["merge_strategy"] != "merge" {
 		t.Errorf("repo set --merge-strategy = %v", got)
@@ -299,6 +306,18 @@ func TestCLIFlow(t *testing.T) {
 		if e["change_id"] != id {
 			t.Errorf("filtered stream carried %v", e)
 		}
+	}
+
+	// Removal, last, so the event stream above keeps its order.
+	spare := c.mustRun("", "repo", "add", "--host", "github", "--url", "https://github.com/eduard-alloy/spare")["id"].(string)
+	if code, _, errOut := c.run("", "repo", "remove", spare, "--by", " "); code != 2 || !strings.Contains(errOut, "--by") {
+		t.Errorf("remove without a person: exit %d, stderr %q", code, errOut)
+	}
+	if code, _, errOut := c.run("", "repo", "remove", spare); code != 0 {
+		t.Errorf("repo remove: exit %d, stderr %q", code, errOut)
+	}
+	if repos := c.mustRun("", "repo", "list")["repos"].([]any); len(repos) != 2 {
+		t.Errorf("repo list after a removal = %d repos", len(repos))
 	}
 }
 

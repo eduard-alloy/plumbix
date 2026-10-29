@@ -145,3 +145,24 @@ func TestWebhookEditedUpdatesTheChange(t *testing.T) {
 		t.Errorf("after edited: %q %+v", c.Title, c.AcceptanceCriteria)
 	}
 }
+
+// TestWebhookIgnoresAPausedRepository: a delivery for a paused repository
+// is not taken (WU-065).
+func TestWebhookIgnoresAPausedRepository(t *testing.T) {
+	h := newHarness(t)
+	if err := h.db.UpdateRepoPaused(ctx, h.repo.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	secret := "s3cret"
+	w := &Webhook{Secret: func() string { return secret }, Syncer: h.s, Repos: h.db, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	type repoBody struct {
+		URL string `json:"html_url"`
+	}
+	opened := map[string]any{"action": "opened", "repository": repoBody{"https://github.com/a/b.git"}, "pull_request": pr(1, "T", "")}
+	if rec := deliver(t, w, secret, "pull_request", opened); rec.Code != http.StatusNotFound {
+		t.Errorf("paused: %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := h.db.ChangeByPullRequest(ctx, h.repo.ID, 1); err == nil {
+		t.Error("a paused repository's pull request became a change")
+	}
+}

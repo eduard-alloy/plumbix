@@ -40,6 +40,8 @@ export interface Repo {
   pull_requests?: boolean
   /** Who lands changes: Plumbix pushes, or GitHub merges pull requests and Plumbix records it. */
   merger: 'plumbix' | 'github'
+  /** Polling and pull-request intake are stopped (WU-065). */
+  paused?: boolean
   created_at: string
 }
 
@@ -354,6 +356,8 @@ export interface RepoSettings {
   merger?: 'plumbix' | 'github'
   /** How Plumbix's own merges land (WU-064). */
   merge_strategy?: 'squash' | 'merge' | 'rebase'
+  /** Polling and intake stopped (WU-065). */
+  paused?: boolean
 }
 
 /** What a repository settings update may carry; a field left out stays (WU-055). An empty merger takes the default. */
@@ -362,6 +366,7 @@ export interface RepoSettingsPatch {
   pull_requests?: boolean
   merger?: 'plumbix' | 'github' | ''
   merge_strategy?: 'squash' | 'merge' | 'rebase'
+  paused?: boolean
 }
 
 /** The per-repository GitHub facts behind the gate, read live (WU-061). */

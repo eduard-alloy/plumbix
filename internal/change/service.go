@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // ErrInvalidState means the requested transition is not allowed from the
@@ -105,6 +106,38 @@ func (s *Service) SetRepoMergeStrategy(ctx context.Context, id, strategy string)
 	}
 	r.MergeStrategy = strategy
 	return r, nil
+}
+
+// SetRepoPaused stops or resumes polling and pull-request intake for a
+// repository (WU-065). Changes submitted through the API still run and
+// merge: pausing is about what Plumbix watches, not what a person asks.
+func (s *Service) SetRepoPaused(ctx context.Context, id string, paused bool) (Repo, error) {
+	r, err := s.GetRepo(ctx, id)
+	if err != nil {
+		return Repo{}, err
+	}
+	if err := s.store.UpdateRepoPaused(ctx, id, paused); err != nil {
+		return Repo{}, err
+	}
+	r.Paused = paused
+	return r, nil
+}
+
+// RemoveRepo retires a repository at a person's request (WU-065): refused
+// while a change of it is open or running (ErrRepoBusy), recorded as
+// repo.removed naming who asked. The repository's changes stay readable.
+func (s *Service) RemoveRepo(ctx context.Context, id, by string) error {
+	by = strings.TrimSpace(by)
+	switch {
+	case by == "":
+		return &InvalidError{Problems: []Problem{{Field: "by", Message: "is required: name the person removing the repository"}}}
+	case utf8.RuneCountInString(by) > MaxSubmittedBy:
+		return &InvalidError{Problems: []Problem{{Field: "by", Message: fmt.Sprintf("is longer than %d characters", MaxSubmittedBy)}}}
+	}
+	if _, err := s.GetRepo(ctx, id); err != nil {
+		return err
+	}
+	return s.store.RemoveRepo(ctx, id, by, s.now().UTC())
 }
 
 // ListRepos returns every repo.
