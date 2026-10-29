@@ -1976,8 +1976,9 @@ components:
           minLength: 1
           maxLength: 200
         title:
+          description: The specification's own title, as the tool wrote it.
           type: string
-          maxLength: 200
+          maxLength: 2000
         owner:
           description: The person the criteria belong to, as the client knows them.
           type: string

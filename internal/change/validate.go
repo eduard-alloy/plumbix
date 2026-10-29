@@ -282,8 +282,10 @@ func normalizeCriteriaSet(in CriteriaSetInput) (CriteriaSetInput, error) {
 	case utf8.RuneCountInString(in.Task) > MaxTaskRef:
 		ps.add("task", "must be at most %d characters", MaxTaskRef)
 	}
-	if utf8.RuneCountInString(in.Title) > MaxTitle {
-		ps.add("title", "must be at most %d characters", MaxTitle)
+	// A set's title is the specification's own, however long the tool
+	// wrote it; bounded like a criterion's text, not like a change's title.
+	if utf8.RuneCountInString(in.Title) > MaxText {
+		ps.add("title", "must be at most %d characters", MaxText)
 	}
 	switch {
 	case in.Owner == "":

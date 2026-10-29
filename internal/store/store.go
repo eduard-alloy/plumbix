@@ -477,7 +477,7 @@ func criteriaSetColumns(ref *change.CriteriaSetRef) (id, owner, task, problem st
 // freezeCriteriaSet marks the set a change takes its criteria from as
 // frozen, inside the change's own transaction, and only if the set still
 // has the version the criteria were read at (WU-066): a set edited in
-// between is ErrConflict, and the caller reads it again. A reference that
+// between is ErrCriteriaSetChanged, and the caller reads it again. A reference that
 // carries a problem names a set the change did not use, and freezes nothing.
 func freezeCriteriaSet(ctx context.Context, tx *sql.Tx, ref *change.CriteriaSetRef) error {
 	if ref == nil || ref.Problem != "" {
