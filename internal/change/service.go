@@ -139,6 +139,29 @@ func (s *Service) List(ctx context.Context, f Filter) ([]Change, error) {
 	return s.store.ListChanges(ctx, f)
 }
 
+// UpdatePullRequestText brings a change's title, intent and criteria up to
+// date with the pull request it mirrors (WU-062), under the submission
+// rules; a final change is not touched. No run starts: the next one reads
+// the new text.
+func (s *Service) UpdatePullRequestText(ctx context.Context, id, title, intent string, criteria []Criterion) (Change, error) {
+	c, err := s.Get(ctx, id)
+	if err != nil {
+		return Change{}, err
+	}
+	if c.State.Final() {
+		return Change{}, fmt.Errorf("%w: change %s is %s", ErrInvalidState, id, c.State)
+	}
+	in, err := normalizeChange(ChangeInput{RepoID: c.RepoID, SourceBranch: c.SourceBranch, TargetBranch: c.TargetBranch,
+		Title: title, Intent: intent, AcceptanceCriteria: criteria, AllowNoCriteria: true, Constraints: c.Constraints, SubmittedBy: c.SubmittedBy})
+	if err != nil {
+		return Change{}, err
+	}
+	if err := s.store.UpdateChangeText(ctx, id, in.Title, in.Intent, in.AcceptanceCriteria, s.now().UTC()); err != nil {
+		return Change{}, err
+	}
+	return s.Get(ctx, id)
+}
+
 // Close moves a change to closed unless it is already merged or closed.
 func (s *Service) Close(ctx context.Context, id string) (Change, error) {
 	c, err := s.Get(ctx, id)

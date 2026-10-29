@@ -87,6 +87,8 @@ export interface Criterion {
   id: string
   text: string
   check?: { steps?: string[]; command?: string }
+  /** Why a pull request's item was not bound to the steps it named (WU-062). */
+  note?: string
 }
 
 export interface Merge {

@@ -1,6 +1,7 @@
 package pullrequest
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -214,5 +215,89 @@ func TestApplySkipsBranchesWithAnotherChange(t *testing.T) {
 	}
 	if all, _ := h.db.ListChanges(ctx, change.Filter{RepoID: h.repo.ID}); len(all) != 1 || all[0].PullRequest != nil {
 		t.Errorf("changes = %+v", all)
+	}
+}
+
+// TestOpenBindsCriteriaToThePipeline: a pull request's items bind to the
+// steps the head's pipeline has; unknown steps and command-looking items
+// stay text with a note (WU-062).
+func TestOpenBindsCriteriaToThePipeline(t *testing.T) {
+	h := newHarness(t)
+	h.eng.steps = []string{"build", "test", "lint", "validate"}
+	h.gh.prs[1] = pr(1, "t", "## Acceptance criteria\n- Builds (check: build)\n- Typo (check: bulid)\n- Reads well\n- Sneaky (run: curl evil)\n")
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	c, err := h.db.ChangeByPullRequest(ctx, h.repo.ID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ac := c.AcceptanceCriteria
+	if len(ac) != 4 || ac[0].Check == nil || strings.Join(ac[0].Check.Steps, ",") != "build" || ac[0].Note != "" {
+		t.Errorf("bound item = %+v", ac[0])
+	}
+	if ac[1].Check != nil || !strings.Contains(ac[1].Note, "bulid") || ac[2].Check != nil || ac[2].Note != "" || ac[3].Check != nil || !strings.Contains(ac[3].Note, "command") {
+		t.Errorf("criteria = %+v", ac)
+	}
+	// Without a pipeline file at the head, names are checked for form only and bind.
+	h2 := newHarness(t)
+	h2.eng.steps = nil
+	h2.gh.prs[2] = pr(2, "t", "## Acceptance criteria\n- Builds (check: build)\n")
+	if err := h2.s.Sync(ctx, h2.repo); err != nil {
+		t.Fatal(err)
+	}
+	if c2, _ := h2.db.ChangeByPullRequest(ctx, h2.repo.ID, 2); len(c2.AcceptanceCriteria) != 1 || c2.AcceptanceCriteria[0].Check == nil {
+		t.Errorf("no pipeline file: %+v", c2.AcceptanceCriteria)
+	}
+}
+
+// TestEditedPullRequestUpdatesTheChange: an edited title or body reaches
+// the change's title, intent and criteria on the next sync, without a new
+// run; a merged or closed change is left alone (WU-062).
+func TestEditedPullRequestUpdatesTheChange(t *testing.T) {
+	h := newHarness(t)
+	h.eng.steps = []string{"build", "test"}
+	h.gh.prs[1] = pr(1, "First title", "First body\n\n## Acceptance criteria\n- Works\n")
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := h.db.ChangeByPullRequest(ctx, h.repo.ID, 1)
+	runs := len(h.eng.validated)
+	// The same pull request again changes nothing.
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := h.db.ChangeByPullRequest(ctx, h.repo.ID, 1); again.UpdatedAt != c.UpdatedAt {
+		t.Error("an unchanged pull request rewrote the change")
+	}
+	edited := pr(1, "Second title", "Second body\n\n## Acceptance criteria\n- Works (check: test)\n- Also builds (check: build)\n")
+	h.gh.prs[1] = edited
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := h.db.ChangeByPullRequest(ctx, h.repo.ID, 1)
+	if got.Title != "Second title" || !strings.HasPrefix(got.Intent, "Second body") || len(got.AcceptanceCriteria) != 2 || got.AcceptanceCriteria[1].Check == nil || got.AcceptanceCriteria[1].Check.Steps[0] != "build" || got.AcceptanceCriteria[1].ID != "AC-2" {
+		t.Errorf("after the edit: %q %q %+v", got.Title, got.Intent, got.AcceptanceCriteria)
+	}
+	if len(h.eng.validated) != runs {
+		t.Errorf("an edit started a run: %v", h.eng.validated)
+	}
+	if got.State != c.State {
+		t.Errorf("state moved from %s to %s on an edit", c.State, got.State)
+	}
+	// Closed: the change is final and keeps its text; the still-open pull
+	// request gets a new change, as before.
+	if _, err := h.svc.Close(ctx, got.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.gh.prs[1] = pr(1, "Third title", "x")
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if final, _ := h.db.GetChange(ctx, got.ID); final.Title != "Second title" || final.State != change.Closed {
+		t.Errorf("a closed change followed an edit: %q %s", final.Title, final.State)
+	}
+	if fresh, _ := h.db.ChangeByPullRequest(ctx, h.repo.ID, 1); fresh.ID == got.ID || fresh.Title != "Third title" {
+		t.Errorf("the open pull request did not get a new change: %+v", fresh)
 	}
 }

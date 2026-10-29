@@ -211,6 +211,10 @@ func normalizeChange(in ChangeInput) (ChangeInput, error) {
 		if c.Check != nil {
 			checkProblems(&ps, field+".check", c.Check)
 		}
+		c.Note = strings.TrimSpace(c.Note)
+		if utf8.RuneCountInString(c.Note) > MaxText {
+			ps.add(field+".note", "must be at most %d characters", MaxText)
+		}
 		criteria[i] = c
 	}
 	next := 1

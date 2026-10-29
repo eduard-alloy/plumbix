@@ -299,6 +299,32 @@ func (db *DB) SetChangeState(ctx context.Context, id string, from, to change.Sta
 	return change.ErrConflict
 }
 
+// UpdateChangeText rewrites a change's title, intent and criteria (WU-062).
+// A final change is ErrInvalidState; no event is emitted, since the next
+// run carries the text it judged.
+func (db *DB) UpdateChangeText(ctx context.Context, id, title, intent string, criteria []change.Criterion, at time.Time) error {
+	if criteria == nil {
+		criteria = []change.Criterion{}
+	}
+	data, err := json.Marshal(criteria)
+	if err != nil {
+		return err
+	}
+	res, err := db.sql.ExecContext(ctx, `UPDATE changes SET title = ?, intent = ?, acceptance_criteria = ?, updated_at = ? WHERE id = ? AND state NOT IN (?, ?)`,
+		title, intent, string(data), formatTime(at), id, string(change.Merged), string(change.Closed))
+	if err != nil {
+		return mapErr(err)
+	}
+	if n, _ := res.RowsAffected(); n == 1 {
+		return nil
+	}
+	c, err := db.GetChange(ctx, id)
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("%w: change %s is %s", change.ErrInvalidState, id, c.State)
+}
+
 // ApproveByPerson records a person's approval of a change at head and moves
 // it from its current state to approved, emitting the approval and the
 // state change together. ErrConflict when the change left state from.

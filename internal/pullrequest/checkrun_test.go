@@ -182,3 +182,38 @@ func TestEmbeddedVerdictRoundTrip(t *testing.T) {
 		t.Error("found a block in plain text")
 	}
 }
+
+// TestGateCheckShowsNotesAndTheSplit: the gate's criteria table carries a
+// criterion's note, and the summary says how many criteria are bound to
+// steps and how many are text for the AI review (WU-062).
+func TestGateCheckShowsNotesAndTheSplit(t *testing.T) {
+	r := finishedRun()
+	r.Result.Criteria = []validation.CombinedCriterion{
+		{ID: "AC-1", Text: "Tests pass", Status: validation.Met},
+		{ID: "AC-2", Text: "Typo in the step", Status: validation.Unknown},
+		{ID: "AC-3", Text: "Reads well", Status: validation.Unknown},
+	}
+	c := change.Change{ID: "c_1", AcceptanceCriteria: []change.Criterion{
+		{ID: "AC-1", Text: "Tests pass", Check: &change.Check{Steps: []string{"test"}}},
+		{ID: "AC-2", Text: "Typo in the step", Note: "names step `bulid`, which the pipeline has not"},
+		{ID: "AC-3", Text: "Reads well"},
+	}}
+	g, err := GateCheck(c, r, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(g.Output.Summary, "| AC-2 | unknown | Typo in the step (note: names step `bulid`, which the pipeline has not) |") {
+		t.Errorf("note missing from the table:\n%s", g.Output.Summary)
+	}
+	if !strings.Contains(g.Output.Summary, "1 criterion bound to pipeline steps, 2 text for the AI review") {
+		t.Errorf("split missing:\n%s", g.Output.Summary)
+	}
+	// After an edit the change's criteria may differ from the run's: an item
+	// whose text changed gets no note and the split counts the run's rows.
+	c.AcceptanceCriteria[1].Text = "Typo fixed"
+	c.AcceptanceCriteria = append(c.AcceptanceCriteria, change.Criterion{ID: "AC-4", Text: "New since the run", Check: &change.Check{Steps: []string{"lint"}}})
+	g, _ = GateCheck(c, r, t0)
+	if strings.Contains(g.Output.Summary, "(note:") || !strings.Contains(g.Output.Summary, "1 criterion bound to pipeline steps, 2 text for the AI review") {
+		t.Errorf("after an edit:\n%s", g.Output.Summary)
+	}
+}

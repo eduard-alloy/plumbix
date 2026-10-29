@@ -61,6 +61,11 @@ func (h *changeHandlers) submit(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &in) {
 		return
 	}
+	// A note says why the pull-request intake refused a binding (WU-062);
+	// a submission through the API has no such story to tell.
+	for i := range in.AcceptanceCriteria {
+		in.AcceptanceCriteria[i].Note = ""
+	}
 	c, err := h.svc.Submit(r.Context(), in)
 	if err != nil {
 		h.fail(w, err)

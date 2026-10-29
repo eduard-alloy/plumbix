@@ -199,9 +199,36 @@ func GateCheck(c change.Change, r run.Run, now time.Time) (host.CheckRun, error)
 	if len(res.Criteria) == 0 {
 		b.WriteString("\n" + NoCriteriaNote + "\n")
 	} else {
+		// The notes and the split come from the change's criteria as the run
+		// judged them: an item the pull request edited since keeps the run's
+		// row and gets no note, so the table never mixes two versions.
+		judged := map[string]string{}
+		for _, cr := range res.Criteria {
+			judged[cr.ID] = cr.Text
+		}
+		notes := map[string]string{}
+		bound := 0
+		for _, ac := range c.AcceptanceCriteria {
+			if text, ok := judged[ac.ID]; !ok || text != ac.Text {
+				continue
+			}
+			if ac.Note != "" {
+				notes[ac.ID] = ac.Note
+			}
+			if ac.Check != nil {
+				bound++
+			}
+		}
+		// How the criteria split between the deterministic validator and the
+		// AI review (WU-062), so a reader knows what "unknown" means here.
+		fmt.Fprintf(&b, "\n%s bound to pipeline steps, %d text for the AI review.\n", plural(bound, "criterion", "criteria"), len(res.Criteria)-bound)
 		b.WriteString("\n| Criterion | Status | Text |\n|---|---|---|\n")
 		for _, cr := range res.Criteria {
-			fmt.Fprintf(&b, "| %s | %s | %s |\n", cr.ID, cr.Status, cell(cr.Text))
+			text := cr.Text
+			if n := notes[cr.ID]; n != "" {
+				text += " (note: " + n + ")"
+			}
+			fmt.Fprintf(&b, "| %s | %s | %s |\n", cr.ID, cr.Status, cell(text))
 		}
 	}
 	if len(res.Validators) > 0 {
@@ -299,4 +326,12 @@ func clip(s string, max int) string {
 		return s
 	}
 	return s[:max-1] + "…"
+}
+
+// plural counts in words: "1 criterion", "2 criteria".
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }

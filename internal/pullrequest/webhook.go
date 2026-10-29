@@ -146,7 +146,7 @@ func (w *Webhook) dispatch(ctx context.Context, repo change.Repo, event string, 
 			return false, nil
 		}
 		switch d.Action {
-		case "opened", "reopened", "synchronize", "closed", "ready_for_review":
+		case "opened", "reopened", "synchronize", "closed", "ready_for_review", "edited":
 			return true, w.Syncer.Apply(ctx, repo, *d.PullRequest)
 		}
 		return false, nil

@@ -121,3 +121,27 @@ func TestWebhookRemembersLastDelivery(t *testing.T) {
 		t.Error("a delivery remembered for another repository")
 	}
 }
+
+// TestWebhookEditedUpdatesTheChange: the edited action re-reads the title,
+// body and criteria into the change (WU-062).
+func TestWebhookEditedUpdatesTheChange(t *testing.T) {
+	h := newHarness(t)
+	h.eng.steps = []string{"build", "test"}
+	secret := "s3cret"
+	w := &Webhook{Secret: func() string { return secret }, Syncer: h.s, Repos: h.db, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	type repoBody struct {
+		URL string `json:"html_url"`
+	}
+	opened := map[string]any{"action": "opened", "repository": repoBody{"https://github.com/a/b.git"}, "pull_request": pr(1, "T", "## Acceptance criteria\n- works\n")}
+	if rec := deliver(t, w, secret, "pull_request", opened); rec.Code != http.StatusAccepted {
+		t.Fatalf("opened: %d %s", rec.Code, rec.Body.String())
+	}
+	edited := map[string]any{"action": "edited", "repository": repoBody{"https://github.com/a/b.git"}, "pull_request": pr(1, "T2", "## Acceptance criteria\n- works (check: test)\n")}
+	if rec := deliver(t, w, secret, "pull_request", edited); rec.Code != http.StatusAccepted {
+		t.Fatalf("edited: %d %s", rec.Code, rec.Body.String())
+	}
+	c, _ := h.db.ChangeByPullRequest(ctx, h.repo.ID, 1)
+	if c.Title != "T2" || len(c.AcceptanceCriteria) != 1 || c.AcceptanceCriteria[0].Check == nil || c.AcceptanceCriteria[0].Check.Steps[0] != "test" {
+		t.Errorf("after edited: %q %+v", c.Title, c.AcceptanceCriteria)
+	}
+}

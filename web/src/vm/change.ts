@@ -129,7 +129,7 @@ export interface ChangeView {
 function checkLabel(c: Change['acceptance_criteria'][number]): string {
   if (c.check?.steps?.length) return `check: step ${c.check.steps.join(', ')}`
   if (c.check?.command) return `check: ${c.check.command}`
-  return 'no check'
+  return c.note ? `no check · ${c.note}` : 'no check'
 }
 
 /** exitNote is the exit code with what else the run recorded about the step. */

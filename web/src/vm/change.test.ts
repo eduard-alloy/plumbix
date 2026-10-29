@@ -254,3 +254,11 @@ describe('refreshNotice', () => {
     expect(failed.body).toContain('Nothing is known about the branch')
   })
 })
+
+describe('criterion notes (WU-062)', () => {
+  it('says why a pull request item was not bound, beside the check label', () => {
+    const c = { ...needsHuman, acceptance_criteria: [{ id: 'AC-1', text: 'Typo in the step', note: 'names step `bulid`, which the pipeline has not' }] }
+    const v = changeView(c, needsHumanRuns, repos[1], undefined, NOW)
+    expect(v.criteria[0].check).toBe('no check · names step `bulid`, which the pipeline has not')
+  })
+})

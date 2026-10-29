@@ -1859,6 +1859,11 @@ components:
           maxLength: 2000
         check:
           $ref: "#/components/schemas/Check"
+        note:
+          description: >-
+            Why a pull request's item was not bound to the steps it named (WU-062), such as an unknown step or a
+            command, which a pull request cannot run. Never set on an API submission.
+          type: string
     CriterionInput:
       description: Like Criterion, but id is optional. Missing ids get the smallest unused AC-<n>.
       type: object
@@ -1928,7 +1933,11 @@ components:
         intent:
           type: string
         acceptance_criteria:
-          description: Empty only for a change opened from a pull request that stated no criteria (WU-054); a submission needs at least one.
+          description: >-
+            Empty only for a change opened from a pull request that stated no criteria (WU-054); a submission
+            needs at least one. A pull request's item ending in "(check: build, test)" is bound to those pipeline
+            steps as check.steps (WU-062); a name that is not a step of the pipeline at the head leaves the item
+            text, with a note.
           type: array
           items:
             $ref: "#/components/schemas/Criterion"

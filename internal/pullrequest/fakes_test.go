@@ -14,6 +14,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/engine"
 	"github.com/eduard-alloy/plumbix/internal/gitops"
 	"github.com/eduard-alloy/plumbix/internal/host"
+	"github.com/eduard-alloy/plumbix/internal/pipeline"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/store"
 	"github.com/eduard-alloy/plumbix/internal/validation"
@@ -117,10 +118,29 @@ type fakeEngine struct {
 	db        *store.DB
 	outcome   change.State
 	head      string
+	steps     []string // the pipeline's steps at any branch head; nil means no pipeline file
+	pipeErr   error
 	validated []string
 	merges    []engine.ExternalMerge
 	approvals []string
 	n         int
+}
+
+// PipelineFile answers with the fake's steps as a parsed pipeline.
+func (f *fakeEngine) PipelineFile(ctx context.Context, repoID, branch string) (engine.PipelineFileView, error) {
+	if f.pipeErr != nil {
+		return engine.PipelineFileView{}, f.pipeErr
+	}
+	v := engine.PipelineFileView{Branch: branch, SHA: f.head}
+	if f.steps == nil {
+		return v, nil
+	}
+	v.Found = true
+	v.Pipeline = &pipeline.Pipeline{}
+	for _, name := range f.steps {
+		v.Pipeline.Steps = append(v.Pipeline.Steps, pipeline.Step{Name: name})
+	}
+	return v, nil
 }
 
 func (f *fakeEngine) Validate(ctx context.Context, changeID string) (run.Run, error) {

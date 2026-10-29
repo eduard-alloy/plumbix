@@ -32,6 +32,9 @@ type Engine interface {
 	Validate(ctx context.Context, changeID string) (run.Run, error)
 	ApproveByPerson(ctx context.Context, changeID string, who change.Approver, reason string) (change.Change, error)
 	RecordExternalMerge(ctx context.Context, changeID string, m engine.ExternalMerge) (change.Change, error)
+	// PipelineFile reads the pipeline at a branch head, so a pull request's
+	// criteria bind only to steps that exist (WU-062).
+	PipelineFile(ctx context.Context, repoID, branch string) (engine.PipelineFileView, error)
 }
 
 // Store is what intake reads and writes.
@@ -158,7 +161,7 @@ func (s *Syncer) Apply(ctx context.Context, repo change.Repo, pr host.PullReques
 	switch {
 	case pr.State == "open":
 		if found {
-			return nil
+			return s.follow(ctx, repo, existing, pr)
 		}
 		return s.open(ctx, repo, pr)
 	case pr.Merged || pr.MergedAt != nil:
@@ -191,16 +194,88 @@ func (s *Syncer) logFork(repo change.Repo, pr host.PullRequest) {
 	}
 }
 
-// open submits the change a pull request describes and starts its run.
-func (s *Syncer) open(ctx context.Context, repo change.Repo, pr host.PullRequest) error {
-	intent := strings.TrimSpace(pr.Body)
+// text is what a pull request says: its title, intent and criteria as
+// the change carries them, the criteria bound to the steps of the
+// pipeline at the pull request's head (WU-062).
+func (s *Syncer) text(ctx context.Context, repo change.Repo, pr host.PullRequest) (title, intent string, criteria []change.Criterion) {
+	intent = strings.TrimSpace(pr.Body)
 	if intent == "" {
 		intent = fmt.Sprintf("%s (pull request #%d has no description)", strings.TrimSpace(pr.Title), pr.Number)
 	}
+	title = truncate(strings.TrimSpace(pr.Title), change.MaxTitle)
+	intent = truncate(intent, change.MaxIntent)
+	criteria = ParseCriteria(pr.Body, s.knownSteps(ctx, repo, pr))
+	return title, intent, criteria
+}
+
+// knownSteps reads the pipeline at the pull request's head and reports
+// whether a step exists there. When the file is missing, invalid or the
+// read fails, names are checked for form only and the log says so.
+func (s *Syncer) knownSteps(ctx context.Context, repo change.Repo, pr host.PullRequest) func(string) bool {
+	if !strings.Contains(pr.Body, "(") && !strings.Contains(pr.Body, "（") {
+		return nil // nothing to bind; spare the fetch
+	}
+	v, err := s.Engine.PipelineFile(ctx, repo.ID, pr.Head.Branch)
+	if err != nil {
+		s.Log.Warn("pull request criteria: the pipeline could not be read; step names checked for form only", "repo", repo.ID, "pr", pr.Number, "err", err)
+		return nil
+	}
+	if v.Pipeline == nil {
+		return nil
+	}
+	steps := map[string]bool{}
+	for _, st := range v.Pipeline.Steps {
+		steps[st.Name] = true
+	}
+	return func(name string) bool { return steps[name] }
+}
+
+// follow brings an open change's title, intent and criteria up to date
+// with its pull request after an edit (WU-062). Nothing else moves: no
+// run starts, the state stays.
+func (s *Syncer) follow(ctx context.Context, repo change.Repo, c change.Change, pr host.PullRequest) error {
+	if c.State.Final() {
+		return nil
+	}
+	title, intent, criteria := s.text(ctx, repo, pr)
+	if title == c.Title && intent == c.Intent && sameCriteria(criteria, c.AcceptanceCriteria) {
+		return nil
+	}
+	if _, err := s.Changes.UpdatePullRequestText(ctx, c.ID, title, intent, criteria); err != nil {
+		if errors.Is(err, change.ErrInvalidState) {
+			return nil
+		}
+		return fmt.Errorf("follow the edited pull request: %w", err)
+	}
+	s.Log.Info("pull request edited, change updated", "repo", repo.ID, "pr", pr.Number, "change", c.ID, "criteria", len(criteria))
+	return nil
+}
+
+// sameCriteria compares what the pull request states with what the change
+// carries, ids aside (the service assigns them in order).
+func sameCriteria(a, b []change.Criterion) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		x, y := a[i], b[i]
+		if x.Text != y.Text || x.Note != y.Note || (x.Check == nil) != (y.Check == nil) {
+			return false
+		}
+		if x.Check != nil && (strings.Join(x.Check.Steps, ",") != strings.Join(y.Check.Steps, ",") || x.Check.Command != y.Check.Command) {
+			return false
+		}
+	}
+	return true
+}
+
+// open submits the change a pull request describes and starts its run.
+func (s *Syncer) open(ctx context.Context, repo change.Repo, pr host.PullRequest) error {
+	title, intent, criteria := s.text(ctx, repo, pr)
 	in := change.ChangeInput{
 		RepoID: repo.ID, SourceBranch: pr.Head.Branch, TargetBranch: pr.Base.Branch,
-		Title: truncate(strings.TrimSpace(pr.Title), change.MaxTitle), Intent: truncate(intent, change.MaxIntent),
-		AcceptanceCriteria: ParseCriteria(pr.Body), AllowNoCriteria: true,
+		Title: title, Intent: intent,
+		AcceptanceCriteria: criteria, AllowNoCriteria: true,
 		SubmittedBy: Submitter(pr.Author),
 		PullRequest: &change.PullRequestRef{Number: pr.Number, URL: pr.URL},
 	}

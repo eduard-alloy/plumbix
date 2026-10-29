@@ -150,6 +150,10 @@ type Criterion struct {
 	ID    string `json:"id"`
 	Text  string `json:"text"`
 	Check *Check `json:"check,omitempty"`
+	// Note says why a pull request's item was not bound to the steps it
+	// named (WU-062): an unknown step, or a command, which a pull request
+	// cannot run. Shown beside the criterion, never dropped.
+	Note string `json:"note,omitempty"`
 }
 
 // Check says how the deterministic validator proves a criterion: either
@@ -185,6 +189,9 @@ type Store interface {
 	// SetChangeState moves a change from one state to another. It returns
 	// ErrConflict if the change is no longer in state from.
 	SetChangeState(ctx context.Context, id string, from, to State, at time.Time) error
+	// UpdateChangeText rewrites a change's title, intent and criteria, as a
+	// pull request's edit asks (WU-062); refused for a final change.
+	UpdateChangeText(ctx context.Context, id, title, intent string, criteria []Criterion, at time.Time) error
 	// ApproveByPerson records a person's approval at head and moves the
 	// change from state from to approved. ErrConflict if it left state from.
 	ApproveByPerson(ctx context.Context, id string, from State, approval HumanApproval) error

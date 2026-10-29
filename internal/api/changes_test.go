@@ -113,6 +113,21 @@ func TestSubmitAndReadChange(t *testing.T) {
 	}
 }
 
+// TestSubmitDropsCriterionNotes: a note belongs to the pull-request
+// intake; an API submission that sends one is stored without it (WU-062).
+func TestSubmitDropsCriterionNotes(t *testing.T) {
+	a := newTestAPI(t)
+	repo := a.createRepo()
+	body := `{"repo_id": "` + repo.ID + `", "source_branch": "feat", "target_branch": "main", "title": "Add retries", "intent": "Retry flaky uploads", "acceptance_criteria": [{"text": "Uploads retry", "note": "not yours to say"}]}`
+	rec := a.do(http.MethodPost, "/api/v1/changes", body)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("submit: %d %s", rec.Code, rec.Body.String())
+	}
+	if c := decode[change.Change](t, rec); len(c.AcceptanceCriteria) != 1 || c.AcceptanceCriteria[0].Note != "" {
+		t.Errorf("criteria = %+v", c.AcceptanceCriteria)
+	}
+}
+
 func TestSubmitErrors(t *testing.T) {
 	a := newTestAPI(t)
 	cases := []struct {
