@@ -168,4 +168,13 @@ func TestRepoPausedAndRemoved(t *testing.T) {
 	if err := s.RemoveRepo(ctx, r.ID, "eduard@mac"); !errors.Is(err, change.ErrNotFound) {
 		t.Errorf("remove twice: %v", err)
 	}
+	// The remote can be registered again: the removed row keeps its URL
+	// for the record, but only live registrations must be unique.
+	again, err := s.RegisterRepo(ctx, change.RepoInput{Host: "github", URL: "https://github.com/a/retire"})
+	if err != nil || again.ID == r.ID {
+		t.Fatalf("register the same remote after a removal: %+v, %v", again, err)
+	}
+	if _, err := s.RegisterRepo(ctx, change.RepoInput{Host: "github", URL: "https://github.com/a/retire"}); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("a second live registration of the same remote: %v", err)
+	}
 }
