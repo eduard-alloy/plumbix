@@ -293,3 +293,45 @@ func TestMergeLandsThroughTheGate(t *testing.T) {
 		}
 	})
 }
+
+// recordingStore sees the merge record being written, so a test can say
+// what the remote looked like at that moment.
+type recordingStore struct {
+	Store
+	onRecord func()
+}
+
+func (r *recordingStore) RecordMerge(ctx context.Context, rec change.MergeRecord) error {
+	if r.onRecord != nil {
+		r.onRecord()
+	}
+	return r.Store.RecordMerge(ctx, rec)
+}
+
+// TestMergeRecordsBeforeRemovingTheHoldingRef: the merge record is written
+// as soon as the target moved, before the holding ref's removal, which is
+// another round trip to the host. A poll in that gap otherwise read the
+// new head as a bypass (seen live on 2026-10-30).
+func TestMergeRecordsBeforeRemovingTheHoldingRef(t *testing.T) {
+	h := newHarnessWith(t, Config{}, "squash")
+	var refAtRecord, mainAtRecord bool
+	wrapped := &recordingStore{Store: h.eng.store}
+	eng := New(wrapped, h.fake, h.eng.cfg, h.eng.log)
+	t.Cleanup(func() { eng.Shutdown(context.Background()) })
+	l := &fakeLanding{h: h, required: true, known: true}
+	eng.SetLanding(l)
+	c := h.approve("feat")
+	wrapped.onRecord = func() {
+		_, refAtRecord = h.holdingRef(c.ID)
+		mainAtRecord = h.remote("rev-parse", "main") != ""
+	}
+	if _, err := eng.Merge(ctx, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !refAtRecord || !mainAtRecord {
+		t.Errorf("at record time: holding ref present %v, main readable %v; the record must precede the ref's removal", refAtRecord, mainAtRecord)
+	}
+	if _, ok := h.holdingRef(c.ID); ok {
+		t.Error("the holding ref outlived the merge")
+	}
+}

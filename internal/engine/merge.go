@@ -113,17 +113,20 @@ func (e *Engine) Merge(ctx context.Context, changeID string) (change.Change, err
 		}
 		return change.Change{}, err
 	}
-	if gated {
-		if err := m.DeleteRef(ctx, LandingRef(c.ID)); err != nil {
-			e.log.Warn("the landing ref was not removed", "change", c.ID, "ref", LandingRef(c.ID), "err", err)
-		}
-	}
-
+	// The record comes first, the moment the target has moved: the poller
+	// reads the branch every few seconds and a head it cannot match to a
+	// merge record is a bypass. The holding ref's removal is a second
+	// round trip to the host and waits until the record is written.
 	now := e.now().UTC()
 	rec := change.MergeRecord{ChangeID: c.ID, RepoID: c.RepoID, Branch: c.TargetBranch,
 		Merge: change.Merge{Commit: sha, Previous: target, Strategy: repo.MergeStrategy, RunID: r.ID, MergedAt: now}}
 	if err := e.store.RecordMerge(ctx, rec); err != nil {
 		return change.Change{}, fmt.Errorf("pushed %s to %s but could not record the merge: %w", short(sha), c.TargetBranch, err)
+	}
+	if gated {
+		if err := m.DeleteRef(ctx, LandingRef(c.ID)); err != nil {
+			e.log.Warn("the landing ref was not removed", "change", c.ID, "ref", LandingRef(c.ID), "err", err)
+		}
 	}
 	if err := e.approveMerged(ctx, m, repo, c.ID, target, sha); err != nil {
 		// The merge is on the host; without the record, runs of the new
