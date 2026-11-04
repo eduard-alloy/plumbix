@@ -109,13 +109,17 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 					return e.takeVerdict(dir, rv, log)
 				}
 			}
-			if err := e.store.ExpireReview(bg, b.ID, e.now().UTC()); err != nil {
+			reason := expiryReason(ctx)
+			if err := e.store.ExpireReview(bg, b.ID, e.now().UTC(), reason); err != nil {
 				e.log.Warn("expire review", "review", b.ID, "err", err)
 			}
-			if errors.Is(context.Cause(ctx), context.DeadlineExceeded) || ctx.Err() == context.DeadlineExceeded {
-				fmt.Fprintf(log, "no verdict arrived by %s; the step timed out and counts as a validator error\n", deadline.UTC().Format(time.RFC3339))
-			} else {
-				fmt.Fprintln(log, "the run was cancelled before a verdict arrived")
+			switch reason {
+			case review.ReasonTimedOut:
+				fmt.Fprintf(log, "no verdict arrived by %s; the step timed out and counts as a validator error (review %s expired: %s)\n", deadline.UTC().Format(time.RFC3339), b.ID, reason)
+			case review.ReasonServerStopped:
+				fmt.Fprintf(log, "the Plumbix server stopped before a verdict arrived (review %s expired: %s)\n", b.ID, reason)
+			default:
+				fmt.Fprintf(log, "the run was cancelled before a verdict arrived (review %s expired: %s)\n", b.ID, reason)
 			}
 			return scheduler.StepResult{}
 		case <-ticker.C:
@@ -277,6 +281,29 @@ func (e *Engine) ClaimReview(ctx context.Context, repoID, reviewer string) (revi
 	return b, true, nil
 }
 
+// expiryReason says why a waiting step's context ended (WU-068): the
+// step's own deadline, the server stopping, or a cancellation (a newer
+// iteration superseded the run, or the change closed).
+func expiryReason(ctx context.Context) string {
+	cause := context.Cause(ctx)
+	switch {
+	case errors.Is(cause, context.DeadlineExceeded) || ctx.Err() == context.DeadlineExceeded:
+		return review.ReasonTimedOut
+	case errors.Is(cause, errShutdown):
+		return review.ReasonServerStopped
+	}
+	return review.ReasonRunCancelled
+}
+
+// reviewState names a review's status for a refusal, with the reason the
+// platform closed it when it did (WU-068).
+func reviewState(rv review.Review) string {
+	if rv.Status == review.Expired && rv.ExpiredReason != "" {
+		return rv.Status + " (" + rv.ExpiredReason + ")"
+	}
+	return rv.Status
+}
+
 // ReleaseReview gives a claimed review back when its reviewer never got the
 // brief, so the claim does not sit unanswered until the step times out.
 func (e *Engine) ReleaseReview(ctx context.Context, id string) error {
@@ -301,7 +328,7 @@ func (e *Engine) PostReviewVerdict(ctx context.Context, id, token string, raw []
 	// The claim and its token come first, so a stranger learns nothing
 	// about the verdict's problems and gets the same 409 for every attempt.
 	if rv.Status != review.Claimed || rv.TokenHash != hashToken(token) || !rv.ExpiresAt.After(e.now()) {
-		return fmt.Errorf("%w: review %s is %s, or the token is not the one handed out with its brief", change.ErrConflict, id, rv.Status)
+		return fmt.Errorf("%w: review %s is %s, or the token is not the one handed out with its brief", change.ErrConflict, id, reviewState(rv))
 	}
 	c, err := e.store.GetChange(ctx, rv.ChangeID)
 	if err != nil {
@@ -391,7 +418,7 @@ func (e *Engine) AppendReviewLog(ctx context.Context, id, token, line string) er
 		return err
 	}
 	if rv.Status != review.Claimed || rv.TokenHash != hashToken(token) {
-		return fmt.Errorf("%w: review %s is %s, or the token is not the one handed out with its brief", change.ErrConflict, id, rv.Status)
+		return fmt.Errorf("%w: review %s is %s, or the token is not the one handed out with its brief", change.ErrConflict, id, reviewState(rv))
 	}
 	now := e.now()
 	e.reviewLogMu.Lock()

@@ -12,13 +12,13 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/review"
 )
 
-const reviewColumns = `id, run_id, repo_id, change_id, step, status, reviewer, token_hash, brief, verdict, created_at, claimed_at, finished_at, expires_at`
+const reviewColumns = `id, run_id, repo_id, change_id, step, status, reviewer, token_hash, brief, verdict, created_at, claimed_at, finished_at, expires_at, expired_reason`
 
 // CreateReview publishes an external step's review and emits review.requested.
 func (db *DB) CreateReview(ctx context.Context, r review.Review) error {
 	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO reviews (`+reviewColumns+`) VALUES (?, ?, ?, ?, ?, ?, '', '', ?, '', ?, '', '', ?)`,
+			`INSERT INTO reviews (`+reviewColumns+`) VALUES (?, ?, ?, ?, ?, ?, '', '', ?, '', ?, '', '', ?, '')`,
 			r.ID, r.RunID, r.RepoID, r.ChangeID, r.Step, review.Pending, string(r.Brief), formatTime(r.CreatedAt), formatTime(r.ExpiresAt)); err != nil {
 			return mapErr(err)
 		}
@@ -82,17 +82,28 @@ func (db *DB) PostReviewVerdict(ctx context.Context, id, tokenHash string, verdi
 
 // ExpireReview closes a review that got no verdict in time. A review that
 // is already done or expired is left as it is.
-func (db *DB) ExpireReview(ctx context.Context, id string, at time.Time) error {
-	res, err := db.sql.ExecContext(ctx,
-		`UPDATE reviews SET status = ?, finished_at = ? WHERE id = ? AND status IN (?, ?)`,
-		review.Expired, formatTime(at), id, review.Pending, review.Claimed)
-	if err != nil {
-		return mapErr(err)
-	}
-	if n, _ := res.RowsAffected(); n == 1 {
-		return nil
-	}
-	_, err = db.GetReview(ctx, id)
+func (db *DB) ExpireReview(ctx context.Context, id string, at time.Time, reason string) error {
+	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		r, err := scanReview(tx.QueryRowContext(ctx,
+			`UPDATE reviews SET status = ?, finished_at = ?, expired_reason = ? WHERE id = ? AND status IN (?, ?) RETURNING `+reviewColumns,
+			review.Expired, formatTime(at), reason, id, review.Pending, review.Claimed))
+		if errors.Is(err, change.ErrNotFound) {
+			// Already closed, or unknown: only the latter is an error.
+			_, err = scanReview(tx.QueryRowContext(ctx, `SELECT `+reviewColumns+` FROM reviews WHERE id = ?`, id))
+			return err
+		}
+		if err != nil {
+			return err
+		}
+		return emitExpired(emit, r, at, reason)
+	})
+}
+
+// emitExpired records review.expired for a review just closed without a
+// verdict; the reviewer is named only when somebody held the claim.
+func emitExpired(emit emitFunc, r review.Review, at time.Time, reason string) error {
+	_, err := emit(events.Event{Type: events.ReviewExpired, Time: at, RepoID: r.RepoID, ChangeID: r.ChangeID, RunID: r.RunID,
+		Payload: events.ReviewExpiredPayload{ReviewID: r.ID, Reviewer: r.Reviewer, Reason: reason}})
 	return err
 }
 
@@ -124,17 +135,44 @@ func (db *DB) ReleaseReview(ctx context.Context, id string) error {
 			return err
 		}
 		_, err = emit(events.Event{Type: events.ReviewReleased, Time: time.Now().UTC(), RepoID: r.RepoID, ChangeID: r.ChangeID, RunID: r.RunID,
-			Payload: events.ReviewReleasedPayload{ReviewID: r.ID, Reviewer: was}})
+			Payload: events.ReviewReleasedPayload{ReviewID: r.ID, Reviewer: was, Reason: review.ReasonReviewerGone}})
 		return err
 	})
 }
 
-// ExpireRunReviews closes the open reviews of one run.
-func (db *DB) ExpireRunReviews(ctx context.Context, runID string, at time.Time) error {
-	_, err := db.sql.ExecContext(ctx,
-		`UPDATE reviews SET status = ?, finished_at = ? WHERE run_id = ? AND status IN (?, ?)`,
-		review.Expired, formatTime(at), runID, review.Pending, review.Claimed)
-	return mapErr(err)
+// ExpireRunReviews closes the open reviews of one run for the reason
+// given (server_restart from crash recovery), one review.expired each,
+// and returns the reviews it closed.
+func (db *DB) ExpireRunReviews(ctx context.Context, runID string, at time.Time, reason string) ([]review.Review, error) {
+	var closed []review.Review
+	err := db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		closed = nil
+		rows, err := tx.QueryContext(ctx,
+			`UPDATE reviews SET status = ?, finished_at = ?, expired_reason = ? WHERE run_id = ? AND status IN (?, ?) RETURNING `+reviewColumns,
+			review.Expired, formatTime(at), reason, runID, review.Pending, review.Claimed)
+		if err != nil {
+			return mapErr(err)
+		}
+		for rows.Next() {
+			r, err := scanReview(rows)
+			if err != nil {
+				rows.Close()
+				return err
+			}
+			closed = append(closed, r)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return mapErr(err)
+		}
+		for _, r := range closed {
+			if err := emitExpired(emit, r, at, reason); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return closed, err
 }
 
 // GetReview returns one review. ErrNotFound when there is none.
@@ -145,7 +183,7 @@ func (db *DB) GetReview(ctx context.Context, id string) (review.Review, error) {
 func scanReview(s scanner) (review.Review, error) {
 	var r review.Review
 	var brief, verdict, created, claimed, finished, expires string
-	if err := s.Scan(&r.ID, &r.RunID, &r.RepoID, &r.ChangeID, &r.Step, &r.Status, &r.Reviewer, &r.TokenHash, &brief, &verdict, &created, &claimed, &finished, &expires); err != nil {
+	if err := s.Scan(&r.ID, &r.RunID, &r.RepoID, &r.ChangeID, &r.Step, &r.Status, &r.Reviewer, &r.TokenHash, &brief, &verdict, &created, &claimed, &finished, &expires, &r.ExpiredReason); err != nil {
 		return review.Review{}, mapErr(err)
 	}
 	r.Brief = json.RawMessage(brief)

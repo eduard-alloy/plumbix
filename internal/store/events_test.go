@@ -205,6 +205,14 @@ func TestLifecycleEmitsEvents(t *testing.T) {
 	if err := db.ReleaseReview(ctx, "rv_1"); err != nil {
 		t.Fatal(err)
 	}
+	// A second review of the run times out with nobody holding it (WU-068).
+	if err := db.CreateReview(ctx, review.Review{ID: "rv_2", RunID: "run_2", RepoID: "r_1", ChangeID: "c_2", Step: "ai-grok", Brief: json.RawMessage(`{}`),
+		CreatedAt: at.Add(19 * time.Second), ExpiresAt: at.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ExpireReview(ctx, "rv_2", at.Add(20*time.Second), review.ReasonTimedOut); err != nil {
+		t.Fatal(err)
+	}
 
 	want := []events.Type{
 		events.ChangeSubmitted, events.RunStarted, events.StateChanged, events.StepFinished,
@@ -212,6 +220,7 @@ func TestLifecycleEmitsEvents(t *testing.T) {
 		events.AlertRaised, events.AlertResolved, events.AlertRaised, events.AlertResolved,
 		events.ChangeSubmitted, events.StateChanged, events.ApprovedByPerson, events.StateChanged, events.ChangeRefreshed,
 		events.StepStarted, events.RunStarted, events.ReviewRequested, events.ReviewClaimed, events.ReviewReleased,
+		events.ReviewRequested, events.ReviewExpired,
 	}
 	var got []events.Type
 	for i, e := range notified {

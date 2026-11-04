@@ -522,12 +522,38 @@ func (e *Engine) Recover(ctx context.Context) error {
 	}
 	for _, r := range stale {
 		e.log.Warn("recovering interrupted run", "run", r.ID, "change", r.ChangeID)
-		if err := e.store.ExpireRunReviews(ctx, r.ID, e.now().UTC()); err != nil {
+		closed, err := e.store.ExpireRunReviews(ctx, r.ID, e.now().UTC(), review.ReasonServerRestart)
+		if err != nil {
 			e.log.Warn("expire the run's open reviews", "run", r.ID, "err", err)
+		}
+		for _, rv := range closed {
+			e.appendStepLog(r.ID, rv.Step, fmt.Sprintf("the Plumbix server restarted before a verdict arrived (review %s expired: %s)", rv.ID, review.ReasonServerRestart))
 		}
 		e.finishErrored(ctx, r, errors.New("interrupted: the Plumbix server stopped during this run"), false)
 	}
 	return nil
+}
+
+// appendStepLog adds one line to a step's log after the fact, for what
+// happened to the step while no run was writing it (crash recovery).
+func (e *Engine) appendStepLog(runID, step, line string) {
+	path := e.LogPath(runID, step)
+	if path == "" {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		e.log.Warn("append to a step log", "run", runID, "step", step, "err", err)
+		return
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		e.log.Warn("append to a step log", "run", runID, "step", step, "err", err)
+		return
+	}
+	defer f.Close()
+	if _, err := fmt.Fprintln(f, line); err != nil {
+		e.log.Warn("append to a step log", "run", runID, "step", step, "err", err)
+	}
 }
 
 // LogPath returns the log file of a step, or "" for invalid names.

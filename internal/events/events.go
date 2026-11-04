@@ -41,10 +41,14 @@ const (
 	// ReviewReleased: a claim was given back because the reviewer never
 	// received the brief; the review is pending again.
 	ReviewReleased Type = "review.released"
+	// ReviewExpired: the platform closed a review without a verdict and
+	// says why (WU-068): the step timed out, the run was cancelled, the
+	// server stopped, or the run was found running after a restart.
+	ReviewExpired Type = "review.expired"
 )
 
 // Types lists every event type.
-var Types = []Type{ChangeSubmitted, StateChanged, ChangeMerged, RunStarted, StepFinished, RunFinished, VerdictIssued, AlertRaised, AlertResolved, ApprovedByPerson, ChangeRefreshed, ReviewRequested, ReviewClaimed, ReviewReleased, StepStarted, RepoRemoved}
+var Types = []Type{ChangeSubmitted, StateChanged, ChangeMerged, RunStarted, StepFinished, RunFinished, VerdictIssued, AlertRaised, AlertResolved, ApprovedByPerson, ChangeRefreshed, ReviewRequested, ReviewClaimed, ReviewReleased, StepStarted, RepoRemoved, ReviewExpired}
 
 // Event is the envelope every event shares. The three optional ids are the
 // filter keys; Payload holds what the type needs and is one of the payload
@@ -128,10 +132,20 @@ type (
 		ReviewID string `json:"review_id"`
 		Reviewer string `json:"reviewer"`
 	}
-	// ReviewReleasedPayload: Reviewer's claim was given back.
+	// ReviewReleasedPayload: Reviewer's claim was given back; Reason says
+	// why (reviewer_gone, WU-068).
 	ReviewReleasedPayload struct {
 		ReviewID string `json:"review_id"`
 		Reviewer string `json:"reviewer"`
+		Reason   string `json:"reason,omitempty"`
+	}
+	// ReviewExpiredPayload: the platform closed the review without a
+	// verdict for Reason (timed_out, run_cancelled, server_stopped,
+	// server_restart); Reviewer is who held it, absent when nobody did.
+	ReviewExpiredPayload struct {
+		ReviewID string `json:"review_id"`
+		Reviewer string `json:"reviewer,omitempty"`
+		Reason   string `json:"reason"`
 	}
 	// RunStartedPayload: a pipeline run began; Iteration is set for a change's run.
 	RunStartedPayload struct {

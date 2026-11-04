@@ -1610,6 +1610,11 @@ paths:
         Fetches the source branch, runs the pipeline and the validators, and
         moves the change to its outcome. A run still going for the change is
         cancelled. Submitting a change starts iteration 1 automatically.
+        After a restart Plumbix never starts an iteration itself: a run that
+        ended because the server stopped (error "interrupted because the Plumbix
+        server stopped" on a graceful stop, "interrupted: the Plumbix server
+        stopped during this run" after a crash recovery) leaves the change at
+        needs_human as a hold, and this call releases it (WU-068).
       parameters:
         - $ref: "#/components/parameters/ChangeID"
       responses:

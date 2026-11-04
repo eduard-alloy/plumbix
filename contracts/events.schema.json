@@ -116,7 +116,7 @@
       ]
     },
     {
-      "description": "A run ended. outcome is set when a change's run finished with a verdict.",
+      "description": "A run ended. outcome is set when a change's run finished with a verdict. A run that ended (status errored) because the Plumbix server stopped, error \"interrupted because the Plumbix server stopped\" on a graceful stop or \"interrupted: the Plumbix server stopped during this run\" after a crash recovery, leaves the change at needs_human as a hold: after a restart Plumbix never starts an iteration itself; a person or a client releases it with POST /changes/{id}/validate (WU-068).",
       "properties": {
         "type": {
           "const": "run.finished"
@@ -230,13 +230,29 @@
       ]
     },
     {
-      "description": "A claim on an external review was given back because the reviewer never received the brief (its poll was cut off); the review is pending again and the next claim takes it.",
+      "description": "A claim on an external review was given back because the reviewer never received the brief (its poll was cut off); the review is pending again and the next claim takes it. reason says so (reviewer_gone, WU-068).",
       "properties": {
         "type": {
           "const": "review.released"
         },
         "payload": {
-          "$ref": "#/$defs/reviewClaimed"
+          "$ref": "#/$defs/reviewReleased"
+        }
+      },
+      "required": [
+        "repo_id",
+        "change_id",
+        "run_id"
+      ]
+    },
+    {
+      "description": "The platform closed an external review without a verdict and says why (WU-068): timed_out (the step's timeout passed), run_cancelled (the run was cancelled: a newer iteration superseded it, or its change was closed), server_stopped (the Plumbix server stopped while the run waited), server_restart (the run was found running after a restart). The reviewer's token is dead; a verdict or log line posted later is refused with 409 naming the reason. reviewer is who held the claim, absent when nobody did.",
+      "properties": {
+        "type": {
+          "const": "review.expired"
+        },
+        "payload": {
+          "$ref": "#/$defs/reviewExpired"
         }
       },
       "required": [
@@ -776,6 +792,58 @@
         "by": {
           "description": "The person who asked, as the surface knew them.",
           "type": "string"
+        }
+      }
+    },
+    "reviewReleased": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "review_id",
+        "reviewer"
+      ],
+      "properties": {
+        "review_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "description": "Why the claim went back; absent on events from before WU-068.",
+          "type": "string",
+          "enum": [
+            "reviewer_gone"
+          ]
+        }
+      }
+    },
+    "reviewExpired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "review_id",
+        "reason"
+      ],
+      "properties": {
+        "review_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "timed_out",
+            "run_cancelled",
+            "server_stopped",
+            "server_restart"
+          ]
         }
       }
     }

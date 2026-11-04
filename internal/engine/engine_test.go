@@ -1539,3 +1539,140 @@ steps:
 		t.Errorf("outcome without the advisory validator = %s %v", done.Outcome, done.Result.Reasons)
 	}
 }
+
+// TestExpiredReviewsSayWhy: each way the platform closes a claimed review
+// without a verdict emits one review.expired naming the reason, leaves
+// the reason on the review, and a late verdict's refusal names it too
+// (WU-068): the step's timeout, a newer iteration, the server stopping,
+// and crash recovery after a restart.
+func TestExpiredReviewsSayWhy(t *testing.T) {
+	late := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"late","criteria":[{"id":"AC-1","status":"met","reason":"x","evidence":["a"]}]}`)
+	// refused: a verdict and a log line after the close are refused with
+	// the reason named, whatever token is offered.
+	refused := func(t *testing.T, h *harness, reviewID, token, reason string) {
+		t.Helper()
+		if err := h.eng.PostReviewVerdict(ctx, reviewID, token, late); !errors.Is(err, change.ErrConflict) || !strings.Contains(err.Error(), "expired ("+reason+")") {
+			t.Errorf("late verdict: %v", err)
+		}
+		if err := h.eng.AppendReviewLog(ctx, reviewID, token, "still here"); !errors.Is(err, change.ErrConflict) || !strings.Contains(err.Error(), "expired ("+reason+")") {
+			t.Errorf("late log line: %v", err)
+		}
+	}
+	expired := func(t *testing.T, h *harness, changeID, reviewID string) (reviewer, reason string) {
+		t.Helper()
+		evs, _ := h.db.EventsAfter(ctx, 0, events.Filter{ChangeID: changeID}, 200)
+		n := 0
+		for _, e := range evs {
+			if e.Type != events.ReviewExpired {
+				continue
+			}
+			raw, _ := json.Marshal(e.Payload)
+			var p events.ReviewExpiredPayload
+			_ = json.Unmarshal(raw, &p)
+			if p.ReviewID != reviewID {
+				continue
+			}
+			n++
+			reviewer, reason = p.Reviewer, p.Reason
+		}
+		if n != 1 {
+			t.Errorf("review.expired for %s: %d events", reviewID, n)
+		}
+		rv, err := h.db.GetReview(ctx, reviewID)
+		if err != nil || rv.Status != review.Expired || rv.ExpiredReason != reason {
+			t.Errorf("review = %+v, %v; event reason %q", rv, err, reason)
+		}
+		return reviewer, reason
+	}
+	external := func(t *testing.T, yaml string) (*harness, change.Change) {
+		h := newHarness(t, Config{})
+		h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": yaml}, "external review")
+		h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+		return h, h.submit("feat")
+	}
+	t.Run("timed_out", func(t *testing.T) {
+		h, c := external(t, strings.Replace(externalYAML, "timeout: 20s", "timeout: 2s", 1))
+		r, err := h.eng.Validate(ctx, c.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := h.claimSoon("kai")
+		h.wait(r.ID)
+		if who, why := expired(t, h, c.ID, b.ID); who != "kai" || why != review.ReasonTimedOut {
+			t.Errorf("reviewer %q reason %q", who, why)
+		}
+		refused(t, h, b.ID, b.Token, review.ReasonTimedOut)
+		log, _ := os.ReadFile(h.eng.LogPath(r.ID, "ai-review"))
+		if !strings.Contains(string(log), "expired: "+review.ReasonTimedOut) {
+			t.Errorf("step log lacks the reason:\n%s", log)
+		}
+	})
+	t.Run("run_cancelled", func(t *testing.T) {
+		h, c := external(t, externalYAML)
+		first, err := h.eng.Validate(ctx, c.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := h.claimSoon("kai")
+		if _, err := h.eng.Validate(ctx, c.ID); err != nil {
+			t.Fatal(err)
+		}
+		if old := h.wait(first.ID); old.Status != run.Cancelled {
+			t.Fatalf("first run = %s", old.Status)
+		}
+		if who, why := expired(t, h, c.ID, b.ID); who != "kai" || why != review.ReasonRunCancelled {
+			t.Errorf("reviewer %q reason %q", who, why)
+		}
+		refused(t, h, b.ID, b.Token, review.ReasonRunCancelled)
+		log, _ := os.ReadFile(h.eng.LogPath(first.ID, "ai-review"))
+		if !strings.Contains(string(log), "expired: "+review.ReasonRunCancelled) {
+			t.Errorf("step log lacks the reason:\n%s", log)
+		}
+	})
+	t.Run("server_stopped", func(t *testing.T) {
+		h, c := external(t, externalYAML)
+		r, err := h.eng.Validate(ctx, c.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := h.claimSoon("kai")
+		h.eng.Shutdown(context.Background())
+		h.wait(r.ID)
+		if who, why := expired(t, h, c.ID, b.ID); who != "kai" || why != review.ReasonServerStopped {
+			t.Errorf("reviewer %q reason %q", who, why)
+		}
+		refused(t, h, b.ID, b.Token, review.ReasonServerStopped)
+		log, _ := os.ReadFile(h.eng.LogPath(r.ID, "ai-review"))
+		if !strings.Contains(string(log), "expired: "+review.ReasonServerStopped) {
+			t.Errorf("step log lacks the reason:\n%s", log)
+		}
+	})
+	t.Run("server_restart", func(t *testing.T) {
+		h := newHarness(t, Config{})
+		c := h.submit("feat")
+		if err := h.db.CreateRun(ctx, run.Run{ID: "run_stalerecover", RepoID: h.repoID, ChangeID: c.ID, Iteration: 1, Status: run.Running, StartedAt: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.db.SetChangeState(ctx, c.ID, change.Open, change.Running, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.db.CreateReview(ctx, review.Review{ID: "rv_stale00000001", RunID: "run_stalerecover", RepoID: h.repoID, ChangeID: c.ID, Step: "ai-review", Brief: json.RawMessage(`{}`), CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok, err := h.db.ClaimReview(ctx, "", "kai", "h", time.Now()); err != nil || !ok {
+			t.Fatalf("claim: %v %v", ok, err)
+		}
+		if err := h.eng.Recover(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if who, why := expired(t, h, c.ID, "rv_stale00000001"); who != "kai" || why != review.ReasonServerRestart {
+			t.Errorf("reviewer %q reason %q", who, why)
+		}
+		refused(t, h, "rv_stale00000001", "whatever", review.ReasonServerRestart)
+		// Recovery writes the step's last line itself: no run was there to.
+		log, _ := os.ReadFile(h.eng.LogPath("run_stalerecover", "ai-review"))
+		if !strings.Contains(string(log), "expired: "+review.ReasonServerRestart) {
+			t.Errorf("step log lacks the reason:\n%s", log)
+		}
+	})
+}

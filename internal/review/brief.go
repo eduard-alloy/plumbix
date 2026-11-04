@@ -14,6 +14,17 @@ const (
 	Expired = "expired" // the step's timeout passed with no verdict
 )
 
+// Why the platform closed a review without a verdict (WU-068): the reason
+// on review.expired and on the review, or on review.released for a claim
+// given back.
+const (
+	ReasonTimedOut      = "timed_out"      // the step's timeout passed
+	ReasonRunCancelled  = "run_cancelled"  // the run was cancelled: a newer iteration superseded it, or its change was closed
+	ReasonServerStopped = "server_stopped" // the Plumbix server stopped while the run waited
+	ReasonServerRestart = "server_restart" // the run was found running after a restart
+	ReasonReviewerGone  = "reviewer_gone"  // the reviewer never received the brief; the review is pending again
+)
+
 // Review is one external validator step waiting for a verdict (WU-023).
 // The token is minted when a reviewer claims the review, handed out once
 // with the brief, and kept as a hash: only the claimer can post.
@@ -32,6 +43,9 @@ type Review struct {
 	ClaimedAt  time.Time       `json:"claimed_at,omitempty"`
 	FinishedAt time.Time       `json:"finished_at,omitempty"`
 	ExpiresAt  time.Time       `json:"expires_at"`
+	// ExpiredReason says why the platform closed the review without a
+	// verdict (WU-068); empty unless Status is Expired.
+	ExpiredReason string `json:"expired_reason,omitempty"`
 }
 
 // Brief is what a reviewer receives from GET /reviews/next: everything a
@@ -73,12 +87,12 @@ type Store interface {
 	// PostReviewVerdict stores the verdict of a claimed review whose token
 	// matches: ErrNotFound for an unknown review, ErrConflict otherwise.
 	PostReviewVerdict(ctx context.Context, id, tokenHash string, verdict json.RawMessage, at time.Time) error
-	ExpireReview(ctx context.Context, id string, at time.Time) error
+	ExpireReview(ctx context.Context, id string, at time.Time, reason string) error
 	// ReleaseReview returns a claimed review to pending, for a claim whose
 	// reviewer never received the brief (the connection dropped meanwhile).
 	ReleaseReview(ctx context.Context, id string) error
 	// ExpireRunReviews closes every open review of a run, for a run that
 	// will never consume a verdict (the server restarted while it waited).
-	ExpireRunReviews(ctx context.Context, runID string, at time.Time) error
+	ExpireRunReviews(ctx context.Context, runID string, at time.Time, reason string) ([]Review, error)
 	GetReview(ctx context.Context, id string) (Review, error)
 }
