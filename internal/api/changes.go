@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
@@ -26,6 +27,7 @@ type changeHandlers struct {
 func registerChangeRoutes(mux *http.ServeMux, h *changeHandlers) {
 	mux.HandleFunc("POST /api/v1/repos", h.createRepo)
 	mux.HandleFunc("GET /api/v1/repos", h.listRepos)
+	mux.HandleFunc("GET /api/v1/repos/{id}", h.showRepo)
 	mux.HandleFunc("DELETE /api/v1/repos/{id}", h.removeRepo)
 	mux.HandleFunc("POST /api/v1/changes", h.submit)
 	mux.HandleFunc("GET /api/v1/changes", h.list)
@@ -49,13 +51,60 @@ func (h *changeHandlers) createRepo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, repo)
 }
 
+// listRepos lists the live registrations, or with removed=true the
+// tombstones of the removed ones (WU-067).
 func (h *changeHandlers) listRepos(w http.ResponseWriter, r *http.Request) {
+	wantRemoved := false
+	if v := r.URL.Query().Get("removed"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "removed must be true or false")
+			return
+		}
+		wantRemoved = b
+	}
+	if wantRemoved {
+		removed, err := h.svc.ListRemovedRepos(r.Context())
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"repos": removed})
+		return
+	}
 	repos, err := h.svc.ListRepos(r.Context())
 	if err != nil {
 		h.fail(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"repos": repos})
+}
+
+// showRepo is GET /repos/{id} (WU-067): the registration, or 410 Gone
+// with its tombstone once removed, so a reader can still name the
+// repository behind events recorded before; an id that never existed is
+// 404.
+func (h *changeHandlers) showRepo(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	repo, err := h.svc.GetRepo(r.Context(), id)
+	if err == nil {
+		writeJSON(w, http.StatusOK, repo)
+		return
+	}
+	if !errors.Is(err, change.ErrNotFound) {
+		h.fail(w, err)
+		return
+	}
+	tombstone, terr := h.svc.RepoTombstone(r.Context(), id)
+	if errors.Is(terr, change.ErrNotFound) {
+		h.fail(w, err) // never registered: the plain not-found
+		return
+	}
+	if terr != nil {
+		h.fail(w, terr)
+		return
+	}
+	writeJSON(w, http.StatusGone, tombstone)
 }
 
 // removeRepo retires a repository at a person's request (WU-065). The

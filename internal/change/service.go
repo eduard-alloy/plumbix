@@ -69,6 +69,21 @@ func (s *Service) GetRepo(ctx context.Context, id string) (Repo, error) {
 	return r, err
 }
 
+// RepoTombstone returns what a removed repository still says about
+// itself (WU-067); ErrNotFound for a live or unknown id.
+func (s *Service) RepoTombstone(ctx context.Context, id string) (RepoTombstone, error) {
+	t, err := s.store.GetRepoTombstone(ctx, id)
+	if errors.Is(err, ErrNotFound) {
+		return RepoTombstone{}, fmt.Errorf("%w: repo %s", ErrNotFound, id)
+	}
+	return t, err
+}
+
+// ListRemovedRepos returns the tombstones of every removed repository.
+func (s *Service) ListRemovedRepos(ctx context.Context) ([]RepoTombstone, error) {
+	return s.store.ListRemovedRepos(ctx)
+}
+
 // SetRepoMerging sets whether Plumbix watches a registered repository's
 // pull requests and who merges them, under the registration rules; an
 // empty merger takes the default for the new pull_requests value (WU-055).

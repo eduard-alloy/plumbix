@@ -74,6 +74,19 @@ type Repo struct {
 // running, so it cannot be removed (WU-065).
 var ErrRepoBusy = errors.New("repository has open or running changes")
 
+// RepoTombstone is what a removed repository answers with (WU-067): the
+// registration's identity, and who removed it when, so a reader can name
+// the repository behind events recorded before the removal. It is not a
+// repository a client may act on.
+type RepoTombstone struct {
+	ID        string    `json:"id"`
+	Host      string    `json:"host"`
+	URL       string    `json:"url"`
+	Removed   bool      `json:"removed"` // always true
+	RemovedAt time.Time `json:"removed_at"`
+	RemovedBy string    `json:"removed_by"`
+}
+
 // PullRequestRef ties a change to the pull request it mirrors (WU-054).
 type PullRequestRef struct {
 	Number int    `json:"number"`
@@ -271,6 +284,10 @@ type Store interface {
 	// asked; ErrRepoBusy while a change is open or running.
 	UpdateRepoPaused(ctx context.Context, id string, paused bool) error
 	RemoveRepo(ctx context.Context, id, by string, at time.Time) error
+	// GetRepoTombstone and ListRemovedRepos read removed repositories only
+	// (WU-067); ErrNotFound for a live or unknown id.
+	GetRepoTombstone(ctx context.Context, id string) (RepoTombstone, error)
+	ListRemovedRepos(ctx context.Context) ([]RepoTombstone, error)
 	CreateChange(ctx context.Context, c Change) error         // ErrConflict if another change is open on the branch
 	GetChange(ctx context.Context, id string) (Change, error) // ErrNotFound
 	ListChanges(ctx context.Context, f Filter) ([]Change, error)

@@ -391,3 +391,13 @@ Initial discovery is complete. Results are consolidated in `PROJECT.md` and `CON
 **Answer**: governance for Chart-AI first; the CI replacement stays in the plan in full, built after and around it.
 
 **Decisions**: A40 and its refinement. PROJECT.md's purpose, users and milestone 2 section, the Kai workstream and milestone wording, and CONSTRAINTS follow.
+
+## Q23: Which of Chart-AI's second-day asks to build (2026-11-04)
+
+**Context**: after the first live gated pull request and the first restart of Plumbix under Chart-AI's watch, Chart-AI asked for two things: (a) a tombstone for a removed repository, since its adapter resolves every event's repository from `GET /repos` and a removed id (WU-065) resolves nowhere; (b) an event with a reason when the platform closes a claimed review, since a restart left `review.claimed` as the stream's last word and the loop's later verdict was refused.
+
+**Options given**: both (recommended); tombstone only; released-with-reason only; neither (Chart-AI keeps counting removed ids as `repository:unknown` and reads nothing on review expiry).
+
+**Answer**: both. Asked in the plumbix-bb session on the second Mac; on madmax the owner then chose to merge the two units into the M3 plan recorded the same day rather than reopen M2.
+
+**Decision**: A45. WU-067 (tombstone, folded into the removed-repositories unit already planned) and WU-068 (`review.expired` with a reason); the launcher marker and the hardening move to WU-069 and WU-070.

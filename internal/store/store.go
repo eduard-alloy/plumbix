@@ -181,7 +181,57 @@ func (db *DB) ListRepos(ctx context.Context) ([]change.Repo, error) {
 	return repos, rows.Err()
 }
 
+const tombstoneColumns = `id, host, url, removed_at, removed_by`
+
+// GetRepoTombstone returns a removed repository's tombstone (WU-067);
+// change.ErrNotFound for a live or unknown id.
+func (db *DB) GetRepoTombstone(ctx context.Context, id string) (change.RepoTombstone, error) {
+	return scanTombstone(db.sql.QueryRowContext(ctx, `SELECT `+tombstoneColumns+` FROM repos WHERE id = ? AND removed_at <> ''`, id))
+}
+
+// ListRemovedRepos returns every removed repository's tombstone, oldest
+// removal first. The order is settled on the parsed times, since the
+// column holds RFC 3339 text with trailing zeros trimmed, which does not
+// sort as time within a second.
+func (db *DB) ListRemovedRepos(ctx context.Context) ([]change.RepoTombstone, error) {
+	rows, err := db.sql.QueryContext(ctx, `SELECT `+tombstoneColumns+` FROM repos WHERE removed_at <> ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []change.RepoTombstone{}
+	for rows.Next() {
+		t, err := scanTombstone(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].RemovedAt.Equal(out[j].RemovedAt) {
+			return out[i].RemovedAt.Before(out[j].RemovedAt)
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out, nil
+}
+
 type scanner interface{ Scan(dest ...any) error }
+
+func scanTombstone(s scanner) (change.RepoTombstone, error) {
+	var t change.RepoTombstone
+	var removed string
+	if err := s.Scan(&t.ID, &t.Host, &t.URL, &removed, &t.RemovedBy); err != nil {
+		return change.RepoTombstone{}, mapErr(err)
+	}
+	t.Removed = true
+	var err error
+	t.RemovedAt, err = parseTime(removed)
+	return t, err
+}
 
 func scanRepo(s scanner) (change.Repo, error) {
 	var r change.Repo

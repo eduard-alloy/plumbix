@@ -319,6 +319,19 @@ func TestCLIFlow(t *testing.T) {
 	if repos := c.mustRun("", "repo", "list")["repos"].([]any); len(repos) != 2 {
 		t.Errorf("repo list after a removal = %d repos", len(repos))
 	}
+	// The removed registration answers as a tombstone (WU-067).
+	if ts := c.mustRun("", "repo", "show", spare); ts["removed"] != true || ts["removed_by"] != defaultApprover() || ts["url"] != "https://github.com/eduard-alloy/spare" {
+		t.Errorf("repo show after a removal = %v", ts)
+	}
+	if removed := c.mustRun("", "repo", "list", "--removed")["repos"].([]any); len(removed) != 1 {
+		t.Errorf("repo list --removed = %d repos", len(removed))
+	}
+	if live := c.mustRun("", "repo", "show", registered["id"].(string)); live["id"] != registered["id"] || live["removed"] != nil {
+		t.Errorf("repo show of a live repository = %v", live)
+	}
+	if code, _, errOut := c.run("", "repo", "show", "r_nosuchrepo00"); code != 1 || !strings.Contains(errOut, "not_found") {
+		t.Errorf("repo show of an unknown id: exit %d, stderr %q", code, errOut)
+	}
 }
 
 // events runs "plumbix events" with args and decodes its output lines.

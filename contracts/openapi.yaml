@@ -631,6 +631,33 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /repos/{id}:
+    get:
+      operationId: getRepo
+      summary: One registered repository, or the tombstone of a removed one.
+      description: >-
+        A live registration answers 200 with the Repo the list returns. A removed one (WU-065) answers
+        410 Gone with its RepoTombstone, so a reader can still name the repository behind events recorded
+        before the removal (WU-067); a tombstone is not a repository a client may act on, and settings,
+        removal and runs keep refusing the id. An id that never existed is 404.
+      parameters:
+        - $ref: "#/components/parameters/RepoID"
+      responses:
+        "200":
+          description: The registration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Repo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "410":
+          description: The repository was removed; its tombstone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoTombstone"
     delete:
       operationId: removeRepo
       summary: Retire a repository at a person's request.
@@ -1334,14 +1361,29 @@ paths:
           $ref: "#/components/responses/Conflict"
     get:
       operationId: listRepos
-      summary: List registered repos, oldest first.
+      summary: List registered repos, oldest first; with removed=true, the removed ones as tombstones.
+      parameters:
+        - name: removed
+          in: query
+          required: false
+          description: >-
+            true lists the removed registrations as tombstones (RepoTombstoneList, oldest removal first)
+            instead of the live ones, for a reader catching up on events of a repository that is gone (WU-067).
+          schema:
+            type: boolean
       responses:
         "200":
-          description: Every registered repo.
+          description: >-
+            Every registered repo (RepoList), or with removed=true every removed one as a tombstone
+            (RepoTombstoneList); an empty list fits both, hence anyOf.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RepoList"
+                anyOf:
+                  - $ref: "#/components/schemas/RepoList"
+                  - $ref: "#/components/schemas/RepoTombstoneList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
   /changes:
@@ -1971,6 +2013,40 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Repo"
+    RepoTombstone:
+      description: >-
+        What a removed repository still says about itself (WU-067): the registration's identity and who
+        removed it when. Not a repository a client may act on.
+      type: object
+      additionalProperties: false
+      required: [id, host, url, removed, removed_at, removed_by]
+      properties:
+        id:
+          type: string
+          pattern: "^r_[a-z2-7]{12}$"
+        host:
+          type: string
+          enum: [github, azuredevops, git]
+        url:
+          type: string
+        removed:
+          type: boolean
+          enum: [true]
+        removed_at:
+          type: string
+          format: date-time
+        removed_by:
+          description: Who removed the repository, as recorded by DELETE /repos/{id}.
+          type: string
+    RepoTombstoneList:
+      type: object
+      additionalProperties: false
+      required: [repos]
+      properties:
+        repos:
+          type: array
+          items:
+            $ref: "#/components/schemas/RepoTombstone"
     Check:
       description: How the deterministic validator proves a criterion. Exactly one of steps or command.
       type: object

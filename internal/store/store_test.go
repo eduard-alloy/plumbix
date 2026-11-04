@@ -186,3 +186,60 @@ func TestListChangesFilters(t *testing.T) {
 		t.Errorf("r_1 closed = %v", got)
 	}
 }
+
+// TestRepoTombstone: a removed repository keeps answering as a tombstone
+// (WU-067): its id, host, url and who removed it when, from
+// GetRepoTombstone and the removed listing; GetRepo and ListRepos keep
+// skipping it, and a live or unknown id has no tombstone.
+func TestRepoTombstone(t *testing.T) {
+	db, _ := openTemp(t)
+	if err := db.CreateRepo(ctx, sampleRepo("r_1", "https://github.com/a/b")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateRepo(ctx, sampleRepo("r_2", "https://github.com/a/c")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.GetRepoTombstone(ctx, "r_1"); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("a live repository has a tombstone: %v", err)
+	}
+	if _, err := db.GetRepoTombstone(ctx, "r_nope"); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("an unknown id has a tombstone: %v", err)
+	}
+	if removed, err := db.ListRemovedRepos(ctx); err != nil || len(removed) != 0 {
+		t.Errorf("removed before any removal: %v, %v", removed, err)
+	}
+	at := t0.Add(time.Hour)
+	if err := db.RemoveRepo(ctx, "r_1", "eduard@mac", at); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.GetRepo(ctx, "r_1"); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("GetRepo after the removal: %v", err)
+	}
+	if live, _ := db.ListRepos(ctx); len(live) != 1 || live[0].ID != "r_2" {
+		t.Errorf("ListRepos after the removal: %+v", live)
+	}
+	want := change.RepoTombstone{ID: "r_1", Host: "github", URL: "https://github.com/a/b", Removed: true, RemovedAt: at, RemovedBy: "eduard@mac"}
+	got, err := db.GetRepoTombstone(ctx, "r_1")
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("tombstone = %+v, %v; want %+v", got, err, want)
+	}
+	removed, err := db.ListRemovedRepos(ctx)
+	if err != nil || !reflect.DeepEqual(removed, []change.RepoTombstone{want}) {
+		t.Errorf("removed listing = %+v, %v", removed, err)
+	}
+	// Removals within one second list in time order, not in the text
+	// order of their trimmed timestamps ("...00.5Z" sorts after "...00.25Z").
+	if err := db.CreateRepo(ctx, sampleRepo("r_3", "https://github.com/a/d")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RemoveRepo(ctx, "r_3", "eduard@mac", at.Add(250*time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RemoveRepo(ctx, "r_2", "eduard@mac", at.Add(500*time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	removed, _ = db.ListRemovedRepos(ctx)
+	if len(removed) != 3 || removed[0].ID != "r_1" || removed[1].ID != "r_3" || removed[2].ID != "r_2" {
+		t.Errorf("removed order = %v", []string{removed[0].ID, removed[1].ID, removed[2].ID})
+	}
+}

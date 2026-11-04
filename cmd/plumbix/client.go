@@ -15,6 +15,7 @@ import (
 	osuser "os/user"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -107,6 +108,12 @@ func (c *clientCmd) printAPIError(e client.APIError) {
 
 // call sends one request and prints the result. It returns the exit code.
 func (c *clientCmd) call(method, path string, body []byte) int {
+	return c.callAccepting(method, path, body)
+}
+
+// callAccepting is call with extra statuses that count as success: their
+// body is printed as a result, not as an error.
+func (c *clientCmd) callAccepting(method, path string, body []byte, accept ...int) int {
 	cl, ok := c.connect()
 	if !ok {
 		return 1
@@ -120,7 +127,7 @@ func (c *clientCmd) call(method, path string, body []byte) int {
 		fmt.Fprintf(c.stderr, "plumbix: %v\n", err)
 		return 1
 	}
-	if !resp.OK() {
+	if !resp.OK() && !slices.Contains(accept, resp.Status) {
 		c.printAPIError(resp.Error())
 		return 1
 	}
@@ -139,7 +146,7 @@ func usageError(stderr io.Writer, msg string) int {
 	return 2
 }
 
-// runRepo handles "plumbix repo add|set|list|runs".
+// runRepo handles "plumbix repo add|set|remove|list|show|github|runs".
 func runRepo(args []string, stdout, stderr io.Writer) int {
 	c := newClientCmd("repo", stdout, stderr)
 	var in struct {
@@ -159,6 +166,7 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 	branch := c.fs.String("branch", "", "only runs of this branch (repo runs)")
 	paused := c.fs.Bool("paused", false, "stop polling and pull-request intake for the repository; --paused=false resumes (repo set)")
 	by := c.fs.String("by", defaultApprover(), "who removes the repository, as Plumbix should record it (repo remove)")
+	removed := c.fs.Bool("removed", false, "list the removed repositories as tombstones instead of the live ones (repo list)")
 	pos, ok := c.parse(args)
 	if !ok {
 		return 2
@@ -194,7 +202,14 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 		body, _ := json.Marshal(set)
 		return c.call(http.MethodPut, "/api/v1/repos/"+url.PathEscape(pos[1])+"/settings", body)
 	case len(pos) == 1 && pos[0] == "list":
+		if *removed {
+			return c.call(http.MethodGet, "/api/v1/repos?removed=true", nil)
+		}
 		return c.call(http.MethodGet, "/api/v1/repos", nil)
+	case len(pos) == 2 && pos[0] == "show":
+		// A removed repository answers 410 with its tombstone (WU-067): the
+		// fact was found, so it prints and the command succeeds.
+		return c.callAccepting(http.MethodGet, "/api/v1/repos/"+url.PathEscape(pos[1]), nil, http.StatusGone)
 	case len(pos) == 2 && pos[0] == "github":
 		return c.call(http.MethodGet, "/api/v1/repos/"+url.PathEscape(pos[1])+"/github", nil)
 	case len(pos) == 2 && pos[0] == "runs":
@@ -204,7 +219,7 @@ func runRepo(args []string, stdout, stderr io.Writer) int {
 		}
 		return c.call(http.MethodGet, path, nil)
 	}
-	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> [--pull-requests] [--merger plumbix|github] | repo set <id> [--pull-requests[=false]] [--merger plumbix|github] [--merge-strategy squash|merge|rebase] [--paused[=false]] | repo remove <id> [--by <name>] | repo list | repo github <id> | repo runs <id> [--branch <b>]")
+	return usageError(stderr, "usage: plumbix repo add --host <host> --url <url> [--pull-requests] [--merger plumbix|github] | repo set <id> [--pull-requests[=false]] [--merger plumbix|github] [--merge-strategy squash|merge|rebase] [--paused[=false]] | repo remove <id> [--by <name>] | repo list [--removed] | repo show <id> | repo github <id> | repo runs <id> [--branch <b>]")
 }
 
 // runSubmit handles "plumbix submit -f <file|->".
