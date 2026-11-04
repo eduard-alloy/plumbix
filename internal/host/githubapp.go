@@ -168,22 +168,38 @@ func (a *GitHubApp) Check(ctx context.Context, base string) (string, error) {
 	return app.Slug, nil
 }
 
+// Installation is what GitHub says about the App on one repository:
+// whether it is installed there, and with which permissions (name to
+// level, read or write, as GitHub lists them).
+type Installation struct {
+	Installed   bool
+	Permissions map[string]string
+}
+
 // Installed reports whether the App is installed on the repository
 // (owner/name), asking as the App itself; no token is minted (WU-061).
 func (a *GitHubApp) Installed(ctx context.Context, base, ownerRepo string) (bool, error) {
+	inst, err := a.Installation(ctx, base, ownerRepo)
+	return inst.Installed, err
+}
+
+// Installation reads the App's installation on the repository with its
+// permissions (WU-070), asking as the App itself.
+func (a *GitHubApp) Installation(ctx context.Context, base, ownerRepo string) (Installation, error) {
 	var inst struct {
-		ID int64 `json:"id"`
+		ID          int64             `json:"id"`
+		Permissions map[string]string `json:"permissions"`
 	}
 	err := a.call(ctx, http.MethodGet, base+"/repos/"+ownerRepo+"/installation", &inst)
 	switch {
 	case err == nil:
-		return true, nil
+		return Installation{Installed: true, Permissions: inst.Permissions}, nil
 	case isStatus(err, http.StatusNotFound):
 		// Only here does a 404 mean "not installed": the repository exists
 		// and GitHub knows the App, so the installation is what is missing.
-		return false, nil
+		return Installation{}, nil
 	}
-	return false, fmt.Errorf("App installation lookup for %s: %w", ownerRepo, err)
+	return Installation{}, fmt.Errorf("App installation lookup for %s: %w", ownerRepo, err)
 }
 
 // call makes one JWT-authenticated request and decodes a JSON object.

@@ -372,6 +372,20 @@ func (g *GitHub) AppInstalled(ctx context.Context, repo change.Repo) (bool, erro
 	return app.Installed(ctx, g.base(), or)
 }
 
+// AppInstallation is AppInstalled with the installation's permissions
+// (WU-070), so the report can say what the App lacks for the repository.
+func (g *GitHub) AppInstallation(ctx context.Context, repo change.Repo) (Installation, error) {
+	app, err := g.app()
+	if err != nil {
+		return Installation{}, err
+	}
+	or, err := ownerRepo(repo.URL)
+	if err != nil {
+		return Installation{}, err
+	}
+	return app.Installation(ctx, g.base(), or)
+}
+
 func (g *GitHub) base() string {
 	if g.APIBase == "" {
 		return gitHubAPI

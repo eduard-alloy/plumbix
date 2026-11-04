@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
@@ -31,7 +32,12 @@ type gitHubAppStatus struct {
 	Slug       string `json:"slug,omitempty"`
 	Installed  bool   `json:"installed"`
 	InstallURL string `json:"install_url,omitempty"`
-	Message    string `json:"message"`
+	// Permissions are the installation's, as GitHub lists them; Missing
+	// names the ones the repository's shape needs and the App lacks, as
+	// "name: level" (WU-070).
+	Permissions map[string]string `json:"permissions,omitempty"`
+	Missing     []string          `json:"missing_permissions,omitempty"`
+	Message     string            `json:"message"`
 }
 
 type gitHubGateStatus struct {
@@ -53,7 +59,7 @@ type gitHubIntakeStatus struct {
 // *host.GitHub implements it.
 type gitHubReporter interface {
 	AppCheck(ctx context.Context) (string, error)
-	AppInstalled(ctx context.Context, repo change.Repo) (bool, error)
+	AppInstallation(ctx context.Context, repo change.Repo) (host.Installation, error)
 	RequiredChecks(ctx context.Context, repo change.Repo, branch string) (contexts []string, known bool, err error)
 }
 
@@ -92,17 +98,75 @@ func (h *settingsHandlers) appStatus(ctx context.Context, adapter gitHubReporter
 		return gitHubAppStatus{Configured: true, Message: "App check failed: " + redactSecrets(err.Error(), h.secrets.Values())}
 	}
 	st := gitHubAppStatus{Configured: true, Slug: slug, InstallURL: "https://github.com/apps/" + slug + "/installations/new"}
-	installed, err := adapter.AppInstalled(ctx, repo)
+	inst, err := adapter.AppInstallation(ctx, repo)
 	switch {
 	case err != nil:
 		st.Message = "App " + slug + ": the installation lookup failed: " + redactSecrets(err.Error(), h.secrets.Values())
-	case installed:
+	case inst.Installed:
 		st.Installed = true
+		st.Permissions = inst.Permissions
+		st.Missing = missingPermissions(repo, inst.Permissions)
 		st.Message = "App " + slug + " is installed on this repository; check runs are posted as it"
+		if len(st.Missing) > 0 {
+			st.Message += "; it lacks " + readable(st.Missing) + " (" + permissionsWhy(repo) + ")"
+		}
 	default:
 		st.Message = "App " + slug + " is not installed on this repository: no check run can be posted until it is. Install it at " + st.InstallURL
 	}
 	return st
+}
+
+// permissionLevel orders GitHub's permission levels.
+var permissionLevel = map[string]int{"read": 1, "write": 2, "admin": 3}
+
+// requiredPermissions is what the App needs on a repository of this shape:
+// checks write for the check runs and pull requests read for the intake on
+// every repository; contents write to push Plumbix's own merges and pull
+// requests write to close the pull request it merged (WU-056) when Plumbix
+// is the merger.
+func requiredPermissions(repo change.Repo) [][2]string {
+	req := [][2]string{{"checks", "write"}, {"pull_requests", "read"}, {"contents", "read"}}
+	if repo.Merger == change.MergerPlumbix {
+		req = [][2]string{{"checks", "write"}, {"contents", "write"}, {"pull_requests", "read"}}
+		if repo.PullRequests {
+			req[2] = [2]string{"pull_requests", "write"}
+		}
+	}
+	return req
+}
+
+// missingPermissions names the required permissions the installation
+// lacks, as "name: level", in the order they are required.
+func missingPermissions(repo change.Repo, have map[string]string) []string {
+	var missing []string
+	for _, r := range requiredPermissions(repo) {
+		if permissionLevel[have[r[0]]] < permissionLevel[r[1]] {
+			missing = append(missing, r[0]+": "+r[1])
+		}
+	}
+	return missing
+}
+
+// readable turns "pull_requests: write" entries into the words GitHub's
+// settings page uses, "pull requests write", joined for a sentence.
+func readable(missing []string) string {
+	out := make([]string, 0, len(missing))
+	for _, m := range missing {
+		out = append(out, strings.ReplaceAll(strings.ReplaceAll(m, ": ", " "), "_", " "))
+	}
+	return strings.Join(out, ", ")
+}
+
+// permissionsWhy says what the repository's shape needs the permissions for.
+func permissionsWhy(repo change.Repo) string {
+	if repo.Merger != change.MergerPlumbix {
+		return "checks write posts the check runs, pull requests and contents read serve the intake"
+	}
+	why := "checks write posts the check runs, contents write pushes Plumbix's own merges"
+	if repo.PullRequests {
+		why += ", pull requests write closes the pull request Plumbix merged"
+	}
+	return why
 }
 
 func (h *settingsHandlers) gateStatus(ctx context.Context, adapter gitHubReporter, repo change.Repo) []gitHubGateStatus {

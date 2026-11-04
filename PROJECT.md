@@ -163,7 +163,7 @@ Landed so far: WU-053 (validator usage on the run), WU-054 and WU-055 (the gate 
 | WU-067 | A removed repository answers as a tombstone: `GET /repos/{id}` returns the registration or `410` `{id, host, url, removed, removed_at, removed_by}`; `GET /repos?removed=true`; `plumbix repo show` (Chart-AI ask 5, A45) | F-001, F-010 | ✅ |
 | WU-068 | A review the platform closes says so: `review.expired` with a reason (`timed_out`, `run_cancelled`, `server_stopped`, `server_restart`), `review.released` with `reviewer_gone`, the reason on the review (Chart-AI ask 6, A45) | F-010 | ✅ |
 | WU-069 | Launcher marker: a session the review loop starts carries `PLUMBIX_LAUNCHER`, `PLUMBIX_REPOSITORY`, `PLUMBIX_REPO_ID`, `PLUMBIX_CHANGE`, `PLUMBIX_RUN`, `PLUMBIX_REVIEW` under `contracts/launcher.md` (Chart-AI P10) | F-010, F-011 | ✅ |
-| WU-070 | Hardening from the last reviews: merge-order assertion, holding-ref cleanup when the record fails, migration 0022 on a populated database, the App's pull-requests write in the GitHub report | F-001, F-010 | ⚪ |
+| WU-070 | Hardening from the last reviews: merge-order assertion, holding-ref cleanup when the record fails, migration 0022 on a populated database, the App's permissions in the GitHub report, the flaky ChangePage test | F-001, F-010 | ✅ |
 | next | Chart-AI's requirement list, one unit per surface it needs (added as each requirement arrives) | F-010 | ⚪ |
 | later | Azure DevOps pull-request statuses and branch policies, the same gate on the second host | F-010 | ⚪ |
 

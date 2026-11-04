@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -26,6 +27,7 @@ import (
 type fakeGitHubForReport struct {
 	*httptest.Server
 	installed  atomic.Bool
+	perms      atomic.Value // the installation's permissions as GitHub lists them, JSON
 	gateInRule atomic.Bool
 	protection atomic.Int32 // the status of the classic protection read
 }
@@ -34,6 +36,7 @@ func newFakeGitHubForReport(t *testing.T) *fakeGitHubForReport {
 	t.Helper()
 	f := &fakeGitHubForReport{}
 	f.installed.Store(true)
+	f.perms.Store(`{"checks":"write","contents":"read","metadata":"read","pull_requests":"read"}`)
 	f.gateInRule.Store(true)
 	f.protection.Store(http.StatusNotFound)
 	f.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -49,7 +52,7 @@ func newFakeGitHubForReport(t *testing.T) *fakeGitHubForReport {
 				http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
 				return
 			}
-			_, _ = w.Write([]byte(`{"id":42}`))
+			_, _ = w.Write([]byte(`{"id":42,"permissions":` + f.perms.Load().(string) + `}`))
 		case "/app/installations/42/access_tokens":
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"token":"inst-tok","expires_at":"` + time.Now().Add(time.Hour).UTC().Format(time.RFC3339) + `"}`))
@@ -71,11 +74,13 @@ func newFakeGitHubForReport(t *testing.T) *fakeGitHubForReport {
 
 type gitHubReportBody struct {
 	App struct {
-		Configured bool   `json:"configured"`
-		Slug       string `json:"slug"`
-		Installed  bool   `json:"installed"`
-		InstallURL string `json:"install_url"`
-		Message    string `json:"message"`
+		Configured  bool              `json:"configured"`
+		Slug        string            `json:"slug"`
+		Installed   bool              `json:"installed"`
+		InstallURL  string            `json:"install_url"`
+		Permissions map[string]string `json:"permissions"`
+		Missing     []string          `json:"missing_permissions"`
+		Message     string            `json:"message"`
 	} `json:"app"`
 	Gate []struct {
 		Branch   string `json:"branch"`
@@ -90,6 +95,40 @@ type gitHubReportBody struct {
 		PollInterval     string     `json:"poll_interval"`
 		Message          string     `json:"message"`
 	} `json:"intake"`
+}
+
+// newGitHubReportAPI is an API with a configured App against the fake
+// GitHub and one registered GitHub repository with pull requests on.
+func newGitHubReportAPI(t *testing.T, gh *fakeGitHubForReport) (*settingsAPI, change.Repo) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemKey := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "plumbix.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	sec, err := secrets.Open(filepath.Join(dir, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := host.NewGitHubApp("1234", pemKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps := Deps{Version: "dev", Token: testToken, Changes: change.NewService(db), Settings: settings.New(db), Secrets: sec,
+		Hosts:        host.Registry{change.HostGitHub: &host.GitHub{Token: "pat", App: app, APIBase: gh.URL}},
+		GitHubIntake: GitHubIntake{PollInterval: 15 * time.Second}}
+	a := &settingsAPI{testAPI: &testAPI{t: t, h: NewHandler(deps)}}
+	rec := a.do(http.MethodPost, "/api/v1/repos", `{"host": "github", "url": "https://github.com/a/b", "protected_branches": ["main"], "pull_requests": true}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create repo: %d %s", rec.Code, rec.Body.String())
+	}
+	return a, decode[change.Repo](t, rec)
 }
 
 // TestRepoGitHubReport: GET /repos/{id}/github says, live and as the App,
@@ -211,5 +250,40 @@ func TestRepoGitHubReport(t *testing.T) {
 	}
 	if rec := a.do(http.MethodGet, "/api/v1/repos/r_nope/github", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown repository: %d", rec.Code)
+	}
+}
+
+// TestRepoGitHubReportNamesMissingPermissions: the report lists the
+// installation's permissions and names the ones the repository's shape
+// needs and lacks (WU-070): a GitHub-merged repository needs checks write
+// and reads; one Plumbix merges needs contents write for the push and
+// pull requests write for the close after the merge (WU-056).
+func TestRepoGitHubReportNamesMissingPermissions(t *testing.T) {
+	o := loadOpenAPI(t)
+	gh := newFakeGitHubForReport(t)
+	a, repo := newGitHubReportAPI(t, gh)
+	rec := a.do(http.MethodGet, "/api/v1/repos/"+repo.ID+"/github", "")
+	o.check("GitHubReport", rec)
+	r := decode[gitHubReportBody](t, rec)
+	if r.App.Permissions["checks"] != "write" || len(r.App.Missing) != 0 || strings.Contains(r.App.Message, "lacks") {
+		t.Errorf("github merges, read permissions: %+v", r.App)
+	}
+	if rec := a.do(http.MethodPut, "/api/v1/repos/"+repo.ID+"/settings", `{"merger": "plumbix"}`); rec.Code != http.StatusOK {
+		t.Fatalf("set merger: %d %s", rec.Code, rec.Body.String())
+	}
+	r = decode[gitHubReportBody](t, a.do(http.MethodGet, "/api/v1/repos/"+repo.ID+"/github", ""))
+	if want := []string{"contents: write", "pull_requests: write"}; !reflect.DeepEqual(r.App.Missing, want) || !strings.Contains(r.App.Message, "lacks contents write, pull requests write") {
+		t.Errorf("plumbix merges, read permissions: %+v", r.App)
+	}
+	gh.perms.Store(`{"checks":"write","contents":"write","metadata":"read","pull_requests":"write"}`)
+	r = decode[gitHubReportBody](t, a.do(http.MethodGet, "/api/v1/repos/"+repo.ID+"/github", ""))
+	if len(r.App.Missing) != 0 || strings.Contains(r.App.Message, "lacks") {
+		t.Errorf("plumbix merges, write permissions: %+v", r.App)
+	}
+	// A missing checks permission is named for every shape.
+	gh.perms.Store(`{"contents":"write","metadata":"read","pull_requests":"write"}`)
+	r = decode[gitHubReportBody](t, a.do(http.MethodGet, "/api/v1/repos/"+repo.ID+"/github", ""))
+	if want := []string{"checks: write"}; !reflect.DeepEqual(r.App.Missing, want) {
+		t.Errorf("no checks permission: %+v", r.App)
 	}
 }

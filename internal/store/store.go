@@ -42,7 +42,12 @@ type DB struct {
 var _ change.Store = (*DB)(nil)
 
 // Open opens or creates the database at path and applies pending migrations.
-func Open(path string) (*DB, error) {
+func Open(path string) (*DB, error) { return openUpTo(path, 0) }
+
+// openUpTo is Open with the migrations capped at maxVersion (0 for all),
+// so a test can populate a database at an earlier schema and then migrate
+// it the way a deployment does.
+func openUpTo(path string, maxVersion int) (*DB, error) {
 	q := url.Values{}
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Add("_pragma", "journal_mode(WAL)")
@@ -52,7 +57,7 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 	db := &DB{sql: conn}
-	if err := db.migrate(context.Background()); err != nil {
+	if err := db.migrateTo(context.Background(), maxVersion); err != nil {
 		conn.Close()
 		return nil, err
 	}
@@ -93,7 +98,8 @@ func latestVersion() int {
 	return ms[len(ms)-1].version
 }
 
-func (db *DB) migrate(ctx context.Context) error {
+// migrateTo applies the pending migrations up to maxVersion (0 for all).
+func (db *DB) migrateTo(ctx context.Context, maxVersion int) error {
 	if _, err := db.sql.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
 		return fmt.Errorf("create migrations table: %w", err)
 	}
@@ -106,7 +112,7 @@ func (db *DB) migrate(ctx context.Context) error {
 		return err
 	}
 	for _, m := range ms {
-		if m.version <= current {
+		if m.version <= current || (maxVersion > 0 && m.version > maxVersion) {
 			continue
 		}
 		body, err := migrationFiles.ReadFile(m.name)

@@ -124,6 +124,17 @@ func (e *Engine) Merge(ctx context.Context, changeID string) (change.Change, err
 	rec := change.MergeRecord{ChangeID: c.ID, RepoID: c.RepoID, Branch: c.TargetBranch,
 		Merge: change.Merge{Commit: sha, Previous: target, Strategy: repo.MergeStrategy, RunID: r.ID, MergedAt: now}}
 	if err := e.store.RecordMerge(ctx, rec); err != nil {
+		// The target has moved and the record is missing: the poller flags
+		// the head as a bypass, which is the honest state, and a retry of
+		// the merge is refused as target_moved since the run's base is
+		// behind; a person resolves the alert and closes the change, whose
+		// code is on the target. The holding ref must not linger on the
+		// host meanwhile (WU-070).
+		if gated {
+			if derr := m.DeleteRef(ctx, LandingRef(c.ID)); derr != nil {
+				e.log.Warn("the landing ref was not removed after the record failed", "change", c.ID, "ref", LandingRef(c.ID), "err", derr)
+			}
+		}
 		return change.Change{}, fmt.Errorf("pushed %s to %s but could not record the merge: %w", short(sha), c.TargetBranch, err)
 	}
 	if gated {

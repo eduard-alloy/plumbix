@@ -309,12 +309,16 @@ func TestMergeLandsThroughTheGate(t *testing.T) {
 // what the remote looked like at that moment.
 type recordingStore struct {
 	Store
-	onRecord func()
+	onRecord  func(rec change.MergeRecord)
+	recordErr error // returned instead of writing, to stand in for a store that fails after the push
 }
 
 func (r *recordingStore) RecordMerge(ctx context.Context, rec change.MergeRecord) error {
 	if r.onRecord != nil {
-		r.onRecord()
+		r.onRecord(rec)
+	}
+	if r.recordErr != nil {
+		return r.recordErr
 	}
 	return r.Store.RecordMerge(ctx, rec)
 }
@@ -325,25 +329,63 @@ func (r *recordingStore) RecordMerge(ctx context.Context, rec change.MergeRecord
 // new head as a bypass (seen live on 2026-10-30).
 func TestMergeRecordsBeforeRemovingTheHoldingRef(t *testing.T) {
 	h := newHarnessWith(t, Config{}, "squash")
-	var refAtRecord, mainAtRecord bool
+	var refAtRecord, mainAtRecord, recorded string
 	wrapped := &recordingStore{Store: h.eng.store}
 	eng := New(wrapped, h.fake, h.eng.cfg, h.eng.log)
 	t.Cleanup(func() { eng.Shutdown(context.Background()) })
 	l := &fakeLanding{h: h, required: true, known: true}
 	eng.SetLanding(l)
 	c := h.approve("feat")
-	wrapped.onRecord = func() {
-		_, refAtRecord = h.holdingRef(c.ID)
-		mainAtRecord = h.remote("rev-parse", "main") != ""
+	wrapped.onRecord = func(rec change.MergeRecord) {
+		recorded = rec.Merge.Commit
+		refAtRecord, _ = h.holdingRef(c.ID)
+		mainAtRecord = h.remote("rev-parse", "main")
 	}
 	if _, err := eng.Merge(ctx, c.ID); err != nil {
 		t.Fatal(err)
 	}
-	if !refAtRecord || !mainAtRecord {
-		t.Errorf("at record time: holding ref present %v, main readable %v; the record must precede the ref's removal", refAtRecord, mainAtRecord)
+	// At record time the target already points at the commit the record
+	// names, and the holding ref still does too: the record is the first
+	// thing after the push, the ref's removal the second.
+	if recorded == "" || mainAtRecord != recorded || refAtRecord != recorded {
+		t.Errorf("at record time: main %s, holding ref %s, record names %s; the record must follow the push and precede the ref's removal", short(mainAtRecord), short(refAtRecord), short(recorded))
 	}
 	if _, ok := h.holdingRef(c.ID); ok {
 		t.Error("the holding ref outlived the merge")
+	}
+}
+
+// TestFailedMergeRecordRemovesTheHoldingRef: when the target has moved but
+// the merge record cannot be written, the merge fails saying so, the
+// holding ref is still removed (best effort, it must not linger on the
+// host), and the change stays approved: a retry is refused as
+// target_moved, the poller's bypass alert on the head is the record of
+// what happened, and a person closes the change (WU-070).
+func TestFailedMergeRecordRemovesTheHoldingRef(t *testing.T) {
+	h := newHarnessWith(t, Config{}, "squash")
+	wrapped := &recordingStore{Store: h.eng.store, recordErr: errors.New("disk full")}
+	eng := New(wrapped, h.fake, h.eng.cfg, h.eng.log)
+	t.Cleanup(func() { eng.Shutdown(context.Background()) })
+	eng.SetLanding(&fakeLanding{h: h, required: true, known: true})
+	c := h.approve("feat")
+	before := h.remote("rev-parse", "main")
+	_, err := eng.Merge(ctx, c.ID)
+	if err == nil || !strings.Contains(err.Error(), "could not record the merge") || !strings.Contains(err.Error(), "disk full") {
+		t.Fatalf("err = %v", err)
+	}
+	if h.remote("rev-parse", "main") == before {
+		t.Error("the target did not move: the push should have happened before the record")
+	}
+	if _, ok := h.holdingRef(c.ID); ok {
+		t.Error("the holding ref was left behind after the record failed")
+	}
+	if got, _ := h.db.GetChange(ctx, c.ID); got.State != change.Approved {
+		t.Errorf("state = %s, want approved", got.State)
+	}
+	// The run's base is behind the moved target now: a plain retry says so
+	// rather than pushing again.
+	if _, err := eng.Merge(ctx, c.ID); !errors.Is(err, ErrTargetMoved) {
+		t.Errorf("retry after a failed record: %v, want target_moved", err)
 	}
 }
 

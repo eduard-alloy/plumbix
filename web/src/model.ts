@@ -371,7 +371,7 @@ export interface RepoSettingsPatch {
 
 /** The per-repository GitHub facts behind the gate, read live (WU-061). */
 export interface GitHubReport {
-  app: { configured: boolean; slug?: string; installed: boolean; install_url?: string; message: string }
+  app: { configured: boolean; slug?: string; installed: boolean; install_url?: string; permissions?: Record<string, string>; missing_permissions?: string[]; message: string }
   gate: { branch: string; required: boolean; known: boolean; message: string }[]
   intake: { mode: 'webhook' | 'polling' | 'none'; webhook_secret_set: boolean; last_delivery_at?: string; poll_interval?: string; message: string }
 }

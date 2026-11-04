@@ -159,7 +159,7 @@ describe('Change page', () => {
     c.human_approval = { reason: 'ship it', head: 'h1', at: new Date().toISOString(), by: 'lead', source: 'github_review' }
     window.history.replaceState(null, '', '/')
     await open(needsHuman.id)
-    expect(screen.getByTestId('human-approval').textContent).toContain('Approved on GitHub by lead · ship it')
+    await waitFor(() => expect(screen.getByTestId('human-approval').textContent).toContain('Approved on GitHub by lead · ship it'))
   })
 
   it('Keep closes the approval field without approving', async () => {

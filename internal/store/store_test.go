@@ -243,3 +243,68 @@ func TestRepoTombstone(t *testing.T) {
 		t.Errorf("removed order = %v", []string{removed[0].ID, removed[1].ID, removed[2].ID})
 	}
 }
+
+// TestMigration0022OnAPopulatedDatabase: the repos rebuild of 0022 runs
+// on a database with rows that reference the table (a change of a removed
+// repository, a live one), keeps every row, settles the deferred foreign
+// keys, and leaves the url unique among live registrations only (WU-070;
+// the rename recipe failed exactly this case on the live database).
+func TestMigration0022OnAPopulatedDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plumbix.db")
+	old, err := openUpTo(path, 21)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := old.schemaVersion(ctx); v != 21 {
+		t.Fatalf("version = %d, want 21", v)
+	}
+	for _, r := range []change.Repo{sampleRepo("r_1", "https://github.com/a/b"), sampleRepo("r_2", "https://github.com/a/c")} {
+		if err := old.CreateRepo(ctx, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := old.CreateChange(ctx, sampleChange("c_1", "r_1", "feat")); err != nil {
+		t.Fatal(err)
+	}
+	if err := old.SetChangeState(ctx, "c_1", change.Open, change.Closed, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := old.RemoveRepo(ctx, "r_1", "eduard@mac", t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	// Before 0022 the column constraint still blocked the removed url.
+	if err := old.CreateRepo(ctx, sampleRepo("r_3", "https://github.com/a/b")); !errors.Is(err, change.ErrConflict) {
+		t.Fatalf("at schema 21 a removed url registered again: %v", err)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("migrate a populated database: %v", err)
+	}
+	defer db.Close()
+	if v, _ := db.schemaVersion(ctx); v != latestVersion() {
+		t.Errorf("version = %d, want %d", v, latestVersion())
+	}
+	var violations int
+	if err := db.sql.QueryRowContext(ctx, `SELECT count(*) FROM pragma_foreign_key_check`).Scan(&violations); err != nil || violations != 0 {
+		t.Errorf("foreign key violations after the rebuild: %d, %v", violations, err)
+	}
+	if got, err := db.GetRepo(ctx, "r_2"); err != nil || got.URL != "https://github.com/a/c" {
+		t.Errorf("r_2 after the rebuild = %+v, %v", got, err)
+	}
+	if got, err := db.GetChange(ctx, "c_1"); err != nil || got.RepoID != "r_1" || got.State != change.Closed {
+		t.Errorf("c_1 after the rebuild = %+v, %v", got, err)
+	}
+	if ts, err := db.GetRepoTombstone(ctx, "r_1"); err != nil || ts.RemovedBy != "eduard@mac" {
+		t.Errorf("r_1 tombstone = %+v, %v", ts, err)
+	}
+	if err := db.CreateRepo(ctx, sampleRepo("r_3", "https://github.com/a/b")); err != nil {
+		t.Errorf("a removed url registered again after 0022: %v", err)
+	}
+	if err := db.CreateRepo(ctx, sampleRepo("r_4", "https://github.com/a/c")); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("a live url registered twice: %v", err)
+	}
+}

@@ -2830,6 +2830,19 @@ components:
             install_url:
               type: string
               description: Where to install the App, when it is configured.
+            permissions:
+              description: The installation's permissions as GitHub lists them, name to level (WU-070).
+              type: object
+              additionalProperties:
+                type: string
+            missing_permissions:
+              description: >-
+                The permissions the repository's shape needs and the App lacks, as "name: level" (WU-070): checks
+                write and pull requests and contents read always; contents write when Plumbix merges, and pull
+                requests write when it also watches pull requests, to close the pull request it merged.
+              type: array
+              items:
+                type: string
             message:
               type: string
         gate:
