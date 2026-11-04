@@ -203,6 +203,24 @@ func (g *GitHub) PullRequestTimeline(ctx context.Context, repo change.Repo, numb
 	return all, nil
 }
 
+// CommentOnPullRequest posts a comment on the pull request's
+// conversation (an issue comment in GitHub's terms).
+func (g *GitHub) CommentOnPullRequest(ctx context.Context, repo change.Repo, number int, body string) error {
+	in := struct {
+		Body string `json:"body"`
+	}{body}
+	return g.rest(ctx, repo, http.MethodPost, fmt.Sprintf("/issues/%d/comments", number), in, nil)
+}
+
+// ClosePullRequest closes an open pull request without merging it, as
+// Plumbix does after landing its commits itself (WU-056).
+func (g *GitHub) ClosePullRequest(ctx context.Context, repo change.Repo, number int) error {
+	in := struct {
+		State string `json:"state"`
+	}{"closed"}
+	return g.rest(ctx, repo, http.MethodPatch, fmt.Sprintf("/pulls/%d", number), in, nil)
+}
+
 // CreateCheckRun creates a check run and returns its id.
 func (g *GitHub) CreateCheckRun(ctx context.Context, repo change.Repo, c CheckRun) (int64, error) {
 	var out struct {

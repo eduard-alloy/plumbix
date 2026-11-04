@@ -263,6 +263,14 @@ func (db *DB) ChangeByPullRequest(ctx context.Context, repoID string, number int
 	return scanChange(db.sql.QueryRowContext(ctx, `SELECT `+changeColumns+changeFrom+` WHERE c.repo_id = ? AND c.pr_number = ? AND c.state NOT IN ('merged', 'closed') ORDER BY c.created_at DESC LIMIT 1`, repoID, number))
 }
 
+// LastChangeByPullRequest returns the newest change that mirrors a
+// repository's pull request, whatever its state, so a pull request whose
+// change Plumbix already merged is recognised (WU-056); change.ErrNotFound
+// when none ever did.
+func (db *DB) LastChangeByPullRequest(ctx context.Context, repoID string, number int) (change.Change, error) {
+	return scanChange(db.sql.QueryRowContext(ctx, `SELECT `+changeColumns+changeFrom+` WHERE c.repo_id = ? AND c.pr_number = ? ORDER BY c.created_at DESC, c.id DESC LIMIT 1`, repoID, number))
+}
+
 // ListChanges returns matching changes, oldest first.
 func (db *DB) ListChanges(ctx context.Context, f change.Filter) ([]change.Change, error) {
 	query := `SELECT ` + changeColumns + changeFrom + ` WHERE 1 = 1`

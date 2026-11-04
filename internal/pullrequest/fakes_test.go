@@ -37,6 +37,9 @@ type fakeGitHub struct {
 	requiredErr error
 	created     []host.CheckRun
 	updated     map[int64]host.CheckRun
+	comments    map[int][]string // comments posted, by pull request (WU-056)
+	closeErr    error
+	commentErr  error
 	nextID      int64
 	calls       []string
 }
@@ -105,6 +108,36 @@ func (f *fakeGitHub) PullRequestTimeline(_ context.Context, _ change.Repo, n int
 		return nil, f.timelineErr
 	}
 	return f.timeline[n], nil
+}
+
+func (f *fakeGitHub) CommentOnPullRequest(_ context.Context, _ change.Repo, n int, body string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, fmt.Sprintf("comment %d", n))
+	if f.commentErr != nil {
+		return f.commentErr
+	}
+	if f.comments == nil {
+		f.comments = map[int][]string{}
+	}
+	f.comments[n] = append(f.comments[n], body)
+	return nil
+}
+
+func (f *fakeGitHub) ClosePullRequest(_ context.Context, _ change.Repo, n int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, fmt.Sprintf("close %d", n))
+	if f.closeErr != nil {
+		return f.closeErr
+	}
+	pr, ok := f.prs[n]
+	if !ok {
+		return &host.StatusError{Status: 404, Path: "pulls"}
+	}
+	pr.State = "closed"
+	f.prs[n] = pr
+	return nil
 }
 
 func (f *fakeGitHub) RequiredChecks(context.Context, change.Repo, string) ([]string, bool, error) {

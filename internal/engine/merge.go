@@ -21,10 +21,13 @@ var (
 // Lander implements it. GateRequired says whether the branch requires
 // plumbix/gate (known is false when the host would not say); PostGate
 // posts the gate as a success on the commit about to land, which must
-// already be on the host under the holding ref.
+// already be on the host under the holding ref. PullRequestLanded is told
+// after the merge of a pull-request change is recorded, so the pull
+// request can be closed on the host (WU-056).
 type Landing interface {
 	GateRequired(ctx context.Context, repo change.Repo, branch string) (required, known bool, err error)
 	PostGate(ctx context.Context, repo change.Repo, c change.Change, r run.Run, sha string) error
+	PullRequestLanded(ctx context.Context, repo change.Repo, c change.Change, m change.Merge) error
 }
 
 // SetLanding gives the engine its Landing; nil pushes every merge as is.
@@ -139,8 +142,33 @@ func (e *Engine) Merge(ctx context.Context, changeID string) (change.Change, err
 		// target and the merge record says so; only the state disagrees.
 		e.log.Warn("change left approved state during merge", "change", c.ID, "err", err)
 	}
+	// Only now, with the change merged: a closed delivery for the pull
+	// request that arrives while the change still reads approved would
+	// close the change instead (ChangeByPullRequest answers open ones).
+	e.pullRequestLanded(ctx, repo, c, rec.Merge)
 	e.log.Info("merged change", "change", c.ID, "branch", c.TargetBranch, "commit", sha, "strategy", repo.MergeStrategy)
 	return e.store.GetChange(ctx, c.ID)
+}
+
+// pullRequestLanded tells the landing that a pull-request change was
+// merged, so the pull request is closed on the host. It runs last, once
+// the change reads merged. A close that fails is logged: the merge
+// stands, and the pull-request sync closes it on its next pass.
+func (e *Engine) pullRequestLanded(ctx context.Context, repo change.Repo, c change.Change, m change.Merge) {
+	if c.PullRequest == nil {
+		return
+	}
+	e.mu.Lock()
+	landing := e.landing
+	e.mu.Unlock()
+	if landing == nil {
+		return
+	}
+	if err := landing.PullRequestLanded(ctx, repo, c, m); err != nil {
+		e.log.Warn("merged, but the pull request was not closed; the next sync closes it", "change", c.ID, "pr", c.PullRequest.Number, "err", err)
+		return
+	}
+	e.log.Info("pull request closed after the merge", "change", c.ID, "pr", c.PullRequest.Number)
 }
 
 // land puts the landing commit on the host under the holding ref and

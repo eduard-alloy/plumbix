@@ -28,6 +28,10 @@ type API interface {
 	// PullRequestTimeline lists the pull request's issue timeline, where
 	// an auto-merge request and its withdrawal are recorded (WU-063).
 	PullRequestTimeline(ctx context.Context, repo change.Repo, number int) ([]host.TimelineEvent, error)
+	// CommentOnPullRequest and ClosePullRequest let Plumbix finish a pull
+	// request it merged itself (WU-056); both write as the App.
+	CommentOnPullRequest(ctx context.Context, repo change.Repo, number int, body string) error
+	ClosePullRequest(ctx context.Context, repo change.Repo, number int) error
 }
 
 // Engine is what intake asks the engine to do.
@@ -44,6 +48,7 @@ type Engine interface {
 type Store interface {
 	ListChanges(ctx context.Context, f change.Filter) ([]change.Change, error)
 	ChangeByPullRequest(ctx context.Context, repoID string, number int) (change.Change, error)
+	LastChangeByPullRequest(ctx context.Context, repoID string, number int) (change.Change, error)
 	ListRuns(ctx context.Context, changeID string) ([]run.Run, error)
 	alert.Store
 }
@@ -166,6 +171,12 @@ func (s *Syncer) Apply(ctx context.Context, repo change.Repo, pr host.PullReques
 		if found {
 			return s.follow(ctx, repo, existing, pr)
 		}
+		if landed, ok, err := s.landedByPlumbix(ctx, repo, pr); err != nil {
+			return err
+		} else if ok {
+			s.closeLanded(ctx, repo, landed, pr)
+			return nil
+		}
 		return s.open(ctx, repo, pr)
 	case pr.Merged || pr.MergedAt != nil:
 		if !found {
@@ -182,6 +193,69 @@ func (s *Syncer) Apply(ctx context.Context, repo change.Repo, pr host.PullReques
 		s.Log.Info("pull request closed, change closed", "repo", repo.ID, "pr", pr.Number, "change", existing.ID)
 		return nil
 	}
+}
+
+// landedByPlumbix finds the change of a still-open pull request that
+// Plumbix merged itself (WU-056): GitHub does not match a squash Plumbix
+// pushed to the pull request, so it stays open, and the merge-time close
+// may have failed. Such a pull request never gets a second change. A
+// merge GitHub made (strategy github, a login) is not Plumbix's; GitHub
+// never reopens those anyway.
+func (s *Syncer) landedByPlumbix(ctx context.Context, repo change.Repo, pr host.PullRequest) (change.Change, bool, error) {
+	last, err := s.Store.LastChangeByPullRequest(ctx, repo.ID, pr.Number)
+	if errors.Is(err, change.ErrNotFound) {
+		return change.Change{}, false, nil
+	}
+	if err != nil {
+		return change.Change{}, false, err
+	}
+	if last.State != change.Merged || last.Merge == nil || last.Merge.Strategy == change.StrategyGitHub || last.Merge.MergedBy != "" {
+		return change.Change{}, false, nil
+	}
+	return last, true, nil
+}
+
+// closeLanded closes a pull request whose change Plumbix merged, again:
+// silently when its head is the one that was validated, with a comment
+// when commits arrived since the merge, since those are not on the target
+// and need a pull request of their own. A failure is logged; the next
+// sync tries again.
+func (s *Syncer) closeLanded(ctx context.Context, repo change.Repo, c change.Change, pr host.PullRequest) {
+	api, err := apiFor(s.Hosts, repo)
+	if err != nil {
+		s.Log.Warn("pull request merged by Plumbix is open and cannot be closed", "repo", repo.ID, "pr", pr.Number, "change", c.ID, "err", err)
+		return
+	}
+	comment := ""
+	if head := s.mergedHead(ctx, c); head != "" && head != pr.Head.SHA {
+		comment = fmt.Sprintf("Plumbix merged this pull request as `%s` on `%s` (change `%s`). The commits pushed since are not part of that merge and need a new pull request.", short(c.Merge.Commit), c.TargetBranch, c.ID)
+	}
+	if err := closePullRequest(ctx, s.Log, api, repo, c, pr.Number, comment); err != nil {
+		s.Log.Warn("pull request merged by Plumbix stays open; the next sync tries again", "repo", repo.ID, "pr", pr.Number, "change", c.ID, "err", err)
+		return
+	}
+	s.Log.Info("pull request merged by Plumbix closed", "repo", repo.ID, "pr", pr.Number, "change", c.ID, "head_moved", comment != "")
+}
+
+// mergedHead is the head the merged run validated; empty when unknown.
+func (s *Syncer) mergedHead(ctx context.Context, c change.Change) string {
+	runs, err := s.Store.ListRuns(ctx, c.ID)
+	if err != nil {
+		return ""
+	}
+	for _, r := range runs {
+		if r.ID == c.Merge.RunID {
+			return r.Head
+		}
+	}
+	return ""
+}
+
+func short(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
 }
 
 func (s *Syncer) logFork(repo change.Repo, pr host.PullRequest) {

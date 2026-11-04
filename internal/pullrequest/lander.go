@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
@@ -19,6 +20,14 @@ import (
 type Lander struct {
 	Hosts host.Source
 	Now   func() time.Time
+	Log   *slog.Logger // nil discards
+}
+
+func (l *Lander) log() *slog.Logger {
+	if l.Log != nil {
+		return l.Log
+	}
+	return slog.New(slog.DiscardHandler)
 }
 
 func (l *Lander) now() time.Time {
@@ -82,4 +91,51 @@ func (l *Lander) PostGate(ctx context.Context, repo change.Repo, c change.Change
 	gate.Output.Summary = clip(fmt.Sprintf("Plumbix lands the tree validated at %s (run %s, iteration %d), %s, on %s as this commit.%s\n\n%s", r.Head, r.ID, r.Iteration, approval, c.TargetBranch, reason, gate.Output.Summary), maxSummary)
 	_, err = api.CreateCheckRun(ctx, repo, gate)
 	return err
+}
+
+// PullRequestLanded finishes a pull request whose change Plumbix merged
+// itself (WU-056): a comment names the commit that landed, and the pull
+// request is closed when GitHub still shows it open, since GitHub matches
+// a merge commit or a rebase to the pull request on its own but never a
+// squash. Both calls go out as the App. A change without a pull request,
+// or a host without an API, is nothing to do.
+func (l *Lander) PullRequestLanded(ctx context.Context, repo change.Repo, c change.Change, m change.Merge) error {
+	if c.PullRequest == nil {
+		return nil
+	}
+	api, err := apiFor(l.Hosts, repo)
+	if errors.Is(err, ErrNoAPI) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	comment := fmt.Sprintf("Plumbix merged this pull request: `%s` is now the head of `%s` (%s of the validated tree; change `%s`, run `%s`).", short(m.Commit), c.TargetBranch, m.Strategy, c.ID, m.RunID)
+	return closePullRequest(ctx, l.log(), api, repo, c, c.PullRequest.Number, comment)
+}
+
+// closePullRequest closes the pull request unless GitHub already shows it
+// merged or closed, then posts the comment, if any. The close comes
+// first: the sync retries a failed close on every pass, and a comment
+// posted before it would be repeated each time. An error means the pull
+// request is still open and worth another try; a comment that fails once
+// the pull request is closed is lost, and logged here as that, since a
+// closed pull request is not visited again.
+func closePullRequest(ctx context.Context, log *slog.Logger, api API, repo change.Repo, c change.Change, number int, comment string) error {
+	pr, err := api.GetPullRequest(ctx, repo, number)
+	if err != nil {
+		return fmt.Errorf("read pull request #%d: %w", number, err)
+	}
+	if pr.State == "open" {
+		if err := api.ClosePullRequest(ctx, repo, number); err != nil {
+			return fmt.Errorf("close pull request #%d: %w", number, err)
+		}
+	}
+	if comment == "" {
+		return nil
+	}
+	if err := api.CommentOnPullRequest(ctx, repo, number, comment); err != nil {
+		log.Warn("pull request closed, but the comment naming the merge was lost", "repo", repo.ID, "pr", number, "change", c.ID, "err", err)
+	}
+	return nil
 }

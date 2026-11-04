@@ -166,6 +166,17 @@ type fakeLanding struct {
 	onPost          func() // runs after the gate is recorded, before PostGate returns
 	posted          []string
 	refAtPost       []bool
+	landed          []change.Merge // what PullRequestLanded was told (WU-056)
+	landedErr       error
+	onLanded        func(c change.Change) // runs inside PullRequestLanded, as a webhook delivery would
+}
+
+func (f *fakeLanding) PullRequestLanded(_ context.Context, _ change.Repo, c change.Change, m change.Merge) error {
+	f.landed = append(f.landed, m)
+	if f.onLanded != nil {
+		f.onLanded(c)
+	}
+	return f.landedErr
 }
 
 func (f *fakeLanding) GateRequired(context.Context, change.Repo, string) (bool, bool, error) {
@@ -333,5 +344,52 @@ func TestMergeRecordsBeforeRemovingTheHoldingRef(t *testing.T) {
 	}
 	if _, ok := h.holdingRef(c.ID); ok {
 		t.Error("the holding ref outlived the merge")
+	}
+}
+
+// TestMergeTellsTheLandingAboutThePullRequest: after Plumbix's own merge
+// of a pull-request change, the landing is told the merge so it can close
+// the pull request on GitHub, once the change reads merged: the closed
+// delivery GitHub sends for that close finds no open change to close. A
+// change without a pull request tells it nothing, and a close that fails
+// leaves the change merged (WU-056).
+func TestMergeTellsTheLandingAboutThePullRequest(t *testing.T) {
+	h := newHarnessWith(t, Config{}, "squash")
+	l := &fakeLanding{h: h, landedErr: errors.New("GitHub status 500")}
+	l.onLanded = func(c change.Change) {
+		// The webhook's closed path: close the change if it is still open.
+		if _, err := h.svc.Close(ctx, c.ID); !errors.Is(err, change.ErrInvalidState) {
+			t.Errorf("the change was still open when the pull request was closed: %v", err)
+		}
+	}
+	h.eng.SetLanding(l)
+	h.repo.Commit("feat", map[string]string{"feat.go": "package x\n"}, "work on feat")
+	c, err := h.svc.Submit(ctx, change.ChangeInput{
+		RepoID: h.repoID, SourceBranch: "feat", TargetBranch: "main", Title: "t", Intent: "i",
+		AcceptanceCriteria: []change.Criterion{{Text: "tests pass", Check: &change.Check{Steps: []string{"test"}}}},
+		PullRequest:        &change.PullRequestRef{Number: 7, URL: "https://github.com/a/b/pull/7"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := h.validate(c.ID); r.Outcome != change.Approved {
+		t.Fatalf("outcome = %s (%s)", r.Outcome, r.Error)
+	}
+	merged, err := h.merge(c.ID)
+	if err != nil || merged.State != change.Merged {
+		t.Fatalf("merge: %+v, %v", merged, err)
+	}
+	if len(l.landed) != 1 || l.landed[0].Commit != h.remote("rev-parse", "main") || l.landed[0].Strategy != "squash" || l.landed[0].RunID == "" {
+		t.Errorf("landed = %+v", l.landed)
+	}
+	h2 := newHarnessWith(t, Config{}, "squash")
+	l2 := &fakeLanding{h: h2}
+	h2.eng.SetLanding(l2)
+	plain := h2.approve("other")
+	if _, err := h2.merge(plain.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(l2.landed) != 0 {
+		t.Errorf("a change without a pull request was announced: %+v", l2.landed)
 	}
 }

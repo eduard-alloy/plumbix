@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 )
@@ -85,5 +86,42 @@ func TestMergeByGitHubHasNoRun(t *testing.T) {
 	merges, err := db.ListMerges(ctx, "r_1", "main")
 	if err != nil || len(merges) != 1 || merges[0].MergedBy != "octocat" || merges[0].RunID != "" {
 		t.Fatalf("merges = %+v, %v", merges, err)
+	}
+}
+
+// TestLastChangeByPullRequest: the latest change of a pull request in any
+// state, so a pull request Plumbix already merged is recognised after its
+// change left the open set (WU-056).
+func TestLastChangeByPullRequest(t *testing.T) {
+	db, _ := openTemp(t)
+	if err := db.CreateRepo(ctx, sampleRepo("r_1", "https://github.com/a/b")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.LastChangeByPullRequest(ctx, "r_1", 7); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("unknown PR: err = %v", err)
+	}
+	first := sampleChange("c_1", "r_1", "feat")
+	first.PullRequest = &change.PullRequestRef{Number: 7, URL: "https://github.com/a/b/pull/7"}
+	if err := db.CreateChange(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetChangeState(ctx, "c_1", change.Open, change.Closed, t0); err != nil {
+		t.Fatal(err)
+	}
+	second := sampleChange("c_2", "r_1", "feat")
+	second.PullRequest = first.PullRequest
+	second.CreatedAt = first.CreatedAt.Add(time.Minute)
+	if err := db.CreateChange(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetChangeState(ctx, "c_2", change.Open, change.Merged, t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ChangeByPullRequest(ctx, "r_1", 7); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("no open change, yet found: err = %v", err)
+	}
+	last, err := db.LastChangeByPullRequest(ctx, "r_1", 7)
+	if err != nil || last.ID != "c_2" || last.State != change.Merged {
+		t.Fatalf("last = %+v, %v", last, err)
 	}
 }

@@ -457,3 +457,74 @@ func TestPullRequestNamesACriteriaSet(t *testing.T) {
 		t.Error("a list item read as a set reference")
 	}
 }
+
+// TestMergedPullRequestIsNotReopened: a pull request whose change Plumbix
+// merged itself stays open on GitHub when Plumbix pushed a squash, since
+// GitHub does not match that commit to the pull request. The next sync
+// opens no second change for it: it closes the pull request again (the
+// merge-time close may have failed), with a comment when the head moved
+// since, which says those commits need a new pull request (WU-056).
+func TestMergedPullRequestIsNotReopened(t *testing.T) {
+	h := newHarness(t)
+	h.eng.outcome = change.Approved
+	h.gh.prs[1] = pr(1, "Add retries", "")
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	c := h.byPR(t, 1)
+	runs, _ := h.db.ListRuns(ctx, c.ID)
+	// Plumbix's own merge: the record names the run, nobody on GitHub.
+	if err := h.db.RecordMerge(ctx, change.MergeRecord{ChangeID: c.ID, RepoID: c.RepoID, Branch: "main", Merge: change.Merge{Commit: "landed1", Previous: "m1", Strategy: "squash", RunID: runs[0].ID, MergedAt: t0}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.db.SetChangeState(ctx, c.ID, change.Approved, change.Merged, t0); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if all, _ := h.db.ListChanges(ctx, change.Filter{RepoID: h.repo.ID}); len(all) != 1 || len(h.eng.validated) != 1 {
+		t.Fatalf("after the merge: %d changes, %d validations", len(all), len(h.eng.validated))
+	}
+	if h.gh.prs[1].State != "closed" || len(h.gh.comments[1]) != 0 {
+		t.Errorf("same head: state %s comments %q", h.gh.prs[1].State, h.gh.comments[1])
+	}
+
+	// Reopened on GitHub with new commits: still no second change, closed
+	// again with a word about the commits that are not in the merge.
+	moved := h.gh.prs[1]
+	moved.State, moved.Head.SHA = "open", "h2"
+	h.gh.prs[1] = moved
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if all, _ := h.db.ListChanges(ctx, change.Filter{RepoID: h.repo.ID}); len(all) != 1 {
+		t.Errorf("after the head moved: %d changes", len(all))
+	}
+	if h.gh.prs[1].State != "closed" || len(h.gh.comments[1]) != 1 || !strings.Contains(h.gh.comments[1][0], "landed1") || !strings.Contains(h.gh.comments[1][0], "new pull request") {
+		t.Errorf("moved head: state %s comments %q", h.gh.prs[1].State, h.gh.comments[1])
+	}
+
+	// A close that fails is logged, not an error of the sync, and the next
+	// sync tries again; the comment waits for the close, so the retries
+	// do not repeat it.
+	moved.State = "open"
+	h.gh.prs[1] = moved
+	h.gh.closeErr = errors.New("GitHub status 500")
+	for range 2 {
+		if err := h.s.Sync(ctx, h.repo); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(h.gh.comments[1]) != 1 {
+		t.Errorf("comments while the close fails: %q", h.gh.comments[1])
+	}
+	h.gh.closeErr = nil
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if h.gh.prs[1].State != "closed" || len(h.gh.comments[1]) != 2 {
+		t.Errorf("after a failed close: state %s comments %q", h.gh.prs[1].State, h.gh.comments[1])
+	}
+}
