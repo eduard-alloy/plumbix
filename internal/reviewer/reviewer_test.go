@@ -30,6 +30,7 @@ printf '%s\n' "$@" > "$PLUMBIX_TEST_REC/args"
 cat > "$PLUMBIX_TEST_REC/stdin"
 pwd > "$PLUMBIX_TEST_REC/cwd"
 ls > "$PLUMBIX_TEST_REC/ls"
+env | grep '^PLUMBIX_' | sort > "$PLUMBIX_TEST_REC/env"
 prev=""
 for a in "$@"; do
   if [ "$prev" = "--system-prompt-file" ]; then cat "$a" > "$PLUMBIX_TEST_REC/system"; fi
@@ -173,6 +174,14 @@ func TestOneReviewRunsClaudeInAWorktreeAndPostsTheVerdict(t *testing.T) {
 	}
 	if _, err := os.Stat(cwd); !os.IsNotExist(err) {
 		t.Errorf("the worktree %s was left behind", cwd)
+	}
+	// The session states who launched it and for what (WU-069,
+	// contracts/launcher.md): the repository byte for byte as registered.
+	env := recorded(t, rec, "env")
+	for _, want := range []string{"PLUMBIX_LAUNCHER=review", "PLUMBIX_REPOSITORY=" + repo.Remote, "PLUMBIX_REPO_ID=r_1", "PLUMBIX_CHANGE=c_1", "PLUMBIX_RUN=run_1", "PLUMBIX_REVIEW=rv_1"} {
+		if !strings.Contains(env, want+"\n") {
+			t.Errorf("session environment lacks %q:\n%s", want, env)
+		}
 	}
 	if !strings.Contains(out.String(), "rv_1") || !strings.Contains(out.String(), "approve") || !strings.Contains(out.String(), "$0.04") {
 		t.Errorf("stdout = %q", out.String())

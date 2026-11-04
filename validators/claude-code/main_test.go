@@ -99,6 +99,11 @@ func TestWritesVerdictFromClaudeCode(t *testing.T) {
 	if !strings.Contains(log, "claude code validator: turn 1: Read go.mod") || !strings.Contains(log, "claude code validator: approve") || !strings.Contains(log, "3 turns") || !strings.Contains(log, "41000 read from cache, 6000 written to cache") {
 		t.Errorf("stderr lacks the progress or the final line:\n%s", log)
 	}
+	// The session states who launched it (WU-069, contracts/launcher.md):
+	// the validator image knows the change, not the run or the repository.
+	if env := recorded(t, rec, "env"); !strings.Contains(env, "PLUMBIX_LAUNCHER=validator\n") || !strings.Contains(env, "PLUMBIX_CHANGE=c_aaaaaaaaaaaa\n") || strings.Contains(env, "PLUMBIX_RUN=") || strings.Contains(env, "PLUMBIX_REPOSITORY=") {
+		t.Errorf("session environment: %s", env)
+	}
 }
 
 // TestTokenToolsAndTurns: a setup-token value reaches claude as

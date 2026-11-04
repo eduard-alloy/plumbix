@@ -173,7 +173,9 @@ func reviewOne(ctx context.Context, o Options, b review.Brief) error {
 		model = o.Model
 	}
 	res, err := claudecode.Run(ctx, claudecode.Options{Claude: o.Claude, Dir: wt, System: b.Prompt.System, User: b.Prompt.User, Schema: b.Schema,
-		Tools: tools, Model: model, MaxTurns: o.MaxTurns, MaxBudgetUSD: o.MaxBudgetUSD, Deadline: b.ExpiresAt, Progress: progress})
+		Tools: tools, Model: model, MaxTurns: o.MaxTurns, MaxBudgetUSD: o.MaxBudgetUSD, Deadline: b.ExpiresAt, Progress: progress,
+		// The session says who launched it and for what (WU-069).
+		Env: b.LauncherEnv()})
 	if err != nil {
 		return err
 	}

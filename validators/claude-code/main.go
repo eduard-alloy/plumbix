@@ -87,7 +87,9 @@ func run(getenv func(string) string, stderr io.Writer) int {
 		// The credential reaches claude under the one variable it reads;
 		// the raw PLUMBIX_AI_API_KEY is dropped from the environment claude
 		// and the commands it runs inherit.
-		Env:      []string{authVar(key) + "=" + key},
+		// The session says who launched it and for which change (WU-069);
+		// the input carries no run or repository, so those stay unset.
+		Env:      append([]string{authVar(key) + "=" + key}, review.LauncherVars(review.LauncherValidator, map[string]string{review.EnvChange: in.Change.ID})...),
 		Drop:     []string{"PLUMBIX_AI_API_KEY"},
 		Progress: func(line string) { fmt.Fprintln(stderr, prefix+line) },
 	})

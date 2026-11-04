@@ -48,6 +48,43 @@ type Review struct {
 	ExpiredReason string `json:"expired_reason,omitempty"`
 }
 
+// The launcher marker (WU-069, contracts/launcher.md): what a Claude Code
+// session Plumbix starts states about itself in its environment, so an
+// observer's hook can tell who launched it and for what.
+const (
+	EnvLauncher   = "PLUMBIX_LAUNCHER"   // review (the loop), validator (the AI validator image)
+	EnvRepository = "PLUMBIX_REPOSITORY" // the registration's url, byte for byte as GET /api/v1/repos returns it
+	EnvRepoID     = "PLUMBIX_REPO_ID"
+	EnvChange     = "PLUMBIX_CHANGE"
+	EnvRun        = "PLUMBIX_RUN"
+	EnvReview     = "PLUMBIX_REVIEW"
+
+	LauncherReview    = "review"
+	LauncherValidator = "validator"
+)
+
+// LauncherEnv is the environment a session started for this brief
+// carries (WU-069): the launcher and the brief's repository url, ids of
+// repository, change, run and review. A value the brief lacks leaves its
+// variable absent, never empty, as the contract promises.
+func (b Brief) LauncherEnv() []string {
+	return LauncherVars(LauncherReview, map[string]string{
+		EnvRepository: b.RepoURL, EnvRepoID: b.RepoID, EnvChange: b.ChangeID, EnvRun: b.RunID, EnvReview: b.ID,
+	})
+}
+
+// LauncherVars builds the launcher marker's pairs: the launcher first,
+// then the given variables in the contract's order, skipping empty values.
+func LauncherVars(launcher string, values map[string]string) []string {
+	env := []string{EnvLauncher + "=" + launcher}
+	for _, name := range []string{EnvRepository, EnvRepoID, EnvChange, EnvRun, EnvReview} {
+		if v := values[name]; v != "" {
+			env = append(env, name+"="+v)
+		}
+	}
+	return env
+}
+
 // Brief is what a reviewer receives from GET /reviews/next: everything a
 // container validator would get, in one document, plus the token that
 // posts the verdict. Prompt and Schema are the AI validator's own, so a
