@@ -19,10 +19,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/claudecode"
 	"github.com/eduard-alloy/plumbix/internal/client"
+	"github.com/eduard-alloy/plumbix/internal/gitops"
 	"github.com/eduard-alloy/plumbix/internal/review"
 	"github.com/eduard-alloy/plumbix/internal/validation"
 )
@@ -143,9 +145,21 @@ func next(ctx context.Context, o Options) (review.Brief, bool, error) {
 }
 
 // reviewOne checks the head out, runs claude on it, and posts the verdict.
+// A review it cannot answer is given back with a reason (WU-071), so the
+// step errors now rather than at its timeout.
 func reviewOne(ctx context.Context, o Options, b review.Brief) error {
-	wt, cleanup, err := checkout(ctx, o.WorkDir, b)
+	auth, err := credential(ctx, o, b)
 	if err != nil {
+		if errors.Is(err, errCredentialRefused) {
+			// The server answered and would not say: nothing a wait
+			// would change, so the review goes back now.
+			giveBack(o, b, review.ReasonCheckoutFailed, err)
+		}
+		return err
+	}
+	wt, cleanup, err := checkout(ctx, o.WorkDir, b, auth)
+	if err != nil {
+		giveBack(o, b, review.ReasonCheckoutFailed, err)
 		return err
 	}
 	defer cleanup()
@@ -177,6 +191,7 @@ func reviewOne(ctx context.Context, o Options, b review.Brief) error {
 		// The session says who launched it and for what (WU-069).
 		Env: b.LauncherEnv()})
 	if err != nil {
+		giveBack(o, b, review.ReasonReviewerError, err)
 		return err
 	}
 	criteria := make([]change.Criterion, 0, len(b.Criteria))
@@ -191,7 +206,9 @@ func reviewOne(ctx context.Context, o Options, b review.Brief) error {
 	}
 	v, err := review.ToVerdict(res.StructuredOutput, criteria, res.VerdictUsage(model))
 	if err != nil {
-		return fmt.Errorf("claude's answer is not a verdict Plumbix accepts: %w", err)
+		err = fmt.Errorf("claude's answer is not a verdict Plumbix accepts: %w", err)
+		giveBack(o, b, review.ReasonReviewerError, err)
+		return err
 	}
 	body, _ := json.Marshal(struct {
 		Token   string             `json:"token"`
@@ -202,19 +219,94 @@ func reviewOne(ctx context.Context, o Options, b review.Brief) error {
 		return fmt.Errorf("post verdict: %w", err)
 	}
 	if !resp.OK() {
-		return fmt.Errorf("post verdict: %w", resp.Error())
+		err := fmt.Errorf("post verdict: %w", resp.Error())
+		if resp.Status == http.StatusBadRequest {
+			// The server refused the verdict's content: nothing a retry
+			// would change, so the review goes back with that word.
+			giveBack(o, b, review.ReasonReviewerError, err)
+		}
+		return err
 	}
 	fmt.Fprintf(o.Stdout, "review %s: %s · %d turns · %s · %s\n", b.ID, v.Outcome, res.NumTurns, claudecode.CostText(res.TotalCostUSD), firstLine(v.Summary))
 	return nil
 }
 
+// errCredentialRefused means the server answered the credential request
+// with an error, as opposed to not answering at all.
+var errCredentialRefused = errors.New("the server refused the repository credential")
+
+// credential asks the server what it fetches the repository with (WU-071):
+// nil when it fetches anonymously, or when the server predates the call, so
+// the machine's own git access applies as before.
+func credential(ctx context.Context, o Options, b review.Brief) (*gitops.Auth, error) {
+	body, _ := json.Marshal(map[string]string{"token": b.Token})
+	resp, err := o.Client.Do(ctx, http.MethodPost, "/api/v1/reviews/"+url.PathEscape(b.ID)+"/credential", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("fetch the repository credential: %w", err)
+	}
+	switch {
+	case resp.Status == http.StatusNoContent || resp.Status == http.StatusNotFound:
+		return nil, nil
+	case !resp.OK():
+		return nil, fmt.Errorf("%w: %v", errCredentialRefused, resp.Error())
+	}
+	var c review.Credential
+	if err := json.Unmarshal(resp.Body, &c); err != nil {
+		return nil, fmt.Errorf("decode the repository credential: %w", err)
+	}
+	return &gitops.Auth{User: c.User, Token: c.Token}, nil
+}
+
+// giveBack hands a claimed review back with a reason and the error's words
+// (WU-071), on its own short context since the loop's may be ending. A
+// server that cannot be told is reported on stderr; the step then waits
+// out its timeout as before.
+func giveBack(o Options, b review.Brief, reason string, cause error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	body, _ := json.Marshal(map[string]string{"token": b.Token, "reason": reason, "message": clip(cause.Error(), review.MaxFailMessage)})
+	resp, err := o.Client.Do(ctx, http.MethodPost, "/api/v1/reviews/"+url.PathEscape(b.ID)+"/fail", bytes.NewReader(body))
+	if err == nil && !resp.OK() {
+		err = resp.Error()
+	}
+	if err != nil {
+		fmt.Fprintf(o.Stderr, "plumbix review: %s: could not give the review back (%s): %v\n", b.ID, reason, err)
+		return
+	}
+	fmt.Fprintf(o.Stdout, "review %s: given back: %s\n", b.ID, reason)
+}
+
+// clip cuts s to at most n characters.
+func clip(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	r := []rune(s)
+	return string(r[:n])
+}
+
 // checkout materialises the brief's head in a worktree under workDir, with
-// a bare mirror per repository that is fetched before each review. The
-// user's own git access applies. cleanup removes the worktree.
-func checkout(ctx context.Context, workDir string, b review.Brief) (string, func(), error) {
+// a bare mirror per repository that is fetched before each review. With
+// auth, git answers the remote with the server's credential through the
+// askpass script, environment only, and personal credential helpers stay
+// out; without, the user's own git access applies. cleanup removes the
+// worktree.
+func checkout(ctx context.Context, workDir string, b review.Brief, auth *gitops.Auth) (string, func(), error) {
 	mirror := filepath.Join(workDir, "repos", b.RepoID+".git")
+	var env, prefix []string
+	if auth != nil {
+		askpass, err := gitops.EnsureAskpass(workDir)
+		if err != nil {
+			return "", nil, err
+		}
+		env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+		env = append(env, gitops.AuthEnv(*auth, askpass)...)
+		prefix = []string{"-c", "credential.helper="}
+	}
 	git := func(args ...string) error {
-		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd := exec.CommandContext(ctx, "git", append(append([]string{}, prefix...), args...)...)
+		cmd.Env = env
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {

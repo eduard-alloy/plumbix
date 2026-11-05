@@ -49,6 +49,7 @@ const cleanupTimeout = 30 * time.Second
 
 var (
 	errSuperseded = errors.New("superseded by a newer run")
+	errClosed     = errors.New("cancelled: the change was closed")
 	errShutdown   = errors.New("interrupted because the Plumbix server stopped")
 	runIDRe       = regexp.MustCompile(`^run_[a-z2-7]{12}$`)
 )
@@ -161,6 +162,21 @@ func (e *Engine) Validate(ctx context.Context, changeID string) (run.Run, error)
 		return e.runPipeline(ctx, r, c)
 	})
 	return r, nil
+}
+
+// CancelChangeRun cancels the run still going for a change that was just
+// closed (WU-071): the run records cancelled, a review waiting in it expires
+// as run_cancelled, and the change, closed already, is left alone. It
+// reports whether a run was going.
+func (e *Engine) CancelChangeRun(changeID string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	a, ok := e.active[changeID]
+	if ok {
+		a.cancel(errClosed)
+		e.log.Info("run cancelled: its change was closed", "change", changeID, "run", a.runID)
+	}
+	return ok
 }
 
 // RunBranch starts a plain run of a branch's pipeline without its validators,

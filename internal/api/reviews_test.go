@@ -203,3 +203,81 @@ func TestAReviewerPostsProgressLines(t *testing.T) {
 		t.Errorf("step log: %s", rec.Body.String())
 	}
 }
+
+// WU-071: the reviewer holding a claim asks what the server fetches the
+// repository with, and gives the review back with a reason when it cannot
+// do its job; the step then errors at once.
+func TestTheReviewerAsksForTheCredentialAndGivesTheReviewBack(t *testing.T) {
+	o := loadOpenAPI(t)
+	a := newRunAPI(t)
+	a.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalPipeline}, "external review")
+	a.repo.Commit("ext", map[string]string{"b.go": "package b\n"}, "feature on the new pipeline")
+	c := decode[change.Change](t, a.do(http.MethodPost, "/api/v1/changes", changeBody(a.repoID, "ext")))
+	b := decode[review.Brief](t, a.do(http.MethodGet, "/api/v1/reviews/next?reviewer=kai&wait=20", ""))
+	// The test repository is a local path the server reads without
+	// credentials, so there is nothing to hand out; the refusals are the
+	// verdict's.
+	if rec := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/credential", `{"token": "`+b.Token+`"}`); rec.Code != http.StatusNoContent {
+		t.Errorf("credential: %d %s", rec.Code, rec.Body.String())
+	}
+	wrong := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/credential", `{"token": "nope"}`)
+	o.check("Error", wrong)
+	if wrong.Code != http.StatusConflict {
+		t.Errorf("wrong token: %d %s", wrong.Code, wrong.Body.String())
+	}
+	if rec := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/credential", `{}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("no token: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := a.do(http.MethodPost, "/api/v1/reviews/rv_nope/credential", `{"token": "x"}`); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown review: %d", rec.Code)
+	}
+	bad := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/fail", `{"token": "`+b.Token+`", "reason": "bored", "message": "x"}`)
+	o.check("Error", bad)
+	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), "checkout_failed") {
+		t.Errorf("made-up reason: %d %s", bad.Code, bad.Body.String())
+	}
+	if rec := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/fail", `{"token": "nope", "reason": "checkout_failed", "message": "x"}`); rec.Code != http.StatusConflict {
+		t.Errorf("wrong token: %d %s", rec.Code, rec.Body.String())
+	}
+	const msg = "git clone: exit status 128: remote: Repository not found."
+	if rec := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/fail", `{"token": "`+b.Token+`", "reason": "checkout_failed", "message": "`+msg+`"}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("fail: %d %s", rec.Code, rec.Body.String())
+	}
+	r := a.waitRun(b.RunID)
+	if r.Status != run.Finished || r.Outcome != change.NeedsHuman {
+		t.Fatalf("run = %s %s %q", r.Status, r.Outcome, r.Error)
+	}
+	if got := decode[change.Change](t, a.do(http.MethodGet, "/api/v1/changes/"+c.ID, "")); got.State != change.NeedsHuman {
+		t.Errorf("change state = %s", got.State)
+	}
+	if rec := a.do(http.MethodGet, "/api/v1/runs/"+b.RunID+"/steps/ai-review/log", ""); !strings.Contains(rec.Body.String(), "kai gave the review back") || !strings.Contains(rec.Body.String(), "reviewer: "+msg) {
+		t.Errorf("step log: %s", rec.Body.String())
+	}
+	again := a.do(http.MethodPost, "/api/v1/reviews/"+b.ID+"/fail", `{"token": "`+b.Token+`", "reason": "reviewer_error", "message": "x"}`)
+	o.check("Error", again)
+	if again.Code != http.StatusConflict || !strings.Contains(again.Body.String(), "expired (checkout_failed)") {
+		t.Errorf("second failure: %d %s", again.Code, again.Body.String())
+	}
+}
+
+// WU-071: closing a change cancels its run, so a review waiting in it
+// expires as run_cancelled instead of sitting claimed until the timeout.
+func TestClosingAChangeCancelsItsRun(t *testing.T) {
+	a := newRunAPI(t)
+	a.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalPipeline}, "external review")
+	a.repo.Commit("ext", map[string]string{"b.go": "package b\n"}, "feature on the new pipeline")
+	c := decode[change.Change](t, a.do(http.MethodPost, "/api/v1/changes", changeBody(a.repoID, "ext")))
+	b := decode[review.Brief](t, a.do(http.MethodGet, "/api/v1/reviews/next?reviewer=kai&wait=20", ""))
+	if rec := a.do(http.MethodPost, "/api/v1/changes/"+c.ID+"/close", ""); rec.Code != http.StatusOK {
+		t.Fatalf("close: %d %s", rec.Code, rec.Body.String())
+	}
+	if r := a.waitRun(b.RunID); r.Status != run.Cancelled || !strings.Contains(r.Error, "closed") {
+		t.Fatalf("run = %s %q", r.Status, r.Error)
+	}
+	if rv, err := a.db.GetReview(ctxBG, b.ID); err != nil || rv.Status != review.Expired || rv.ExpiredReason != review.ReasonRunCancelled {
+		t.Errorf("review = %+v, %v", rv, err)
+	}
+	if got := decode[change.Change](t, a.do(http.MethodGet, "/api/v1/changes/"+c.ID, "")); got.State != change.Closed {
+		t.Errorf("change state = %s", got.State)
+	}
+}

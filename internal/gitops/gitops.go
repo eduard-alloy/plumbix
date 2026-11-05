@@ -65,6 +65,13 @@ func EnsureAskpass(dir string) (string, error) {
 	return p, nil
 }
 
+// AuthEnv is the environment that makes git answer its credential prompts
+// with a through the askpass script at askpass: the only way a token ever
+// reaches git, in the server and in the review loop alike (WU-071).
+func AuthEnv(a Auth, askpass string) []string {
+	return []string{"GIT_ASKPASS=" + askpass, "PLUMBIX_GIT_USER=" + a.User, "PLUMBIX_GIT_TOKEN=" + a.Token}
+}
+
 // Open returns the mirror at dir for the remote url. Nothing is created
 // until Fetch.
 func Open(dir, url string) *Mirror { return &Mirror{dir: dir, url: url} }
@@ -95,7 +102,7 @@ func (m *Mirror) command(ctx context.Context, args ...string) *exec.Cmd {
 		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
 	}
 	if m.auth != nil {
-		cmd.Env = append(cmd.Env, "GIT_ASKPASS="+m.askpass, "PLUMBIX_GIT_USER="+m.auth.User, "PLUMBIX_GIT_TOKEN="+m.auth.Token)
+		cmd.Env = append(cmd.Env, AuthEnv(*m.auth, m.askpass)...)
 	}
 	return cmd
 }

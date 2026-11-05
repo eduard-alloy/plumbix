@@ -401,3 +401,13 @@ Initial discovery is complete. Results are consolidated in `PROJECT.md` and `CON
 **Answer**: both. Asked in the plumbix-bb session on the second Mac; on madmax the owner then chose to merge the two units into the M3 plan recorded the same day rather than reopen M2.
 
 **Decision**: A45. WU-067 (tombstone, folded into the removed-repositories unit already planned) and WU-068 (`review.expired` with a reason); the launcher marker and the hardening move to WU-069 and WU-070.
+
+## Q24: Which credential does the review loop clone a private repository with (2026-11-05)
+
+**Context**: the second repository on the server, a private GitHub repository registered with its own token, fetched fine on the server, but `plumbix review --watch` clones with the machine's git access, anonymous there, so the claim failed with "Repository not found" and sat until the step's timeout. The suggestions from that session: serve the tree from the server's mirror; carry a credential for the loop; give the review back with a reason on failure; a preflight.
+
+**Options given**: the credential the server fetches with, carried per claim, plus giving the review back (recommended); a per-review GitHub App installation token only; serving the tree through Plumbix; `gh auth setup-git` on each machine.
+
+**Answer**: the server's own credential. Asked whether the repository's PAT could serve: yes, and the rule is to mirror the server's own choice, the repository's token first, the host's token as the fallback, no new policy. The App token stays a possible upgrade (it expires in an hour where a PAT does not).
+
+**Decision**: A47. WU-071: `POST /reviews/{id}/credential` and `POST /reviews/{id}/fail`; closing a change cancels its run, which the README had promised. Rejected: serving the tree from the server (a new git-serving surface for a problem the askpass path already solves), the preflight (moot once the credential travels with the claim), the per-machine `gh auth setup-git`.

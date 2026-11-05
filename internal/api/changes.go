@@ -184,6 +184,10 @@ func (h *changeHandlers) close(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
+	// A run still going for the change ends with it (WU-071).
+	if h.engine != nil {
+		h.engine.CancelChangeRun(c.ID)
+	}
 	writeJSON(w, http.StatusOK, c)
 }
 

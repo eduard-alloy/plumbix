@@ -236,3 +236,71 @@ func TestExpiredReviewSaysWhy(t *testing.T) {
 		}
 	}
 }
+
+func TestAReviewerGivesAClaimedReviewBackWithAReason(t *testing.T) {
+	db := openDB(t)
+	schema := compileEventsSchema(t)
+	if err := db.CreateRepo(ctx, sampleRepo("r_1", "https://github.com/a/b")); err != nil {
+		t.Fatal(err)
+	}
+	c := sampleChange("c_1", "r_1", "feat")
+	c.SubmittedBy = "someone"
+	if err := db.CreateChange(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	at := t0
+	if err := db.CreateRun(ctx, run.Run{ID: "run_1", RepoID: "r_1", ChangeID: "c_1", Iteration: 1, Status: run.Running, StartedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"rv_1", "rv_2"} {
+		if err := db.CreateReview(ctx, review.Review{ID: id, RunID: "run_1", RepoID: "r_1", ChangeID: "c_1", Step: "ai-review", Brief: json.RawMessage(`{}`), CreatedAt: at, ExpiresAt: at.Add(time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, ok, err := db.ClaimReview(ctx, "", "kai", "h1", at.Add(time.Second)); err != nil || !ok {
+		t.Fatal(err)
+	}
+	const msg = "git clone: exit status 128: remote: Repository not found."
+	// Only the holder of the claim, with its token, may give it back; a
+	// review nobody holds has no token to match.
+	if err := db.FailReview(ctx, "rv_1", "wrong", at.Add(time.Minute), review.ReasonCheckoutFailed, msg); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("wrong token: %v", err)
+	}
+	if err := db.FailReview(ctx, "rv_2", "", at.Add(time.Minute), review.ReasonCheckoutFailed, msg); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("unclaimed review: %v", err)
+	}
+	if err := db.FailReview(ctx, "rv_nope", "h1", at.Add(time.Minute), review.ReasonCheckoutFailed, msg); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("unknown review: %v", err)
+	}
+	before, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
+	if err := db.FailReview(ctx, "rv_1", "h1", at.Add(time.Minute), review.ReasonCheckoutFailed, msg); err != nil {
+		t.Fatal(err)
+	}
+	rv, err := db.GetReview(ctx, "rv_1")
+	if err != nil || rv.Status != review.Expired || rv.ExpiredReason != review.ReasonCheckoutFailed || rv.ExpiredMessage != msg || rv.Reviewer != "kai" || !rv.FinishedAt.Equal(at.Add(time.Minute)) {
+		t.Errorf("rv_1 = %+v, %v", rv, err)
+	}
+	// Once closed it stays closed: a second failure, or the platform's own
+	// expiry, is refused or ignored and the first reason stands.
+	if err := db.FailReview(ctx, "rv_1", "h1", at.Add(2*time.Minute), review.ReasonReviewerError, "again"); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("second failure: %v", err)
+	}
+	if err := db.ExpireReview(ctx, "rv_1", at.Add(2*time.Minute), review.ReasonTimedOut); err != nil {
+		t.Errorf("expiry after the failure: %v", err)
+	}
+	if rv, _ := db.GetReview(ctx, "rv_1"); rv.ExpiredReason != review.ReasonCheckoutFailed || rv.ExpiredMessage != msg {
+		t.Errorf("rv_1 after = %+v", rv)
+	}
+	after, _ := db.EventsAfter(ctx, 0, events.Filter{}, 100)
+	got := after[len(before):]
+	if len(got) != 1 || got[0].Type != events.ReviewExpired {
+		t.Fatalf("events = %+v", got)
+	}
+	validateEvent(t, schema, got[0])
+	raw, _ := json.Marshal(got[0].Payload)
+	var p events.ReviewExpiredPayload
+	_ = json.Unmarshal(raw, &p)
+	if p.ReviewID != "rv_1" || p.Reviewer != "kai" || p.Reason != review.ReasonCheckoutFailed || p.Message != msg {
+		t.Errorf("payload = %s", raw)
+	}
+}

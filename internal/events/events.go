@@ -139,13 +139,16 @@ type (
 		Reviewer string `json:"reviewer"`
 		Reason   string `json:"reason,omitempty"`
 	}
-	// ReviewExpiredPayload: the platform closed the review without a
-	// verdict for Reason (timed_out, run_cancelled, server_stopped,
-	// server_restart); Reviewer is who held it, absent when nobody did.
+	// ReviewExpiredPayload: the review closed without a verdict for Reason:
+	// the platform closed it (timed_out, run_cancelled, server_stopped,
+	// server_restart) or the reviewer gave it back (checkout_failed,
+	// reviewer_error, WU-071, with its Message); Reviewer is who held it,
+	// absent when nobody did.
 	ReviewExpiredPayload struct {
 		ReviewID string `json:"review_id"`
 		Reviewer string `json:"reviewer,omitempty"`
 		Reason   string `json:"reason"`
+		Message  string `json:"message,omitempty"`
 	}
 	// RunStartedPayload: a pipeline run began; Iteration is set for a change's run.
 	RunStartedPayload struct {

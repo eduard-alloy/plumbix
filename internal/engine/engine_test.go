@@ -25,6 +25,7 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/review"
 	"github.com/eduard-alloy/plumbix/internal/run"
 	"github.com/eduard-alloy/plumbix/internal/runner"
+	"github.com/eduard-alloy/plumbix/internal/scheduler"
 	"github.com/eduard-alloy/plumbix/internal/settings"
 	"github.com/eduard-alloy/plumbix/internal/store"
 	"github.com/eduard-alloy/plumbix/internal/validation"
@@ -1675,4 +1676,182 @@ func TestExpiredReviewsSayWhy(t *testing.T) {
 			t.Errorf("step log lacks the reason:\n%s", log)
 		}
 	})
+}
+
+// WU-071: the reviewer holding a claim gets the credential the server
+// fetches the repository with, so its own clone goes out with the same
+// access, and never through the brief.
+func TestTheReviewerGetsTheServersCredential(t *testing.T) {
+	const token = "host_engine_secret_71"
+	adapter := &host.GitHub{Token: token}
+	h := newHarness(t, Config{Hosts: host.Registry{change.HostGitHub: adapter}})
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalYAML}, "external review")
+	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	repo := change.Repo{ID: "r_httprepo0071", Host: change.HostGitHub, ProtectedBranches: []string{"main"}, MergeStrategy: "squash", CreatedAt: time.Now()}
+	auth, _ := adapter.Auth(repo)
+	repo.URL = h.repo.ServeHTTP(auth.User, token)
+	if err := h.db.CreateRepo(ctx, repo); err != nil {
+		t.Fatal(err)
+	}
+	h.repoID = repo.ID
+	c := h.submit("feat")
+	if _, err := h.eng.Validate(ctx, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	b := h.claimSoon("kai")
+	if raw, _ := json.Marshal(b); strings.Contains(string(raw), token) {
+		t.Fatal("the brief carries the git token")
+	}
+	if rv, _ := h.db.GetReview(ctx, b.ID); strings.Contains(string(rv.Brief), token) {
+		t.Fatal("the stored brief carries the git token")
+	}
+	if _, err := h.eng.ReviewCredential(ctx, b.ID, "nope"); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("wrong token: %v", err)
+	}
+	if _, err := h.eng.ReviewCredential(ctx, "rv_nope", b.Token); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("unknown review: %v", err)
+	}
+	cred, err := h.eng.ReviewCredential(ctx, b.ID, b.Token)
+	if err != nil || cred == nil || cred.User != auth.User || cred.Token != token {
+		t.Fatalf("credential = %+v, %v", cred, err)
+	}
+	// The credential goes with the claim: once the review is answered it
+	// is refused like a late verdict.
+	verdict := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"fine","criteria":[{"id":"AC-1","status":"met","reason":"x","evidence":["a"]}]}`)
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, verdict); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.eng.ReviewCredential(ctx, b.ID, b.Token); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("after the verdict: %v", err)
+	}
+	t.Run("anonymous fetch hands out nothing", func(t *testing.T) {
+		h := newHarness(t, Config{})
+		h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalYAML}, "external review")
+		h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+		c := h.submit("feat")
+		if _, err := h.eng.Validate(ctx, c.ID); err != nil {
+			t.Fatal(err)
+		}
+		b := h.claimSoon("kai")
+		if cred, err := h.eng.ReviewCredential(ctx, b.ID, b.Token); err != nil || cred != nil {
+			t.Errorf("credential = %+v, %v", cred, err)
+		}
+	})
+}
+
+// WU-071: a reviewer that cannot do its job gives the review back with a
+// reason, and the step errors at once instead of waiting out its timeout.
+func TestAReviewerGivesTheReviewBack(t *testing.T) {
+	h := newHarness(t, Config{})
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalYAML}, "external review")
+	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	c := h.submit("feat")
+	r, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := h.claimSoon("kai")
+	const msg = "git clone: exit status 128: remote: Repository not found."
+	if err := h.eng.FailReview(ctx, b.ID, "nope", review.ReasonCheckoutFailed, msg); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("wrong token: %v", err)
+	}
+	var inv *change.InvalidError
+	if err := h.eng.FailReview(ctx, b.ID, b.Token, "bored", msg); !errors.As(err, &inv) || !strings.Contains(err.Error(), review.ReasonCheckoutFailed) {
+		t.Errorf("made-up reason: %v", err)
+	}
+	if err := h.eng.FailReview(ctx, b.ID, b.Token, review.ReasonCheckoutFailed, strings.Repeat("x", review.MaxFailMessage+1)); !errors.As(err, &inv) {
+		t.Errorf("long message: %v", err)
+	}
+	// Spaces around and a terminal escape inside the message are dropped.
+	if err := h.eng.FailReview(ctx, b.ID, b.Token, review.ReasonCheckoutFailed, "  "+strings.Replace(msg, "remote:", "remote:\x1b", 1)+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	// The step errored, so the run finishes as a validator error does:
+	// the change waits for a person, now rather than at the timeout.
+	if r = h.wait(r.ID); r.Status != run.Finished || r.Outcome != change.NeedsHuman {
+		t.Fatalf("run = %s %s %q", r.Status, r.Outcome, r.Error)
+	}
+	if st := stepNamed(r, "ai-review"); st.Status != string(scheduler.Errored) || !strings.Contains(st.Error, review.ReasonCheckoutFailed) {
+		t.Errorf("ai-review step = %+v", st)
+	}
+	if got, _ := h.db.GetChange(ctx, c.ID); got.State != change.NeedsHuman {
+		t.Errorf("change state = %s", got.State)
+	}
+	rv, err := h.db.GetReview(ctx, b.ID)
+	if err != nil || rv.Status != review.Expired || rv.ExpiredReason != review.ReasonCheckoutFailed || rv.ExpiredMessage != strings.Replace(msg, "remote:", "remote: ", 1) {
+		t.Errorf("review = %+v, %v", rv, err)
+	}
+	log, _ := os.ReadFile(h.eng.LogPath(r.ID, "ai-review"))
+	if !strings.Contains(string(log), "kai gave the review back") || !strings.Contains(string(log), "expired: "+review.ReasonCheckoutFailed) || !strings.Contains(string(log), "reviewer: "+msg) { // the log line folds the whitespace
+		t.Errorf("step log:\n%s", log)
+	}
+	evs, _ := h.db.EventsAfter(ctx, 0, events.Filter{ChangeID: c.ID}, 200)
+	n := 0
+	for _, e := range evs {
+		if e.Type != events.ReviewExpired {
+			continue
+		}
+		raw, _ := json.Marshal(e.Payload)
+		var p events.ReviewExpiredPayload
+		_ = json.Unmarshal(raw, &p)
+		if p.ReviewID == b.ID {
+			n++
+			if p.Reviewer != "kai" || p.Reason != review.ReasonCheckoutFailed || p.Message != strings.Replace(msg, "remote:", "remote: ", 1) {
+				t.Errorf("payload = %s", raw)
+			}
+		}
+	}
+	if n != 1 {
+		t.Errorf("review.expired events for %s: %d", b.ID, n)
+	}
+	// The token died with the claim.
+	late := []byte(`{"plumbix":"verdict/v1","outcome":"approve","summary":"late","criteria":[{"id":"AC-1","status":"met","reason":"x","evidence":["a"]}]}`)
+	if err := h.eng.PostReviewVerdict(ctx, b.ID, b.Token, late); !errors.Is(err, change.ErrConflict) || !strings.Contains(err.Error(), "expired ("+review.ReasonCheckoutFailed+")") {
+		t.Errorf("late verdict: %v", err)
+	}
+	if err := h.eng.FailReview(ctx, b.ID, b.Token, review.ReasonReviewerError, "again"); !errors.Is(err, change.ErrConflict) {
+		t.Errorf("second failure: %v", err)
+	}
+}
+
+// stepNamed is the run's step called name, or a zero step.
+func stepNamed(r run.Run, name string) run.Step {
+	for _, st := range r.Steps {
+		if st.Name == name {
+			return st
+		}
+	}
+	return run.Step{}
+}
+
+// WU-071: closing a change cancels the run still going for it, so a review
+// waiting in that run expires as run_cancelled instead of hanging.
+func TestClosingAChangeCancelsItsRun(t *testing.T) {
+	h := newHarness(t, Config{})
+	h.repo.Commit("main", map[string]string{".plumbix/pipeline.yaml": externalYAML}, "external review")
+	h.repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	c := h.submit("feat")
+	r, err := h.eng.Validate(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := h.claimSoon("kai")
+	if _, err := change.NewService(h.db).Close(ctx, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !h.eng.CancelChangeRun(c.ID) {
+		t.Fatal("no run was going")
+	}
+	if r = h.wait(r.ID); r.Status != run.Cancelled || !strings.Contains(r.Error, "closed") {
+		t.Fatalf("run = %s %q", r.Status, r.Error)
+	}
+	if got, _ := h.db.GetChange(ctx, c.ID); got.State != change.Closed {
+		t.Errorf("change state = %s", got.State)
+	}
+	if rv, err := h.db.GetReview(ctx, b.ID); err != nil || rv.Status != review.Expired || rv.ExpiredReason != review.ReasonRunCancelled {
+		t.Errorf("review = %+v, %v", rv, err)
+	}
+	if h.eng.CancelChangeRun(c.ID) {
+		t.Error("a second cancel found a run")
+	}
 }

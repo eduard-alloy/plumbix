@@ -437,6 +437,112 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /reviews/{id}/credential:
+    post:
+      operationId: reviewCredential
+      summary: What the server fetches the review's repository with, for the reviewer holding the claim.
+      description: >
+        For the reviewer holding the claim (WU-071): the user and token the
+        server itself fetches the repository with, the repository's own token
+        or else the host's, so the reviewer's clone goes out with the same
+        access and a private repository needs no credential on the reviewer's
+        machine. 204 when the server fetches anonymously. The credential is
+        never part of the brief, never stored with it and never logged; the
+        reviewer passes it to git through the environment only (GIT_ASKPASS),
+        never on the command line or in a URL. Refused like a verdict once the
+        review is answered, expired or given back.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  minLength: 1
+      responses:
+        "200":
+          description: The credential.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewCredential"
+        "204":
+          description: The server fetches this repository without credentials.
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The token is not the one handed out with the brief, or the review was already answered or expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /reviews/{id}/fail:
+    post:
+      operationId: failReview
+      summary: Give a claimed review back with a reason.
+      description: >
+        For the reviewer holding the claim (WU-071): it cannot produce a
+        verdict and says why, with its own words in message (git's error, for
+        one). The review expires with the reason (review.expired carries
+        reason and message), the waiting step errors at once instead of at
+        its timeout, and the change waits for a person. The token dies with
+        the claim: a verdict, log line or second failure afterwards is
+        refused with 409 naming the reason.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, reason]
+              properties:
+                token:
+                  type: string
+                  minLength: 1
+                reason:
+                  type: string
+                  enum: [checkout_failed, reviewer_error]
+                  description: checkout_failed when the head could not be cloned or checked out; reviewer_error when the reviewer ran but produced no verdict.
+                message:
+                  type: string
+                  maxLength: 2000
+                  description: The reviewer's own words, kept on the review, in the event and on the step log.
+      responses:
+        "204":
+          description: The review was given back.
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The token is not the one handed out with the brief, or the review was already answered or expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /settings/secrets/{key}:
     put:
       operationId: setSecret
@@ -2575,6 +2681,17 @@ components:
           enum: [accepted]
         review_id:
           type: string
+    ReviewCredential:
+      type: object
+      additionalProperties: false
+      required: [user, token]
+      description: Git credentials for the review's repository, as the server uses them (WU-071). Shown to the claim's holder only; never logged.
+      properties:
+        user:
+          type: string
+        token:
+          type: string
+          minLength: 1
     Images:
       type: object
       additionalProperties: false

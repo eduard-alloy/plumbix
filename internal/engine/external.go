@@ -11,8 +11,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
@@ -148,6 +150,24 @@ func (e *Engine) waitExternal(ctx context.Context, r run.Run, c change.Change, p
 		}
 		if rv.Status == review.Done {
 			return e.takeVerdict(dir, rv, log)
+		}
+		if rv.Status == review.Expired {
+			// The reviewer gave the review back (WU-071): the step errors
+			// now, with the reviewer's words, instead of waiting out its
+			// timeout for a verdict that will not come. The words go in
+			// line by line under the reviewer's prefix, as progress lines
+			// do, so they cannot pass for the server's own.
+			if !slices.Contains(review.ReviewerReasons, rv.ExpiredReason) {
+				fmt.Fprintf(log, "the review was closed before a verdict arrived (review %s expired: %s)\n", b.ID, rv.ExpiredReason)
+				return scheduler.StepResult{Status: scheduler.Errored, Err: fmt.Errorf("review %s expired: %s", b.ID, rv.ExpiredReason)}
+			}
+			fmt.Fprintf(log, "%s gave the review back (review %s expired: %s)\n", rv.Reviewer, b.ID, rv.ExpiredReason)
+			for _, line := range strings.Split(rv.ExpiredMessage, "\n") {
+				if line = strings.Join(strings.Fields(line), " "); line != "" {
+					fmt.Fprintf(log, "reviewer: %s\n", line)
+				}
+			}
+			return scheduler.StepResult{Status: scheduler.Errored, Err: fmt.Errorf("the reviewer gave the review back: %s", rv.ExpiredReason)}
 		}
 	}
 }
@@ -318,17 +338,11 @@ func (e *Engine) ReleaseReview(ctx context.Context, id string) error {
 // token must be the one handed out with the brief, and the verdict must
 // pass the checks every verdict passes. The waiting step picks it up.
 func (e *Engine) PostReviewVerdict(ctx context.Context, id, token string, raw []byte) error {
-	rv, err := e.store.GetReview(ctx, id)
-	if err != nil {
-		if errors.Is(err, change.ErrNotFound) {
-			return fmt.Errorf("%w: review %s", change.ErrNotFound, id)
-		}
-		return err
-	}
 	// The claim and its token come first, so a stranger learns nothing
 	// about the verdict's problems and gets the same 409 for every attempt.
-	if rv.Status != review.Claimed || rv.TokenHash != hashToken(token) || !rv.ExpiresAt.After(e.now()) {
-		return fmt.Errorf("%w: review %s is %s, or the token is not the one handed out with its brief", change.ErrConflict, id, reviewState(rv))
+	rv, err := e.claimedReview(ctx, id, token)
+	if err != nil {
+		return err
 	}
 	c, err := e.store.GetChange(ctx, rv.ChangeID)
 	if err != nil {
@@ -344,6 +358,79 @@ func (e *Engine) PostReviewVerdict(ctx context.Context, id, token string, raw []
 		return err
 	}
 	e.log.Info("review verdict posted", "review", id, "reviewer", rv.Reviewer)
+	return nil
+}
+
+// claimedReview is the review id as its holder sees it: claimed, unexpired
+// and matching token, or ErrNotFound and ErrConflict as the API answers.
+func (e *Engine) claimedReview(ctx context.Context, id, token string) (review.Review, error) {
+	rv, err := e.store.GetReview(ctx, id)
+	if err != nil {
+		if errors.Is(err, change.ErrNotFound) {
+			return review.Review{}, fmt.Errorf("%w: review %s", change.ErrNotFound, id)
+		}
+		return review.Review{}, err
+	}
+	if rv.Status != review.Claimed || rv.TokenHash != hashToken(token) || !rv.ExpiresAt.After(e.now()) {
+		return review.Review{}, fmt.Errorf("%w: review %s is %s, or the token is not the one handed out with its brief", change.ErrConflict, id, reviewState(rv))
+	}
+	return rv, nil
+}
+
+// ReviewCredential hands the reviewer holding a claim what the server
+// fetches the repository with (WU-071), so its own clone goes out with the
+// same access: the repository's token, else the host's. nil when the server
+// fetches anonymously. The claim's token is required, as for a verdict; the
+// credential is never part of the brief and never written anywhere.
+func (e *Engine) ReviewCredential(ctx context.Context, id, token string) (*review.Credential, error) {
+	rv, err := e.claimedReview(ctx, id, token)
+	if err != nil {
+		return nil, err
+	}
+	repo, err := e.store.GetRepo(ctx, rv.RepoID)
+	if err != nil {
+		return nil, err
+	}
+	auth, err := e.auth(repo)
+	if err != nil {
+		return nil, err
+	}
+	if auth == nil {
+		return nil, nil
+	}
+	e.log.Info("review credential handed to its reviewer", "review", id, "reviewer", rv.Reviewer)
+	return &review.Credential{User: auth.User, Token: auth.Token}, nil
+}
+
+// FailReview closes a claimed review on its reviewer's word (WU-071), with
+// one of ReviewerReasons and the reviewer's message, so the waiting step
+// errors at once. The token must be the claim's, as for a verdict.
+func (e *Engine) FailReview(ctx context.Context, id, token, reason, message string) error {
+	// The message reaches the step log and the event stream: line breaks
+	// stay, every other control character (a terminal escape, say) goes.
+	message = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if r != '\n' && unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, message))
+	switch {
+	case !slices.Contains(review.ReviewerReasons, reason):
+		return &change.InvalidError{Problems: []change.Problem{{Field: "reason", Message: "must be one of " + strings.Join(review.ReviewerReasons, ", ")}}}
+	case utf8.RuneCountInString(message) > review.MaxFailMessage:
+		return &change.InvalidError{Problems: []change.Problem{{Field: "message", Message: fmt.Sprintf("is longer than %d characters", review.MaxFailMessage)}}}
+	}
+	rv, err := e.claimedReview(ctx, id, token)
+	if err != nil {
+		return err
+	}
+	if err := e.store.FailReview(ctx, id, hashToken(token), e.now().UTC(), reason, message); err != nil {
+		if errors.Is(err, change.ErrConflict) {
+			return fmt.Errorf("%w: review %s is %s, or the token is not the one handed out with its brief", change.ErrConflict, id, reviewState(rv))
+		}
+		return err
+	}
+	e.log.Info("review given back by its reviewer", "review", id, "reviewer", rv.Reviewer, "reason", reason)
 	return nil
 }
 

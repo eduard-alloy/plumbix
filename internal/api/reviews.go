@@ -6,10 +6,12 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/change"
 	"github.com/eduard-alloy/plumbix/internal/engine"
+	"github.com/eduard-alloy/plumbix/internal/review"
 	"github.com/eduard-alloy/plumbix/internal/validation"
 )
 
@@ -34,6 +36,68 @@ func registerReviewRoutes(mux *http.ServeMux, h *reviewHandlers) {
 	mux.HandleFunc("POST /api/v1/reviews/{id}/verdict", h.verdict)
 	mux.HandleFunc("GET /api/v1/reviewers", h.reviewers)
 	mux.HandleFunc("POST /api/v1/reviews/{id}/log", h.appendLog)
+	mux.HandleFunc("POST /api/v1/reviews/{id}/credential", h.credential)
+	mux.HandleFunc("POST /api/v1/reviews/{id}/fail", h.giveBack)
+}
+
+// tokenBody is a request from the reviewer holding the claim.
+type tokenBody struct {
+	Token string `json:"token"`
+}
+
+// credential hands the claim's holder what the server fetches the
+// repository with (WU-071), or 204 when it fetches anonymously.
+func (h *reviewHandlers) credential(w http.ResponseWriter, r *http.Request) {
+	var body tokenBody
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if body.Token == "" {
+		writeProblems(w, "the request has 1 problem(s)", []change.Problem{{Field: "token", Message: "is required: the token that came with the brief"}})
+		return
+	}
+	cred, err := h.engine.ReviewCredential(r.Context(), r.PathValue("id"), body.Token)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	if cred == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeJSON(w, http.StatusOK, cred)
+}
+
+// failBody is a reviewer giving a claimed review back (WU-071).
+type failBody struct {
+	Token   string `json:"token"`
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
+}
+
+// giveBack ends a claimed review on the reviewer's word, so the waiting
+// step errors now rather than at its timeout (WU-071).
+func (h *reviewHandlers) giveBack(w http.ResponseWriter, r *http.Request) {
+	var body failBody
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	var problems []change.Problem
+	if body.Token == "" {
+		problems = append(problems, change.Problem{Field: "token", Message: "is required: the token that came with the brief"})
+	}
+	if body.Reason == "" {
+		problems = append(problems, change.Problem{Field: "reason", Message: "is required: one of " + strings.Join(review.ReviewerReasons, ", ")})
+	}
+	if len(problems) > 0 {
+		writeProblems(w, "the request has "+strconv.Itoa(len(problems))+" problem(s)", problems)
+		return
+	}
+	if err := h.engine.FailReview(r.Context(), r.PathValue("id"), body.Token, body.Reason, body.Message); err != nil {
+		h.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // logBody is one progress line from the reviewer holding the claim.

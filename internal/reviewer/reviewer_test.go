@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/eduard-alloy/plumbix/internal/client"
+	"github.com/eduard-alloy/plumbix/internal/gitops"
 	"github.com/eduard-alloy/plumbix/internal/gitops/gittest"
 	"github.com/eduard-alloy/plumbix/internal/review"
 )
@@ -70,6 +71,17 @@ type fakeServer struct {
 	}
 	postedID string
 	progress []string
+	// cred is what POST /reviews/{id}/credential answers; nil is 204 (WU-071).
+	cred *review.Credential
+	// credStatus, when set, is what the credential endpoint answers instead.
+	credStatus int
+	// failed is the last POST /reviews/{id}/fail, with its review id.
+	failed struct {
+		Token   string `json:"token"`
+		Reason  string `json:"reason"`
+		Message string `json:"message"`
+	}
+	failedID string
 }
 
 func (f *fakeServer) handler() http.Handler {
@@ -94,6 +106,35 @@ func (f *fakeServer) handler() http.Handler {
 		f.mu.Lock()
 		f.progress = append(f.progress, body.Token+"|"+body.Line)
 		f.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /api/v1/reviews/{id}/credential", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Token string `json:"token"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.credStatus != 0 {
+			http.Error(w, `{"error":{"code":"unavailable","message":"not now"}}`, f.credStatus)
+			return
+		}
+		if body.Token != f.brief.Token {
+			http.Error(w, `{"error":{"code":"conflict","message":"not the claim's token"}}`, http.StatusConflict)
+			return
+		}
+		if f.cred == nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(f.cred)
+	})
+	mux.HandleFunc("POST /api/v1/reviews/{id}/fail", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.failedID = r.PathValue("id")
+		_ = json.NewDecoder(r.Body).Decode(&f.failed)
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("POST /api/v1/reviews/{id}/verdict", func(w http.ResponseWriter, r *http.Request) {
@@ -244,6 +285,11 @@ func TestUnstructuredOrGarbledClaudeOutputPostsNothing(t *testing.T) {
 			if err == nil || fs.postedID != "" {
 				t.Errorf("err %v, posted %q; want an error and no verdict", err, fs.postedID)
 			}
+			// The review goes back with the reason, so the step errors
+			// now instead of at its timeout (WU-071).
+			if fs.failedID != "rv_1" || fs.failed.Token != "tok-1" || fs.failed.Reason != review.ReasonReviewerError || fs.failed.Message == "" {
+				t.Errorf("given back: %q %+v", fs.failedID, fs.failed)
+			}
 		})
 	}
 }
@@ -343,4 +389,77 @@ func TestOutputAfterTheResultIsDrained(t *testing.T) {
 	if fs.postedID != "rv_1" {
 		t.Fatalf("no verdict posted: %+v", fs.posted)
 	}
+}
+
+// WU-071: a private repository is cloned with the credential the server
+// hands out for the claim, through the askpass script, and the token never
+// shows anywhere a person reads.
+func TestAPrivateRepositoryIsClonedWithTheServersCredential(t *testing.T) {
+	const token = "repo_secret_71"
+	repo := gittest.New(t)
+	base := repo.Commit("main", map[string]string{"README.md": "# base\n"}, "base")
+	head := repo.Commit("feat", map[string]string{"app.go": "package app\n"}, "feature")
+	private := repo.ServeHTTP("x-access-token", token)
+	// Never a terminal prompt, whatever the test machine's git has.
+	t.Setenv("GIT_TERMINAL_PROMPT", "0")
+	rec := fakeClaude(t, approving)
+	fs := &fakeServer{brief: newBrief(private, head, base), cred: &review.Credential{User: "x-access-token", Token: token}}
+	srv := httptest.NewServer(fs.handler())
+	defer srv.Close()
+	var out, errOut bytes.Buffer
+	work := t.TempDir()
+	err := Run(context.Background(), Options{Client: client.New(strings.TrimPrefix(srv.URL, "http://"), "t"), Reviewer: "kai", Once: true, WorkDir: work, Stdout: &out, Stderr: &errOut})
+	if err != nil {
+		t.Fatalf("run: %v\nstderr: %s", err, errOut.String())
+	}
+	if fs.postedID != "rv_1" || fs.failedID != "" {
+		t.Fatalf("posted to %q, given back %q", fs.postedID, fs.failedID)
+	}
+	if ls := recorded(t, rec, "ls"); !strings.Contains(ls, "app.go") {
+		t.Errorf("claude saw %q; want the checkout of head", ls)
+	}
+	for name, text := range map[string]string{"stdout": out.String(), "stderr": errOut.String(), "claude env": recorded(t, rec, "env")} {
+		if strings.Contains(text, token) {
+			t.Errorf("%s carries the token:\n%s", name, text)
+		}
+	}
+	// The mirror remembers the url as the brief gave it, with no credential
+	// in it, and the askpass script holds none.
+	cfg, _ := os.ReadFile(filepath.Join(work, "repos", "r_1.git", "config"))
+	script, _ := os.ReadFile(filepath.Join(work, gitops.AskpassFile))
+	if strings.Contains(string(cfg), token) || strings.Contains(string(script), token) || len(script) == 0 {
+		t.Errorf("mirror config:\n%s\naskpass:\n%s", cfg, script)
+	}
+
+	t.Run("without a credential the clone fails and the review goes back", func(t *testing.T) {
+		fakeClaude(t, approving)
+		fs := &fakeServer{brief: newBrief(private, head, base)}
+		srv := httptest.NewServer(fs.handler())
+		defer srv.Close()
+		var out, errOut bytes.Buffer
+		err := Run(context.Background(), Options{Client: client.New(strings.TrimPrefix(srv.URL, "http://"), "t"), Reviewer: "kai", Once: true, WorkDir: t.TempDir(), Stdout: &out, Stderr: &errOut})
+		if err == nil || !strings.Contains(err.Error(), "git clone") || fs.postedID != "" {
+			t.Fatalf("err %v, posted %q; want a clone error and no verdict", err, fs.postedID)
+		}
+		if fs.failedID != "rv_1" || fs.failed.Token != "tok-1" || fs.failed.Reason != review.ReasonCheckoutFailed || !strings.Contains(fs.failed.Message, "git clone") {
+			t.Errorf("given back: %q %+v", fs.failedID, fs.failed)
+		}
+		if !strings.Contains(out.String(), "given back: checkout_failed") {
+			t.Errorf("stdout = %q", out.String())
+		}
+	})
+	t.Run("a server that refuses the credential gets the review back", func(t *testing.T) {
+		fakeClaude(t, approving)
+		fs := &fakeServer{brief: newBrief(private, head, base), credStatus: http.StatusServiceUnavailable}
+		srv := httptest.NewServer(fs.handler())
+		defer srv.Close()
+		var out, errOut bytes.Buffer
+		err := Run(context.Background(), Options{Client: client.New(strings.TrimPrefix(srv.URL, "http://"), "t"), Reviewer: "kai", Once: true, WorkDir: t.TempDir(), Stdout: &out, Stderr: &errOut})
+		if err == nil || !strings.Contains(err.Error(), "refused the repository credential") || fs.postedID != "" {
+			t.Fatalf("err %v, posted %q", err, fs.postedID)
+		}
+		if fs.failedID != "rv_1" || fs.failed.Reason != review.ReasonCheckoutFailed || !strings.Contains(fs.failed.Message, "credential") {
+			t.Errorf("given back: %q %+v", fs.failedID, fs.failed)
+		}
+	})
 }

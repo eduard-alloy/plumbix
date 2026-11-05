@@ -23,7 +23,26 @@ const (
 	ReasonServerStopped = "server_stopped" // the Plumbix server stopped while the run waited
 	ReasonServerRestart = "server_restart" // the run was found running after a restart
 	ReasonReviewerGone  = "reviewer_gone"  // the reviewer never received the brief; the review is pending again
+	// Reasons a reviewer gives when it hands a claimed review back without
+	// a verdict (WU-071): the step errors at once instead of waiting out
+	// its timeout.
+	ReasonCheckoutFailed = "checkout_failed" // the reviewer could not clone or check out the head
+	ReasonReviewerError  = "reviewer_error"  // the reviewer ran but produced no verdict
 )
+
+// ReviewerReasons are the reasons POST /reviews/{id}/fail accepts.
+var ReviewerReasons = []string{ReasonCheckoutFailed, ReasonReviewerError}
+
+// MaxFailMessage bounds the message a reviewer sends with a failure.
+const MaxFailMessage = 2000
+
+// Credential is what the server fetches a repository with, handed to the
+// reviewer holding a claim so its clone goes out with the same access
+// (WU-071). It is never part of the brief and never stored with it.
+type Credential struct {
+	User  string `json:"user"`
+	Token string `json:"token"`
+}
 
 // Review is one external validator step waiting for a verdict (WU-023).
 // The token is minted when a reviewer claims the review, handed out once
@@ -44,8 +63,11 @@ type Review struct {
 	FinishedAt time.Time       `json:"finished_at,omitempty"`
 	ExpiresAt  time.Time       `json:"expires_at"`
 	// ExpiredReason says why the platform closed the review without a
-	// verdict (WU-068); empty unless Status is Expired.
-	ExpiredReason string `json:"expired_reason,omitempty"`
+	// verdict (WU-068), or why the reviewer gave it back (WU-071); empty
+	// unless Status is Expired. ExpiredMessage is the reviewer's own words
+	// for the latter, such as git's error.
+	ExpiredReason  string `json:"expired_reason,omitempty"`
+	ExpiredMessage string `json:"expired_message,omitempty"`
 }
 
 // The launcher marker (WU-069, contracts/launcher.md): what a Claude Code
@@ -125,6 +147,10 @@ type Store interface {
 	// matches: ErrNotFound for an unknown review, ErrConflict otherwise.
 	PostReviewVerdict(ctx context.Context, id, tokenHash string, verdict json.RawMessage, at time.Time) error
 	ExpireReview(ctx context.Context, id string, at time.Time, reason string) error
+	// FailReview closes a claimed review whose token matches with the
+	// reviewer's reason and message (WU-071), emitting review.expired:
+	// ErrNotFound for an unknown review, ErrConflict otherwise.
+	FailReview(ctx context.Context, id, tokenHash string, at time.Time, reason, message string) error
 	// ReleaseReview returns a claimed review to pending, for a claim whose
 	// reviewer never received the brief (the connection dropped meanwhile).
 	ReleaseReview(ctx context.Context, id string) error

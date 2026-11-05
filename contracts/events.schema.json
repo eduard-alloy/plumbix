@@ -246,7 +246,7 @@
       ]
     },
     {
-      "description": "The platform closed an external review without a verdict and says why (WU-068): timed_out (the step's timeout passed), run_cancelled (the run was cancelled: a newer iteration superseded it, or its change was closed), server_stopped (the Plumbix server stopped while the run waited), server_restart (the run was found running after a restart). The reviewer's token is dead; a verdict or log line posted later is refused with 409 naming the reason. reviewer is who held the claim, absent when nobody did.",
+      "description": "An external review closed without a verdict and says why. The platform closed it (WU-068): timed_out (the step's timeout passed), run_cancelled (the run was cancelled: a newer iteration superseded it, or its change was closed), server_stopped (the Plumbix server stopped while the run waited), server_restart (the run was found running after a restart). Or the reviewer gave it back (WU-071): checkout_failed (it could not clone or check out the head), reviewer_error (it ran but produced no verdict); message then carries the reviewer's own words, such as git's error, and the waiting step errors at once. The reviewer's token is dead; a verdict or log line posted later is refused with 409 naming the reason. reviewer is who held the claim, absent when nobody did.",
       "properties": {
         "type": {
           "const": "review.expired"
@@ -842,8 +842,15 @@
             "timed_out",
             "run_cancelled",
             "server_stopped",
-            "server_restart"
+            "server_restart",
+            "checkout_failed",
+            "reviewer_error"
           ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
         }
       }
     }

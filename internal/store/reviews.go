@@ -12,13 +12,13 @@ import (
 	"github.com/eduard-alloy/plumbix/internal/review"
 )
 
-const reviewColumns = `id, run_id, repo_id, change_id, step, status, reviewer, token_hash, brief, verdict, created_at, claimed_at, finished_at, expires_at, expired_reason`
+const reviewColumns = `id, run_id, repo_id, change_id, step, status, reviewer, token_hash, brief, verdict, created_at, claimed_at, finished_at, expires_at, expired_reason, expired_message`
 
 // CreateReview publishes an external step's review and emits review.requested.
 func (db *DB) CreateReview(ctx context.Context, r review.Review) error {
 	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO reviews (`+reviewColumns+`) VALUES (?, ?, ?, ?, ?, ?, '', '', ?, '', ?, '', '', ?, '')`,
+			`INSERT INTO reviews (`+reviewColumns+`) VALUES (?, ?, ?, ?, ?, ?, '', '', ?, '', ?, '', '', ?, '', '')`,
 			r.ID, r.RunID, r.RepoID, r.ChangeID, r.Step, review.Pending, string(r.Brief), formatTime(r.CreatedAt), formatTime(r.ExpiresAt)); err != nil {
 			return mapErr(err)
 		}
@@ -95,15 +95,38 @@ func (db *DB) ExpireReview(ctx context.Context, id string, at time.Time, reason 
 		if err != nil {
 			return err
 		}
-		return emitExpired(emit, r, at, reason)
+		return emitExpired(emit, r, at, reason, "")
+	})
+}
+
+// FailReview closes a claimed review on the reviewer's own word (WU-071):
+// the token must match, as for a verdict, and the reason and message are
+// written on the row and into review.expired in the same transaction.
+func (db *DB) FailReview(ctx context.Context, id, tokenHash string, at time.Time, reason, message string) error {
+	return db.writeTx(ctx, func(tx *sql.Tx, emit emitFunc) error {
+		r, err := scanReview(tx.QueryRowContext(ctx,
+			`UPDATE reviews SET status = ?, finished_at = ?, expired_reason = ?, expired_message = ?
+			 WHERE id = ? AND token_hash = ? AND token_hash != '' AND status = ? RETURNING `+reviewColumns,
+			review.Expired, formatTime(at), reason, message, id, tokenHash, review.Claimed))
+		if errors.Is(err, change.ErrNotFound) {
+			if _, err := scanReview(tx.QueryRowContext(ctx, `SELECT `+reviewColumns+` FROM reviews WHERE id = ?`, id)); err != nil {
+				return err
+			}
+			return change.ErrConflict
+		}
+		if err != nil {
+			return err
+		}
+		return emitExpired(emit, r, at, reason, message)
 	})
 }
 
 // emitExpired records review.expired for a review just closed without a
-// verdict; the reviewer is named only when somebody held the claim.
-func emitExpired(emit emitFunc, r review.Review, at time.Time, reason string) error {
+// verdict; the reviewer is named only when somebody held the claim, and
+// the message only when the reviewer gave one.
+func emitExpired(emit emitFunc, r review.Review, at time.Time, reason, message string) error {
 	_, err := emit(events.Event{Type: events.ReviewExpired, Time: at, RepoID: r.RepoID, ChangeID: r.ChangeID, RunID: r.RunID,
-		Payload: events.ReviewExpiredPayload{ReviewID: r.ID, Reviewer: r.Reviewer, Reason: reason}})
+		Payload: events.ReviewExpiredPayload{ReviewID: r.ID, Reviewer: r.Reviewer, Reason: reason, Message: message}})
 	return err
 }
 
@@ -166,7 +189,7 @@ func (db *DB) ExpireRunReviews(ctx context.Context, runID string, at time.Time, 
 			return mapErr(err)
 		}
 		for _, r := range closed {
-			if err := emitExpired(emit, r, at, reason); err != nil {
+			if err := emitExpired(emit, r, at, reason, ""); err != nil {
 				return err
 			}
 		}
@@ -183,7 +206,7 @@ func (db *DB) GetReview(ctx context.Context, id string) (review.Review, error) {
 func scanReview(s scanner) (review.Review, error) {
 	var r review.Review
 	var brief, verdict, created, claimed, finished, expires string
-	if err := s.Scan(&r.ID, &r.RunID, &r.RepoID, &r.ChangeID, &r.Step, &r.Status, &r.Reviewer, &r.TokenHash, &brief, &verdict, &created, &claimed, &finished, &expires, &r.ExpiredReason); err != nil {
+	if err := s.Scan(&r.ID, &r.RunID, &r.RepoID, &r.ChangeID, &r.Step, &r.Status, &r.Reviewer, &r.TokenHash, &brief, &verdict, &created, &claimed, &finished, &expires, &r.ExpiredReason, &r.ExpiredMessage); err != nil {
 		return review.Review{}, mapErr(err)
 	}
 	r.Brief = json.RawMessage(brief)
