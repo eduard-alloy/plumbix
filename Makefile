@@ -45,11 +45,11 @@ live:
 
 # Documentation checks: the README names no work unit, decision or
 # discovery question (those ids belong in the design documents), and every
-# relative link in README.md and docs/ points at a file that exists.
+# relative link or image in README.md and docs/ points at a file that exists.
 docs-check:
 	@if grep -nE 'WU-[0-9]{3}|(^|[^A-Za-z0-9_])[AQ][0-9]{2}([^A-Za-z0-9_]|$$)' README.md; then echo "README names a work unit, decision or question"; exit 1; fi
 	@bad=0; for f in README.md docs/*.md; do \
-	  for l in $$(grep -oE '\]\([^)#: ]+' "$$f" | sed 's/^](//' | sort -u); do \
+	  for l in $$(grep -oE '\]\([^)#: ]+[)#]|src(set)?="[^": ]+"' "$$f" | sed -E 's/^\]\(//; s/[)#]$$//; s/^src(set)?="//; s/"$$//' | sort -u); do \
 	    [ -e "$$(dirname "$$f")/$$l" ] || { echo "$$f: broken link $$l"; bad=1; }; \
 	  done; \
 	done; [ $$bad -eq 0 ]
