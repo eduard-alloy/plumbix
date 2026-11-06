@@ -23,7 +23,7 @@ steps:
     cache: [/go/pkg/mod, /root/.cache/go-build]
   - name: lint
     image: golang:1.27
-    run: go vet ./... && test -z "$(gofmt -l .)"
+    run: go vet ./... && test -z "$(gofmt -l .)" && make docs-check
     cache: [/go/pkg/mod, /root/.cache/go-build]
   - name: web
     image: node:24-alpine
