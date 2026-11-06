@@ -196,7 +196,7 @@ A careful first-time reader of this repository (2026-11-06) concluded from the R
 |----|-------|----------|--------|
 | WU-072 | One honest status, everywhere it is stated: README, this file's version and status, M3 and M4 roadmap sections | docs | ✅ |
 | WU-073 | A front page: README restructured around what, why, quickstart, concepts and a comparison; the manual moved verbatim under `docs/` | docs | ✅ |
-| WU-074 | CONTRIBUTING.md and a bug-report path; the README's contribution line points at it | docs | 🔄 |
+| WU-074 | CONTRIBUTING.md and a bug-report path; the README's contribution line points at it | docs | ✅ |
 | WU-077 | Screenshots in the README: the needs-you queue, a verdict with per-criterion evidence, the merge action, both themes | docs | ✅ |
 
 **O2: Install and first run** (Kai `00A866`), closed 2026-11-06: WU-075 and WU-076 done, WU-078 closed without the work by A51 and A52. The reviewer is the user's choice. Plumbix offers an API key, any OpenAI-compatible endpoint and Grok beside the loop, so nobody is locked into a subscription path. The usage pattern is honest: one Claude Code session per review, bounded by the number of changes, reading a checkout and posting a verdict, which is what a person at the keyboard would do, and the loop runs the real Claude Code client, not a third-party harness borrowing its login. Whether a vendor's terms allow that use unattended is the user's question; `docs/reviews.md` says so in one sentence, with the API profile as the alternative.
