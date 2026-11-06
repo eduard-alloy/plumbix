@@ -199,13 +199,13 @@ A careful first-time reader of this repository (2026-11-06) concluded from the R
 | WU-074 | CONTRIBUTING.md and a bug-report path; the README's contribution line points at it | docs | 🔄 |
 | WU-077 | Screenshots in the README: the needs-you queue, a verdict with per-criterion evidence, the merge action, both themes | docs | ✅ |
 
-**O2: Install and first run** (Kai `00A866`), WU-075 and WU-076 done; WU-078 blocked by A51 (2026-11-06): a terms-of-use answer would be checked against Claude and Grok, the two vendors this pipeline uses, while a reviewer profile can point at any vendor, so an answer covering two would read as broader than it is and need keeping current per vendor. Reopened if the project takes on per-vendor terms or an outside user asks. The original question was narrower: whether unattended, server-triggered use of a personal Claude login (the loop, the setup-token container) is allowed by the consumer and commercial terms.
+**O2: Install and first run** (Kai `00A866`), closed 2026-11-06: WU-075 and WU-076 done, WU-078 closed without the work by A51 and A52. The reviewer is the user's choice. Plumbix offers an API key, any OpenAI-compatible endpoint and Grok beside the loop, so nobody is locked into a subscription path. The usage pattern is honest: one Claude Code session per review, bounded by the number of changes, reading a checkout and posting a verdict, which is what a person at the keyboard would do, and the loop runs the real Claude Code client, not a third-party harness borrowing its login. Whether a vendor's terms allow that use unattended is the user's question; `docs/reviews.md` says so in one sentence, with the API profile as the alternative.
 
 | WU | Title | Features | Status |
 |----|-------|----------|--------|
 | WU-075 | Tagged releases: darwin and linux binaries for arm64 and amd64, checksums, built on tag; the shipped image version keyed to the tag | F-004 | ✅ |
 | WU-076 | `examples/`: a sample repository, `pipeline.yaml`, `change.json`, a criteria set, and a script from nothing to an approved verdict | docs | ✅ |
-| WU-078 | Terms-of-use answer for the subscription review path, documented beside the feature | docs, F-003 | ⏸ |
+| WU-078 | Terms-of-use answer for the subscription review path, documented beside the feature | docs, F-003 | closed (A52) |
 
 **O3: Measured validators** (Kai `56ZGP3`), postponed by A50 (2026-11-06): with 240 runs on 128 changes of one repository, false-approve and false-reject rates would not mean much yet, and a synthetic corpus alone gives coarse numbers from a stochastic reviewer at API cost per run. Reopened when a larger body of changes exists, ideally from a second repository and an outside user. Facts for then: the untrusted-content rule is already in the shared prompt with a live prompt-injection test; four profiles, eight cells per case; the eval runs in process against the validator library, never in the merge pipeline.
 
