@@ -1,0 +1,41 @@
+name: Bug report
+description: Something Plumbix did that it should not have, or did not do that it should have.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks. One maintainer reads these, usually within a few days. Remove tokens and secrets before pasting anything.
+  - type: textarea
+    id: what
+    attributes:
+      label: What you did
+      description: The commands, the pipeline file, the change, or the clicks, in order.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: The error text, the verdict, the state the change ended in. Lines from ~/.plumbix/serve.log or the output of plumbix change show <id> and plumbix change runs <id> help.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Plumbix version
+      description: The output of plumbix version, or the commit you built from.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and git host
+      placeholder: macOS 15, GitHub
+    validations:
+      required: true

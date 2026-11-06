@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/eduard-alloy/plumbix/security/advisories/new
+    about: Report a security problem privately; it reaches the maintainer and nobody else.
+  - name: Questions and ideas
+    url: https://github.com/eduard-alloy/plumbix/blob/main/CONTRIBUTING.md
+    about: How questions and ideas are raised, and what to expect from one maintainer.
