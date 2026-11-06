@@ -207,11 +207,11 @@ A careful first-time reader of this repository (2026-11-06) concluded from the R
 | WU-076 | `examples/`: a sample repository, `pipeline.yaml`, `change.json`, a criteria set, and a script from nothing to an approved verdict | docs | ✅ |
 | WU-078 | Terms-of-use answer for the subscription review path, documented beside the feature | docs, F-003 | ⚪ |
 
-**O3: Measured validators** (Kai `56ZGP3`)
+**O3: Measured validators** (Kai `56ZGP3`), postponed by A50 (2026-11-06): with 240 runs on 128 changes of one repository, false-approve and false-reject rates would not mean much yet, and a synthetic corpus alone gives coarse numbers from a stochastic reviewer at API cost per run. Reopened when a larger body of changes exists, ideally from a second repository and an outside user. Facts for then: the untrusted-content rule is already in the shared prompt with a live prompt-injection test; four profiles, eight cells per case; the eval runs in process against the validator library, never in the merge pipeline.
 
 | WU | Title | Features | Status |
 |----|-------|----------|--------|
-| WU-079 | Validator evaluation suite: a seeded corpus, `make eval`, false-approve and false-reject rates per reviewer profile and effort level | F-003 | ⚪ |
+| WU-079 | Validator evaluation suite: a seeded corpus, `make eval`, false-approve and false-reject rates per reviewer profile and effort level | F-003 | ⏸ |
 
 ## Open ideas
 
