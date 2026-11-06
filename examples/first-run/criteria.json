@@ -1,0 +1,9 @@
+{
+  "task": "example:first-run/balance-test",
+  "title": "Cover Balance with a unit test",
+  "owner": "OWNER",
+  "criteria": [
+    {"text": "All Go tests pass", "check": {"steps": ["test"]}},
+    {"text": "Balance is covered by a test that checks a sum and the empty case", "check": {"steps": ["test"]}}
+  ]
+}

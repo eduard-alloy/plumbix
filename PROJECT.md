@@ -204,7 +204,7 @@ A careful first-time reader of this repository (2026-11-06) concluded from the R
 | WU | Title | Features | Status |
 |----|-------|----------|--------|
 | WU-075 | Tagged releases: darwin and linux binaries for arm64 and amd64, checksums, built on tag; the shipped image version keyed to the tag | F-004 | ⚪ |
-| WU-076 | `examples/`: a sample repository, `pipeline.yaml`, `change.json`, a criteria set, and a script from nothing to an approved verdict | docs | ⚪ |
+| WU-076 | `examples/`: a sample repository, `pipeline.yaml`, `change.json`, a criteria set, and a script from nothing to an approved verdict | docs | 🔄 |
 | WU-078 | Terms-of-use answer for the subscription review path, documented beside the feature | docs, F-003 | ⚪ |
 
 **O3: Measured validators** (Kai `56ZGP3`)

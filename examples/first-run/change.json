@@ -1,0 +1,9 @@
+{
+  "repo_id": "REPO_ID",
+  "source_branch": "balance-test",
+  "target_branch": "main",
+  "title": "Cover Balance with a unit test",
+  "intent": "Balance had no test. Add one that checks a three-entry sum and the empty account. No behaviour changes.",
+  "criteria_set": "CRITERIA_SET",
+  "submitted_by": "OWNER"
+}

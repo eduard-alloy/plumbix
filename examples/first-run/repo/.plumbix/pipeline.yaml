@@ -1,0 +1,14 @@
+# The smallest useful pipeline: one plain step that runs the tests in a
+# container, and one validator step. The reference validator ships with
+# Plumbix; it proves each acceptance criterion from the outcome of the
+# steps the criterion names, deterministically. Steps without needs run
+# in parallel; validators run last.
+version: 1
+steps:
+  - name: test
+    image: golang:1.27
+    run: go test ./...
+  - name: validate
+    image: plumbix-reference-validator:dev
+    validator: true
+    needs: [test]

@@ -16,6 +16,8 @@ Plumbix is the governed path for changes that coding agents write. A change arri
 
 Five minutes on a machine with Go 1.27, Docker and git. Node 20 and npm are needed only for the web interface; a Go-only build works without it. Prebuilt binaries are planned.
 
+Or let a script do all of it: [examples/first-run/first-run.sh](examples/first-run/first-run.sh) starts a server of its own, builds the validator image if it is missing, creates a sample repository, posts the criteria, submits the change, waits for the verdict and merges, then leaves the server running with a sign-in link. The steps below are the same ones by hand.
+
 ```sh
 git clone https://github.com/eduard-alloy/plumbix && cd plumbix
 make build images        # bin/plumbix with the web interface embedded, and the shipped validator images
