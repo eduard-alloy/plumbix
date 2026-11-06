@@ -1,6 +1,6 @@
 # First run
 
-From nothing to an approved verdict and a merge, on your machine, in a few minutes. Needs Docker running, git, curl and a `plumbix` binary (`make build` in this checkout puts one in `bin/`).
+From nothing to an approved verdict and a merge, on your machine. Needs Docker running, git, curl and a `plumbix` binary: the one you [downloaded](../../README.md#quickstart), or `make build` in this checkout, which puts one in `bin/`. With the images present the run takes about ten seconds; a cold machine pays once for the `golang` image pull and the reference validator build, which is mostly your connection's speed.
 
 ```sh
 examples/first-run/first-run.sh
