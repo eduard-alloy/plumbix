@@ -3,7 +3,7 @@ SHELL := bash
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 
-.PHONY: build web test lint check integration images live docs-check
+.PHONY: build web test lint check integration images live docs-check release
 
 build: web
 	go build -ldflags "$(LDFLAGS)" -o bin/plumbix ./cmd/plumbix
@@ -31,10 +31,26 @@ check: build test lint docs-check
 integration:
 	set -o pipefail; go test -tags integration -count=1 -v ./... 2>&1 | grep -E "^(=== RUN|--- (PASS|FAIL|SKIP)|ok|FAIL|PASS)|OPEN SECURITY FINDING|route "
 
-# Validator container images, built from the repository root.
+# Validator container images, built from the repository root, labelled
+# with the version the way the server labels the ones it builds itself.
 images:
-	docker build -f validators/reference/Dockerfile -t plumbix-reference-validator:dev .
-	docker build -f validators/ai/Dockerfile -t plumbix-ai-validator:dev .
+	docker build -f validators/reference/Dockerfile --label org.plumbix.version=$(VERSION) -t plumbix-reference-validator:dev .
+	docker build -f validators/ai/Dockerfile --label org.plumbix.version=$(VERSION) -t plumbix-ai-validator:dev .
+
+# Release binaries: the web interface built once and embedded, then one
+# static binary per platform under dist/, and their SHA-256 checksums. No
+# C toolchain is needed (the SQLite driver is pure Go). The release
+# workflow runs this on a tag with VERSION set to the tag's name.
+PLATFORMS := darwin/arm64 darwin/amd64 linux/arm64 linux/amd64
+release: web
+	rm -rf dist && mkdir -p dist
+	@for p in $(PLATFORMS); do \
+	  os=$${p%/*}; arch=$${p#*/}; \
+	  echo "building dist/plumbix-$$os-$$arch ($(VERSION))"; \
+	  CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" -o dist/plumbix-$$os-$$arch ./cmd/plumbix || exit 1; \
+	done
+	cd dist && (shasum -a 256 plumbix-* 2>/dev/null || sha256sum plumbix-*) > checksums.txt
+	@cat dist/checksums.txt
 
 # Tests that call real model APIs. They cost a few cents and need
 # ANTHROPIC_API_KEY (Claude) and, for the openai provider, OPENAI_API_KEY

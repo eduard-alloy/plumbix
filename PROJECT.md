@@ -1,8 +1,8 @@
 # Plumbix
 
-**Version**: 0.1.0, unreleased · **Created**: 2026-10-15 · **License**: Apache 2.0
+**Version**: 0.1.0 · **Created**: 2026-10-15 · **License**: Apache 2.0
 
-**Status** (2026-11-06): Milestone 1 complete: Plumbix validates and merges its own changes ([evidence](#milestone-1-success-criteria)). Milestones 2 and 3 landed the governed path beside GitHub pull requests and its surfaces for an observer; Milestone 4, findings from a second repository, is under way, as is the front page and first run for an outside user. APIs may still change before the first tagged release.
+**Status** (2026-11-06): Milestone 1 complete: Plumbix validates and merges its own changes ([evidence](#milestone-1-success-criteria)). Milestones 2 and 3 landed the governed path beside GitHub pull requests and its surfaces for an observer; Milestone 4, findings from a second repository, is under way, as is the front page and first run for an outside user. APIs may still change between tagged releases; 0.1.0 is the first.
 
 ## Purpose
 
@@ -203,7 +203,7 @@ A careful first-time reader of this repository (2026-11-06) concluded from the R
 
 | WU | Title | Features | Status |
 |----|-------|----------|--------|
-| WU-075 | Tagged releases: darwin and linux binaries for arm64 and amd64, checksums, built on tag; the shipped image version keyed to the tag | F-004 | ⚪ |
+| WU-075 | Tagged releases: darwin and linux binaries for arm64 and amd64, checksums, built on tag; the shipped image version keyed to the tag | F-004 | 🔄 |
 | WU-076 | `examples/`: a sample repository, `pipeline.yaml`, `change.json`, a criteria set, and a script from nothing to an approved verdict | docs | 🔄 |
 | WU-078 | Terms-of-use answer for the subscription review path, documented beside the feature | docs, F-003 | ⚪ |
 

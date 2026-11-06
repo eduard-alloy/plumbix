@@ -4,7 +4,7 @@ Self-hosted, open-source pipelines and change review for the age of coding agent
 
 Plumbix is the governed path for changes that coding agents write. A change arrives with its intent and its acceptance criteria. Pipelines run in containers on your own machine, with as much parallelism as it has cores. Validators judge the change against its criteria from that evidence, a verdict decides what merges, and a person decides where a verdict is not enough. It works with plain git repositories on your machine or over SSH, with GitHub, and with Azure DevOps.
 
-**Status** (2026-11-06): Milestone 1 complete: Plumbix validates and merges its own changes ([evidence](PROJECT.md#milestone-1-success-criteria)). Milestones 2 and 3 landed the governed path beside GitHub pull requests and its surfaces for an observer; Milestone 4, findings from a second repository, is under way, as is the front page and first run for an outside user. APIs may still change before the first tagged release. See [PROJECT.md](PROJECT.md) for the roadmap and [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
+**Status** (2026-11-06): Milestone 1 complete: Plumbix validates and merges its own changes ([evidence](PROJECT.md#milestone-1-success-criteria)). Milestones 2 and 3 landed the governed path beside GitHub pull requests and its surfaces for an observer; Milestone 4, findings from a second repository, is under way, as is the front page and first run for an outside user. APIs may still change between tagged releases; 0.1.0 is the first. See [PROJECT.md](PROJECT.md) for the roadmap and [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
 ## Why it exists
 
@@ -14,21 +14,25 @@ Plumbix is the governed path for changes that coding agents write. A change arri
 
 ## Quickstart
 
-Five minutes on a machine with Go 1.27, Docker and git. Node 20 and npm are needed only for the web interface; a Go-only build works without it. Prebuilt binaries are planned.
+Five minutes on a machine with Docker and git. Download the binary for your platform from the [latest release](https://github.com/eduard-alloy/plumbix/releases/latest): `darwin` or `linux`, `arm64` or `amd64`. The web interface is inside it.
 
 Or let a script do all of it: [examples/first-run/first-run.sh](examples/first-run/first-run.sh) starts a server of its own, builds the validator image if it is missing, creates a sample repository, posts the criteria, submits the change, waits for the verdict and merges, then leaves the server running with a sign-in link. The steps below are the same ones by hand.
 
 ```sh
-git clone https://github.com/eduard-alloy/plumbix && cd plumbix
-make build images        # bin/plumbix with the web interface embedded, and the shipped validator images
-./bin/plumbix serve &    # listens on 127.0.0.1:6400 only; writes your API token to ~/.plumbix/api-token
+f=plumbix-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
+curl -LO "https://github.com/eduard-alloy/plumbix/releases/latest/download/$f"   # plumbix-darwin-arm64, plumbix-linux-amd64, ...
+chmod +x "$f" && sudo mv "$f" /usr/local/bin/plumbix   # or anywhere on PATH, such as ~/.local/bin, without sudo
+plumbix serve &          # listens on 127.0.0.1:6400 only; writes your API token to ~/.plumbix/api-token
+plumbix login            # a one-time link that signs your browser in; open Images there and build the two shipped validator images
 ```
+
+The checksums are in `checksums.txt` beside the binaries. To build from source instead: Go 1.27, and Node 20 with npm for the web interface (a Go-only build works without it); `git clone https://github.com/eduard-alloy/plumbix && cd plumbix && make build images` gives you `bin/plumbix` and the validator images, and the commands below work the same with `./bin/plumbix`.
 
 Register a repository. A bare repository on your disk is enough to try it; you and your agents push branches to it.
 
 ```sh
 git init --bare ~/git/myapp.git                              # or point at an existing bare repository
-./bin/plumbix repo add --host git --url ~/git/myapp.git      # prints the registration, with its id
+plumbix repo add --host git --url ~/git/myapp.git      # prints the registration, with its id
 git clone ~/git/myapp.git ~/src/myapp && cd ~/src/myapp      # a working copy to push from
 git checkout -B main                                         # whatever your default branch is called
 ```
@@ -66,14 +70,14 @@ cat > change.json <<'EOF'
  "title": "What the change does", "intent": "Why, in a few sentences.",
  "acceptance_criteria": [{"text": "All Go tests pass", "check": {"steps": ["test"]}}]}
 EOF
-./bin/plumbix submit -f change.json          # prints the change, with its id
-./bin/plumbix events --change <change-id>    # follow the run and the verdict, one JSON event per line
-./bin/plumbix change runs <change-id>        # the runs so far: steps, criteria, findings
-./bin/plumbix change merge <change-id>       # once approved: lands the validated tree on main
-./bin/plumbix alert list                     # commits that reached main without a verdict
+plumbix submit -f change.json          # prints the change, with its id
+plumbix events --change <change-id>    # follow the run and the verdict, one JSON event per line
+plumbix change runs <change-id>        # the runs so far: steps, criteria, findings
+plumbix change merge <change-id>       # once approved: lands the validated tree on main
+plumbix alert list                     # commits that reached main without a verdict
 ```
 
-Then the browser: `./bin/plumbix login` prints a one-time link that signs you in at http://127.0.0.1:6400. Changes that need you come first, each with its verdict and evidence, and merge is one click. Settings holds the git host tokens, the AI reviewer profiles and the guidance validators follow. For an AI review, add a validator step with the `plumbix-ai-validator:dev` image and a reviewer profile, or an external step answered by `./bin/plumbix review --watch` wherever Claude Code is installed ([docs/reviews.md](docs/reviews.md)).
+Then the browser: `plumbix login` prints a one-time link that signs you in at http://127.0.0.1:6400. Changes that need you come first, each with its verdict and evidence, and merge is one click. Settings holds the git host tokens, the AI reviewer profiles and the guidance validators follow. For an AI review, add a validator step with the `plumbix-ai-validator:dev` image and a reviewer profile, or an external step answered by `plumbix review --watch` wherever Claude Code is installed ([docs/reviews.md](docs/reviews.md)).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/changes-dark.png">
