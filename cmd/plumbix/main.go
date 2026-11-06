@@ -24,8 +24,10 @@ commands:
   criteria add|update|list|show
                         acceptance criteria written with the specification, named by
                         a change (criteria_set) or a pull request (Acceptance criteria: cs_...)
-  change list|show|close|validate|merge|runs
-                        read, close, revalidate or merge changes
+  change list|show|close|validate|merge|runs|wait
+                        read, close, revalidate or merge changes; wait blocks
+                        until the verdict and exits 0 approved, 1 fix or reject,
+                        2 needs a person, 3 timeout
   run show|log          read a run, or a step's log
   pipeline list|run     list a repo's triggered pipelines, or run one by hand
   import preview|submit show what importing a repo's Azure pipelines would write,
@@ -67,7 +69,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case "criteria":
 		return runCriteria(args[1:], stdin, stdout, stderr)
 	case "change":
-		return runChange(args[1:], stdout, stderr)
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return runChange(ctx, args[1:], stdout, stderr)
 	case "run":
 		return runRun(args[1:], stdout, stderr)
 	case "pipeline":

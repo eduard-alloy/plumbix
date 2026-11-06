@@ -128,12 +128,9 @@ change=$(sed -e "s|REPO_ID|$repo|" -e "s|CRITERIA_SET|$set_id|" -e "s|OWNER|$own
 echo "change $change"
 
 say "The pipeline runs: test in a container, then the reference validator judges the criteria"
-printf 'waiting'
-for _ in $(seq 1 240); do
-  state=$(px change show "$change" | field state)
-  case $state in running|open) printf '.'; sleep 2 ;; *) break ;; esac
-done
-echo
+# change wait blocks until the verdict and exits 0 approved, 1 fix or reject,
+# 2 needs a person, 3 timeout; its JSON names the state either way.
+state=$(px change wait "$change" --timeout 8m | field state) || true
 echo "verdict: $state"
 if [ "$state" != approved ]; then
   px change runs "$change" || true

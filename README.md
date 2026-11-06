@@ -71,7 +71,8 @@ cat > change.json <<'EOF'
  "acceptance_criteria": [{"text": "All Go tests pass", "check": {"steps": ["test"]}}]}
 EOF
 plumbix submit -f change.json          # prints the change, with its id
-plumbix events --change <change-id>    # follow the run and the verdict, one JSON event per line
+plumbix change wait <change-id>        # blocks until the verdict: exit 0 approved, 1 fix or reject, 2 needs a person, 3 timeout
+plumbix events --change <change-id>    # or follow the run and the verdict, one JSON event per line
 plumbix change runs <change-id>        # the runs so far: steps, criteria, findings
 plumbix change merge <change-id>       # once approved: lands the validated tree on main
 plumbix alert list                     # commits that reached main without a verdict

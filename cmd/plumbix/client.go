@@ -250,9 +250,10 @@ func runSubmit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return c.call(http.MethodPost, "/api/v1/changes", body)
 }
 
-// runChange handles "plumbix change list|show|close|validate|refresh|merge|runs|approve".
-func runChange(args []string, stdout, stderr io.Writer) int {
+// runChange handles "plumbix change list|show|close|validate|refresh|merge|runs|approve|wait".
+func runChange(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	c := newClientCmd("change", stdout, stderr)
+	timeout := c.fs.Duration("timeout", waitDefault, "how long change wait waits for the verdict (change wait)")
 	repo := c.fs.String("repo", "", "filter by repo id (change list)")
 	state := c.fs.String("state", "", "filter by state (change list)")
 	reason := c.fs.String("reason", "", "why the change is fine despite the verdict (change approve)")
@@ -296,8 +297,13 @@ func runChange(args []string, stdout, stderr io.Writer) int {
 		return c.call(http.MethodPost, "/api/v1/changes/"+url.PathEscape(pos[1])+"/merge", nil)
 	case len(pos) == 2 && pos[0] == "runs":
 		return c.call(http.MethodGet, "/api/v1/changes/"+url.PathEscape(pos[1])+"/runs", nil)
+	case len(pos) == 2 && pos[0] == "wait":
+		if *timeout <= 0 {
+			return usageError(stderr, "plumbix change wait --timeout must be above zero")
+		}
+		return c.wait(ctx, pos[1], *timeout)
 	}
-	return usageError(stderr, "usage: plumbix change list [--repo <id>] [--state <s>] | change show|close|validate|refresh|merge|runs <id> | change approve <id> --reason <why>")
+	return usageError(stderr, "usage: plumbix change list [--repo <id>] [--state <s>] | change show|close|validate|refresh|merge|runs <id> | change wait <id> [--timeout <duration>] | change approve <id> --reason <why>")
 }
 
 // runPipeline handles "plumbix pipeline list|run" (WU-045): the triggered

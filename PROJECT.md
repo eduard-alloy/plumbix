@@ -132,6 +132,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-058 | Changes list rows on two lines: state, origin, title, by, moved; then repository, branch, verdict, iteration; header, skeleton and design page follow | F-004 | ✅ |
 | WU-080 | Run evidence shows steps grouped by stage: a stage row (name, step count, worst status, longest step) above its steps in the evidence list and the verdict panel, matching the editor's bands; deferred from WU-020 | F-004 | ✅ |
 | WU-081 | The own-image editor keeps an edit typed the instant its card appears: the draft is derived during render instead of copied by an effect that could land after the keystroke; the test that flaked once reproduces the order and passes | F-004 | ✅ |
+| WU-082 | `plumbix change wait <id> [--timeout]`: blocks until the running iteration's verdict or a final state with the MCP tool's semantics, prints the state, outcome and criteria, exits 0 approved, 1 fix or reject, 2 needs a person, 3 timeout; `first-run.sh` uses it | F-004 | ✅ |
 
 ## Roadmap: Pipeline import (Kai workstream TCVR9R)
 

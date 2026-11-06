@@ -47,7 +47,8 @@ cat > change.json <<'EOF'
  "acceptance_criteria": [{"text": "All Go tests pass", "check": {"steps": ["test"]}}]}
 EOF
 ./bin/plumbix submit -f change.json
-./bin/plumbix events --change <change-id>   # watch the run; or open the web interface
+./bin/plumbix change wait <change-id>       # blocks until the verdict (exit 0 approved, 1 fix or reject, 2 needs a person, 3 timeout)
+./bin/plumbix events --change <change-id>   # or watch the run event by event; or open the web interface
 ./bin/plumbix change merge <change-id>      # once approved
 ```
 

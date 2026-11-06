@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -186,8 +189,12 @@ func TestCLIFlow(t *testing.T) {
 	if ch["state"] != "running" {
 		t.Errorf("submitted = %v; submitting should start validation", ch)
 	}
-	if st := c.waitState(id); st != "needs_human" {
-		t.Errorf("state = %s; a branch without a pipeline file needs a human", st)
+	// change wait (WU-082) blocks until the verdict and exits by the state:
+	// a branch without a pipeline file errors its run and needs a human, exit 2.
+	wcode, wout, werr := c.run("", "change", "wait", id, "--timeout", "15s")
+	var waited map[string]any
+	if err := json.Unmarshal([]byte(wout), &waited); err != nil || wcode != 2 || waited["state"] != "needs_human" || waited["iteration"] != float64(1) {
+		t.Errorf("change wait: exit %d, stdout %s, stderr %s", wcode, wout, werr)
 	}
 	runs := c.mustRun("", "change", "runs", id)["runs"].([]any)
 	if len(runs) != 1 {
@@ -480,5 +487,118 @@ func TestImportPreviewCommand(t *testing.T) {
 	}
 	if code, _, errOut := c.run("", "import", "submit", repoID, "--new-branch", "plumbix/import-ci"); code != 1 || !strings.Contains(errOut, "branch_exists") {
 		t.Errorf("same branch: exit %d, %q", code, errOut)
+	}
+}
+
+// A fake server for change wait: the change runs until the event stream
+// issues the verdict, then shows the result.
+type waitServer struct {
+	mu     sync.Mutex
+	state  string
+	silent bool // the stream sends nothing, so the wait runs out
+}
+
+func (ws *waitServer) start(t *testing.T) (addr, dataDir string) {
+	t.Helper()
+	dataDir = t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, "api-token"), []byte(strings.Repeat("ab", 32)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/changes/c_1", func(w http.ResponseWriter, _ *http.Request) {
+		ws.mu.Lock()
+		defer ws.mu.Unlock()
+		fmt.Fprintf(w, `{"id":"c_1","state":%q}`, ws.state)
+	})
+	mux.HandleFunc("GET /api/v1/changes/c_1/runs", func(w http.ResponseWriter, _ *http.Request) {
+		ws.mu.Lock()
+		defer ws.mu.Unlock()
+		if ws.state == "running" {
+			fmt.Fprint(w, `{"runs":[{"id":"run_1","iteration":1,"status":"running"}]}`)
+			return
+		}
+		fmt.Fprint(w, `{"runs":[{"id":"run_1","iteration":1,"status":"finished","outcome":"approved","result":{"state":"approved","criteria":[{"id":"AC-1","status":"met"},{"id":"AC-2","status":"unknown"}],"findings":[]}}]}`)
+	})
+	mux.HandleFunc("GET /api/v1/events", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fl, _ := w.(http.Flusher)
+		fmt.Fprint(w, ": hello\n\n")
+		fl.Flush()
+		if ws.silent {
+			<-r.Context().Done()
+			return
+		}
+		// A replayed verdict of an earlier iteration is not the answer.
+		fmt.Fprint(w, "id: 1\nevent: verdict.issued\ndata: {\"id\":1,\"type\":\"verdict.issued\",\"change_id\":\"c_1\",\"payload\":{\"iteration\":0,\"outcome\":\"fix_requested\"}}\n\n")
+		fl.Flush()
+		time.Sleep(50 * time.Millisecond)
+		ws.mu.Lock()
+		ws.state = "approved"
+		ws.mu.Unlock()
+		fmt.Fprint(w, "id: 2\nevent: verdict.issued\ndata: {\"id\":2,\"type\":\"verdict.issued\",\"change_id\":\"c_1\",\"payload\":{\"iteration\":1,\"outcome\":\"approved\"}}\n\n")
+		fl.Flush()
+		<-r.Context().Done()
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return strings.TrimPrefix(srv.URL, "http://"), dataDir
+}
+
+// TestChangeWaitFollowsTheStream (WU-082): the command returns at the running
+// iteration's verdict with the state, the outcome and the criteria, exit 0.
+func TestChangeWaitFollowsTheStream(t *testing.T) {
+	ws := &waitServer{state: "running"}
+	addr, dataDir := ws.start(t)
+	c := cli{t: t, server: addr, dataDir: dataDir}
+	code, out, errOut := c.run("", "change", "wait", "c_1", "--timeout", "5s")
+	var got struct {
+		ChangeID  string `json:"change_id"`
+		Iteration int    `json:"iteration"`
+		State     string `json:"state"`
+		Outcome   string `json:"outcome"`
+		Criteria  []struct{ ID, Status string }
+		TimedOut  bool `json:"timed_out"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("exit %d, stdout %q is not JSON: %v; stderr %s", code, out, err, errOut)
+	}
+	if code != 0 || got.ChangeID != "c_1" || got.Iteration != 1 || got.State != "approved" || got.Outcome != "approved" || got.TimedOut {
+		t.Errorf("exit %d, %+v, stderr %s", code, got, errOut)
+	}
+	if len(got.Criteria) != 2 || got.Criteria[0].ID != "AC-1" || got.Criteria[0].Status != "met" || got.Criteria[1].Status != "unknown" {
+		t.Errorf("criteria = %+v", got.Criteria)
+	}
+}
+
+// TestChangeWaitTimesOut (WU-082): a silent stream and a short timeout end
+// with exit 3 and timed_out, the state still running.
+func TestChangeWaitTimesOut(t *testing.T) {
+	ws := &waitServer{state: "running", silent: true}
+	addr, dataDir := ws.start(t)
+	c := cli{t: t, server: addr, dataDir: dataDir}
+	code, out, errOut := c.run("", "change", "wait", "c_1", "--timeout", "300ms")
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("exit %d, stdout %q is not JSON: %v; stderr %s", code, out, err, errOut)
+	}
+	if code != 3 || got["timed_out"] != true || got["state"] != "running" || got["iteration"] != float64(1) {
+		t.Errorf("exit %d, %v, stderr %s", code, got, errOut)
+	}
+}
+
+// TestChangeWaitAnswersAtOnceWhenNothingRuns (WU-082): a change that already
+// has its verdict is reported without opening the stream, exit by its state.
+func TestChangeWaitAnswersAtOnceWhenNothingRuns(t *testing.T) {
+	ws := &waitServer{state: "needs_human", silent: true}
+	addr, dataDir := ws.start(t)
+	c := cli{t: t, server: addr, dataDir: dataDir}
+	code, out, errOut := c.run("", "change", "wait", "c_1", "--timeout", "5s")
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("exit %d, stdout %q is not JSON: %v; stderr %s", code, out, err, errOut)
+	}
+	if code != 2 || got["state"] != "needs_human" || got["timed_out"] == true {
+		t.Errorf("exit %d, %v, stderr %s", code, got, errOut)
 	}
 }
