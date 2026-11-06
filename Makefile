@@ -3,7 +3,7 @@ SHELL := bash
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 
-.PHONY: build web test lint check integration images live
+.PHONY: build web test lint check integration images live docs-check
 
 build: web
 	go build -ldflags "$(LDFLAGS)" -o bin/plumbix ./cmd/plumbix
@@ -25,7 +25,7 @@ lint:
 	go vet ./...
 	@unformatted=$$(gofmt -l .); if [ -n "$$unformatted" ]; then echo "gofmt needed:"; echo "$$unformatted"; exit 1; fi
 
-check: build test lint
+check: build test lint docs-check
 
 # Docker-backed tests. Needs a running Docker engine.
 integration:
@@ -42,3 +42,14 @@ images:
 # environment or in .env; each part skips without its key.
 live:
 	go test -tags live -count=1 -timeout 20m -v ./validators/ai/ -run Live
+
+# Documentation checks: the README names no work unit, decision or
+# discovery question (those ids belong in the design documents), and every
+# relative link in README.md and docs/ points at a file that exists.
+docs-check:
+	@if grep -nE 'WU-[0-9]{3}|(^|[^A-Za-z0-9_])[AQ][0-9]{2}([^A-Za-z0-9_]|$$)' README.md; then echo "README names a work unit, decision or question"; exit 1; fi
+	@bad=0; for f in README.md docs/*.md; do \
+	  for l in $$(grep -oE '\]\([^)#: ]+' "$$f" | sed 's/^](//' | sort -u); do \
+	    [ -e "$$(dirname "$$f")/$$l" ] || { echo "$$f: broken link $$l"; bad=1; }; \
+	  done; \
+	done; [ $$bad -eq 0 ]

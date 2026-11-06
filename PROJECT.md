@@ -194,8 +194,8 @@ A careful first-time reader of this repository (2026-11-06) concluded from the R
 
 | WU | Title | Features | Status |
 |----|-------|----------|--------|
-| WU-072 | One honest status, everywhere it is stated: README, this file's version and status, M3 and M4 roadmap sections | docs | 🔄 |
-| WU-073 | A front page: README restructured around what, why, quickstart, concepts and a comparison; the manual moved verbatim under `docs/` | docs | ⚪ |
+| WU-072 | One honest status, everywhere it is stated: README, this file's version and status, M3 and M4 roadmap sections | docs | ✅ |
+| WU-073 | A front page: README restructured around what, why, quickstart, concepts and a comparison; the manual moved verbatim under `docs/` | docs | 🔄 |
 | WU-074 | CONTRIBUTING.md and a bug-report path; the README's contribution line points at it | docs | ⚪ |
 | WU-077 | Screenshots in the README: the needs-you queue, a verdict with per-criterion evidence, the merge action, both themes | docs | ⚪ |
 

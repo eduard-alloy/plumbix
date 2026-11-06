@@ -2,110 +2,110 @@
 
 Self-hosted, open-source pipelines and change review for the age of coding agents.
 
-Plumbix runs pipelines in containers on your own machine with free parallelism. It validates each change against its intent and acceptance criteria instead of line-by-line review. It works with plain git repositories on your machine or over SSH, and with GitHub and Azure DevOps.
+Plumbix is the governed path for changes that coding agents write. A change arrives with its intent and its acceptance criteria. Pipelines run in containers on your own machine, with as much parallelism as it has cores. Validators judge the change against its criteria from that evidence, a verdict decides what merges, and a person decides where a verdict is not enough. It works with plain git repositories on your machine or over SSH, with GitHub, and with Azure DevOps.
 
 **Status** (2026-11-06): Milestone 1 complete: Plumbix validates and merges its own changes ([evidence](PROJECT.md#milestone-1-success-criteria)). Milestones 2 and 3 landed the governed path beside GitHub pull requests and its surfaces for an observer; Milestone 4, findings from a second repository, is under way, as is the front page and first run for an outside user. APIs may still change before the first tagged release. See [PROJECT.md](PROJECT.md) for the roadmap and [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
-## Build
+## Why it exists
 
-Requires Go 1.27 or later. The web interface needs Node 20 or later and npm; `make build` builds it first and embeds it, and a Go-only build still works without it.
+- Hosted tools charge for pipeline parallelism and limit how independent you can be.
+- They are bloated with features most developers never use, behind interfaces that date from fifteen years ago.
+- The pull request was designed for humans reviewing humans. Agent-written code needs the intent and the criteria fixed before the code, and a verdict tied to them.
+
+## Quickstart
+
+Five minutes on a machine with Go 1.27, Docker and git. Node 20 and npm are needed only for the web interface; a Go-only build works without it. Prebuilt binaries are planned.
 
 ```sh
-make check          # build, test and lint
-./bin/plumbix serve # starts on 127.0.0.1:6400
-curl http://127.0.0.1:6400/api/v1/health
+git clone https://github.com/eduard-alloy/plumbix && cd plumbix
+make build images        # bin/plumbix with the web interface embedded, and the shipped validator images
+./bin/plumbix serve &    # listens on 127.0.0.1:6400 only; writes your API token to ~/.plumbix/api-token
 ```
 
-Plumbix listens only on loopback addresses. On first start it writes a random API token to `~/.plumbix/api-token`, readable only by you. Every API call except the health check needs it:
+Register a repository. A bare repository on your disk is enough to try it; you and your agents push branches to it.
 
 ```sh
-curl -H "Authorization: Bearer $(cat ~/.plumbix/api-token)" \
-     --data-binary @.plumbix/pipeline.yaml \
-     http://127.0.0.1:6400/api/v1/pipelines/check
+git init --bare ~/git/myapp.git                              # or point at an existing bare repository
+./bin/plumbix repo add --host git --url ~/git/myapp.git      # prints the registration, with its id
+git clone ~/git/myapp.git ~/src/myapp && cd ~/src/myapp      # a working copy to push from
 ```
 
-To rotate the token, delete the file and restart the server. Plumbix refuses to start if the file is readable by other users.
+Give the repository a pipeline: `.plumbix/pipeline.yaml`, committed on its main branch. A plain step runs a command in a container. A validator step is an image that judges the change instead; the reference validator ships with Plumbix and proves each criterion from the outcome of the steps it names.
 
-## Try it locally, no account needed
-
-Plumbix works with a plain git repository on your machine. Use a bare repository as the shared remote; you and your agents push branches to it.
-
-```sh
-git init --bare ~/git/myapp.git           # or point at an existing bare repo
-./bin/plumbix serve &                      # needs Docker for pipeline steps
-./bin/plumbix repo add --host git --url ~/git/myapp.git
-./bin/plumbix submit -f change.json        # intent, criteria, source and target branch
-./bin/plumbix change runs <change-id>
-./bin/plumbix change merge <change-id>   # once approved: lands the validated tree on main
-./bin/plumbix alert list                 # commits that reached main without a verdict
-./bin/plumbix events                     # follow everything Plumbix does, one JSON event per line
-./bin/plumbix review --watch             # answer external review steps with the Claude Code on this machine
-./bin/plumbix login                      # one-time link that signs your browser in at http://127.0.0.1:6400
-# in the browser: Settings holds the git host tokens, the AI key and model, and review guidance for validators
-# then open http://127.0.0.1:6400: changes that need you first, verdict and evidence on each, merge with one click
+```yaml
+version: 1
+steps:
+  - name: test
+    image: golang:1.27
+    run: go test ./...
+  - name: validate
+    image: plumbix-reference-validator:dev
+    validator: true
+    needs: [test]
 ```
 
-An AI review can run outside the pipeline too: a validator step with `external: true` waits for a verdict, and `plumbix review --watch` on any machine with Claude Code installed pulls the review brief, reads the change in a checkout, and posts the verdict, using whatever Claude login that machine already has. A review the platform closes without a verdict says why (WU-068): `review.expired` in the event stream carries `reason` (`timed_out`, `run_cancelled` when the run was cancelled, by a newer iteration or a closed change, `server_stopped`, `server_restart` after a crash recovery), the reason stays on the review, a verdict or log line posted afterwards is refused with 409 naming it, and `review.released` says `reviewer_gone` when a claim went back because the loop never received the brief. A reviewer that cannot do its job gives the review back itself (WU-071): `POST /api/v1/reviews/{id}/fail` with `checkout_failed` (the head could not be cloned) or `reviewer_error` (Claude produced no verdict) and its own words in `message`; the review expires with that reason and message, the step errors at once instead of waiting out its timeout, and the change waits for a person. A private repository needs no git credential on the loop's machine: the loop asks `POST /api/v1/reviews/{id}/credential` with the claim's token for what the server fetches the repository with (its own token, else the host's; 204 when the server fetches anonymously, and the machine's own git access applies as before) and hands it to git through the askpass script in its environment only, never on the command line, in a URL or in a log. Closing a change cancels the run still going for it, so a review waiting there expires as `run_cancelled`. A session the loop starts says who launched it: `PLUMBIX_LAUNCHER=review`, `PLUMBIX_REPOSITORY` (the registration's url byte for byte as the API returns it), `PLUMBIX_REPO_ID`, `PLUMBIX_CHANGE`, `PLUMBIX_RUN` and `PLUMBIX_REVIEW` in its environment, so an observer's hook inside the session can tell the repository and the launcher without a rule on a machine path; the AI validator image sets `PLUMBIX_LAUNCHER=validator` and `PLUMBIX_CHANGE` (`contracts/launcher.md`, WU-069). After a restart Plumbix never starts an iteration itself: a run that ended because the server stopped (its error reads "interrupted because the Plumbix server stopped" on a graceful stop, "interrupted: the Plumbix server stopped during this run" after a crash recovery) leaves the change at `needs_human` as a hold that a person or a client releases with `POST /api/v1/changes/{id}/validate` (`plumbix change validate`).
-
-Which model judges is a reviewer profile, defined under AI reviewers in Settings. API profiles (Anthropic, or any OpenAI-compatible endpoint: OpenAI, Gemini, Grok, Kimi, DeepSeek, Groq, a local server) judge from inside the pipeline with their own key, billed per token; a Claude Code profile is the loop above, on that machine's Claude subscription, with its model and whether it may run commands; a Claude Code in-the-pipeline profile runs the same Claude Code inside a `plumbix-claude-code-validator` step on a token you mint with `claude setup-token` (or an API key), for a server where no loop is signed in. A validator step names its profile with `reviewer: <name>`; steps that name none get their family's default. Two validator steps with two profiles run side by side, so models can be compared on the same change; mark the second one `advisory: true` and its verdict is recorded and shown but never counted. Reasoning models think before they answer, sometimes for minutes: set the profile's effort, or a step's `effort: low`, and the log shows how many reasoning tokens a verdict cost.
-
-The Repositories page imports a repository for you: point it at a local folder that already has a remote, give it a remote URL to register and clone into a folder in your home directory, or publish a folder that has no remote to a new GitHub or Azure DevOps repository, and choose the host token or one for that repository alone. Plumbix also accepts `file://` paths and SSH remotes (`ssh://host/path` or `user@host:path`), which use your own SSH keys. Your repository needs a `.plumbix/pipeline.yaml`; see [ARCHITECTURE.md](ARCHITECTURE.md) section 4.2. A validator step has no `run`: its image is the validator, started with the change's inputs at `/plumbix/in`, and it writes `/plumbix/out/verdict.json`. Plumbix ships three such images, `plumbix-reference-validator` (deterministic checks), `plumbix-ai-validator` (asks a reviewer profile's model) and `plumbix-claude-code-validator` (Claude Code with tools, on your token), and builds them for you from the Images page in the browser, which also lists every other image your pipelines run and whether it is present. You can define your own images there too: write a Dockerfile, build it on the server, and name it in a pipeline step. The pipeline editor in the browser saves by editing your file's text, so its comments and formatting survive and a one-field change is a one-line diff. A step can keep its dependency caches between runs with `cache: [/go/pkg/mod, /root/.cache/go-build]` (or `/root/.npm`, `/root/.cache/pip`): each path is a per-repository directory mounted into the container.
-
-## Use Plumbix from an agent session
-
-Plumbix is also an MCP server. In Claude Code:
-
 ```sh
-claude mcp add plumbix -- plumbix mcp
+git add .plumbix/pipeline.yaml && git commit -m "pipeline" && git push origin main
 ```
 
-The session then has tools to register a repository (without a token), submit a change, wait for its verdict, read what the validators found, merge or refresh it, and to act as an external reviewer (`next_review`, `post_verdict`). Each session acts under its own identity, so it never reviews a change it submitted. Approving a `needs_human` change stays a person's act: the tool for it appears only when you start the server with `--allow-approve`, for a session you drive yourself.
-
-## Pause or remove a repository
-
-`plumbix repo set <id> --paused` stops polling and pull-request intake for a repository (`--paused=false` resumes; the card has Pause and Resume); changes submitted through the API still run and merge, since pausing is about what Plumbix watches, not what a person asks. `plumbix repo remove <id> --by <name>` (`DELETE /api/v1/repos/{id}`, the card's Remove with its confirm) retires a repository: refused with `repo_busy` while a change of it is open or running; afterwards it is gone from the plain listing and from every lookup a client acts on (settings, runs, changes), its bare mirror is deleted from the data directory, its changes, runs, merges and events stay for the record (their diffs and refreshes go with the mirror), and `repo.removed` in the event stream names who asked (WU-065). The id keeps answering: `GET /api/v1/repos/{id}` (`plumbix repo show <id>`) returns a live registration, or `410 Gone` with a tombstone `{id, host, url, removed: true, removed_at, removed_by}` for a removed one, and `GET /api/v1/repos?removed=true` (`plumbix repo list --removed`) lists the tombstones, so a reader catching up on old events can still name the repository behind them (WU-067); an id that never existed is `404`. Removal is also refused while a triggered or branch run of the repository is running. A stale second registration of the same remote, the case this was built for, otherwise keeps polling and raises `bypass_commit` for commits that passed the gate on the other one.
-
-## Criteria written with the specification
-
-Acceptance criteria belong with the specification, before the code, owned by the person who owns the intent (A43). A specification tool posts them as a **criteria set** when the spec is settled, and a change only names the set:
+Make a change on a branch and push it, then submit the change with its intent and acceptance criteria.
 
 ```sh
-plumbix criteria add -f set.json      # {"task": "kai:plumbix/X6Q5JY", "owner": "eduard@mac", "criteria": [{"text": "...", "check": {"steps": ["test"]}}]}
-plumbix criteria list --task kai:plumbix/X6Q5JY
-plumbix criteria show cs_abc123def456
-```
-
-An API submission names it with `"criteria_set": "cs_…"` and may leave `acceptance_criteria` out; a pull request names it with one line in its description, `Acceptance criteria: cs_…`, and its own checklist is then not used. The change takes the set's criteria frozen at that moment, with the set's id, owner and task recorded on the change and in `change.submitted`; the gate check says where the criteria came from. Once any change has used a set, the set is frozen: `PUT /api/v1/criteria-sets/{id}` answers `criteria_set_used`, and a new set is a new id. A set binds pipeline steps only, never a command, since any change may name it. A pull request can name a set but never write one; a set it names that does not exist leaves the change with the checklist from the description and the problem recorded. Kai publishes a task's criteria with `kai plan <project> publish <ref>`.
-
-## Gate GitHub pull requests
-
-Plumbix can run beside a GitHub pull request instead of replacing it: validators run on the pull request, every verdict lands as a check run on its head commit, the hold is a required check, a review approval by a person counts as Plumbix's approval, and GitHub merges. Nothing about the enterprise's workflow changes; Plumbix adds the structured verdict, the per-criterion judgment and the validator's model usage to GitHub's own surfaces (`contracts/github-check-runs.md`).
-
-1. **Identity.** Create a GitHub App with these permissions: checks read and write, pull requests read, contents read, metadata read. Add contents write and pull requests write only if Plumbix is to push merges for this repository (`--merger plumbix`, it then comments on and closes the pull request it merged), and administration read if Plumbix should be able to tell whether `plumbix/gate` is required (it warns when it cannot). Install the App on the repositories and put its id and private key in the secrets file as `PLUMBIX_GITHUB_APP_ID` and `PLUMBIX_GITHUB_APP_KEY` (the PEM with `\n` for its line breaks, or base64-encoded: `base64 < key.pem | tr -d '\n'`). The pull-request calls (pull requests, reviews, check runs, required checks) go out as the App whenever it is installed on the repository, since only an App may create check runs; a personal token in `PLUMBIX_GITHUB_TOKEN` or a repository token serves them only where the App is not installed, and keeps doing the git fetches and pushes. Plumbix mints and renews installation tokens itself; the Check button beside the App's id or key in Settings verifies them. The App is one per GitHub host; what is true per repository is on the repository's card under **GitHub** (WU-061): whether the App is installed there, whether `plumbix/gate` is required on each protected branch, which permissions the installation has and which the repository's shape still lacks (contents write to push Plumbix's own merges, pull requests write to close the pull request it merged, WU-070), and whether pull requests arrive by webhook or by polling, read live with its Check button, and the same report as `plumbix repo github <id>` (`GET /api/v1/repos/{id}/github`).
-2. **Register the repository** with pull requests on: `plumbix repo add --host github --url https://github.com/you/repo --pull-requests`, or turn them on for a registered one: `plumbix repo set <id> --pull-requests` (`PUT /api/v1/repos/{id}/settings`), or the switches on the repository card's GitHub panel. The strategy of Plumbix's own merges (squash, merge or rebase, squash at registration) is settable the same way, `plumbix repo set <id> --merge-strategy merge` or the picker on the card (WU-064); GitHub merges by default (`merger: github`); `--merger plumbix` keeps Plumbix pushing the validated tree, for a repository where the token or App has contents write. After such a merge Plumbix comments on the pull request with the commit that landed and closes it as the App, unless GitHub already shows it merged (it matches a `merge` or `rebase` landing to the pull request on its own, never a `squash`); a pull request Plumbix merged never becomes a second change, and commits pushed to it afterwards are told to take a new pull request (WU-056).
-3. **The hold.** In branch protection or a ruleset of the target branch, require the status check `plumbix/gate`. Without it Plumbix can hold nothing, and says so: a pull request merged while the gate is not required, or while its change was not approved, raises a `gate_bypassed` alert. Who overrode a required check is recorded in GitHub's audit log, which Plumbix does not read. The requirement applies to every update of the branch, Plumbix's own merges included: when Plumbix merges a change itself (one submitted through the API, or `merger: plumbix`) on a branch that requires the gate, it pushes the landing commit to a holding ref, posts `plumbix/gate` on it as a success with the run's result, then moves the branch, so the rule is met without a bypass actor (WU-059). A push the rules still refuse comes back as `push_refused` with the rule named.
-4. **Intake.** The poller lists the repository's open pull requests on every poll; each one becomes a change with the pull request's branches, title, description as the intent, the pull request author as `submitted_by` (login, or `app/<slug>` for an App) and the acceptance criteria read from the description. State them as a list under a heading named `Acceptance criteria`, one criterion per item (`- [ ] Uploads retry three times`). An item ending in `(check: build, test)` is bound to those pipeline steps, exactly as `check.steps` on an API submission, so the deterministic validator proves it from the step outcomes (WU-062); the names must be steps of the pipeline at the pull request's head, else the item stays a text criterion with a note the gate check shows ("names step `bulid`, which the pipeline has not"). There is no command form, by design: a pull request author must never run a command on the validator, and an item that asks for one (`(run: …)`) stays text with a note. Items without a binding are judged by the AI review; the gate check says how many criteria are bound and how many are text. An edited title or description is read again on the next poll or webhook delivery and updates the change without starting a run. A pull request that states none gets a change without criteria: the gate's check says so and validators judge the intent and the diff. For faster reaction, open a webhook on your side: set `PLUMBIX_GITHUB_WEBHOOK_SECRET`, point GitHub at `POST /api/v1/hooks/github` with that secret, and subscribe it to pull requests, pull request reviews and check suites. The webhook needs no API token; every delivery is checked against the secret. Polling still runs, so a missed delivery costs only time.
-5. **Verdicts.** Every run posts one check run per validator (`plumbix/<step name>`) and the gate (`plumbix/gate`), each with the verdict in words and, in `output.text`, the verdict as JSON between stable markers. Pushes to the pull request's branch start a new run as any push does; a re-requested check suite on GitHub does too.
-6. **Approval and merge.** A `needs_human` or escalated change takes an approving review on the validated commit by an owner, organisation member or collaborator (GitHub's `author_association`) as its approval, recorded with the reviewer's login as the person (`by`), `github_review` as the source and the review's text as the reason; the Approve button and `plumbix change approve --by <name>` still work and record the name given (WU-060: the API carries no identity of its own, so the client names the person; the web remembers the name in the browser, the MCP tool records the session unless told otherwise). The gate turns green, GitHub merges, and Plumbix records the merge (commit, who merged) on the change and in the event stream as `change.merged` with strategy `github`. When GitHub merged on a requester's behalf through auto-merge, the record carries `auto_merge: true` and `merged_by` is who requested it, not who decided (WU-063): Plumbix reads the pull request's standing auto-merge request, or, since GitHub clears it once merged, the `auto_merge_enabled` and `auto_merge_disabled` events of the pull request's timeline; a request withdrawn before the merge, or a merge pressed by someone else, is a person's merge. Pull requests from forks are not gated, since their head is not a branch of the repository; a closed pull request closes its change.
-
-## Plumbix validates itself
-
-Every change to this repository goes through Plumbix. `.plumbix/pipeline.yaml` builds, tests and lints the Go code and the web interface in parallel containers, then the reference validator judges the change against its intent, and an external `ai-review` step waits for a verdict from `plumbix review --watch` running on the maintainer's machine with Claude Code. Nothing lands on `main` without a verdict; a commit that gets there any other way raises an alert.
-
-To contribute a change: push a branch, then submit it with its intent and acceptance criteria.
-
-```sh
+git checkout -b my-branch && git commit -am "the change" && git push origin my-branch
 cat > change.json <<'EOF'
 {"repo_id": "<id from plumbix repo list>", "source_branch": "my-branch", "target_branch": "main",
  "title": "What the change does", "intent": "Why, in a few sentences.",
  "acceptance_criteria": [{"text": "All Go tests pass", "check": {"steps": ["test"]}}]}
 EOF
-./bin/plumbix submit -f change.json
-./bin/plumbix events --change <change-id>   # watch the run; or open the web interface
-./bin/plumbix change merge <change-id>      # once approved
+./bin/plumbix submit -f change.json          # prints the change, with its id
+./bin/plumbix events --change <change-id>    # follow the run and the verdict, one JSON event per line
+./bin/plumbix change runs <change-id>        # the runs so far: steps, criteria, findings
+./bin/plumbix change merge <change-id>       # once approved: lands the validated tree on main
+./bin/plumbix alert list                     # commits that reached main without a verdict
 ```
 
-The first pipeline commit landed on `main` directly, since nothing could validate it yet; Plumbix flagged it, and the alert is recorded in `work_units/WU-012.md`.
+Then the browser: `./bin/plumbix login` prints a one-time link that signs you in at http://127.0.0.1:6400. Changes that need you come first, each with its verdict and evidence, and merge is one click. Settings holds the git host tokens, the AI reviewer profiles and the guidance validators follow. For an AI review, add a validator step with the `plumbix-ai-validator:dev` image and a reviewer profile, or an external step answered by `./bin/plumbix review --watch` wherever Claude Code is installed ([docs/reviews.md](docs/reviews.md)).
+
+## Concepts
+
+**Change.** What a client submits: a repository, a source and a target branch, the intent in words, and acceptance criteria. A pull request on GitHub becomes a change too, with its description as the intent and its checklist as the criteria.
+
+**Acceptance criteria.** Written with the specification, before the code, by whoever owns the intent. A criterion bound to pipeline steps is proved by the deterministic validator from their outcomes; a criterion in words is judged by the AI review. A specification tool can post the criteria as a set, which a change then names by id; from then on the criteria are frozen ([docs/criteria.md](docs/criteria.md)).
+
+**Validator.** A pipeline step whose image judges the change rather than running a command. It starts with the change's inputs and the workspace mounted and writes a verdict. Plumbix ships a deterministic reference validator, an AI validator that asks the model of a reviewer profile, and a validator that runs Claude Code; any image that honours the contract works. A second validator marked advisory judges every change beside the first, recorded but never counted ([docs/reviews.md](docs/reviews.md)).
+
+**Verdict.** Approve, fix with findings, or reject, each reason tied to a criterion, with the model's token usage reported as the model gave it, never estimated. A fix verdict goes back to the client, whose agent pushes new commits, and Plumbix validates again, up to three rounds before a person is asked.
+
+**Human approval.** A change nobody can approve mechanically waits for a person: an unmet criterion in words, a pipeline file edited, a verdict that asks for one, a server restart. A person approves it by name, in the browser, on the command line, or with an approving review on GitHub. In Plumbix's own pipeline an AI approval alone is never enough: the deterministic validator must approve too.
+
+## Why not GitHub Actions plus an AI review bot?
+
+| | Actions plus a review bot | Plumbix |
+|---|---|---|
+| What is judged | The diff, after the fact | The change against the intent and criteria written before the code |
+| What a verdict says | Comments on lines | Approve, fix or reject, each reason tied to a criterion, with usage reported |
+| Who judges | One model | A deterministic validator plus the reviewers you choose, side by side, one of them advisory |
+| What merges | Whatever a person clicks | An approved change; a person is asked where the evidence is not enough; a commit that reaches the branch any other way raises an alert |
+| Where it runs | Hosted runners, billed for parallelism | Containers on your machine, in parallel |
+| With pull requests | Beside them | Beside them, with verdicts as check runs and the gate as a required check, or instead of them, with Plumbix merging ([docs/github.md](docs/github.md)) |
+
+## From an agent session
+
+Plumbix is also an MCP server. `claude mcp add plumbix -- plumbix mcp` gives a Claude Code session tools to register a repository, submit a change, wait for its verdict, read what the validators found and merge it, and to act as an external reviewer. A session never reviews a change it submitted, and approving a change stays a person's act ([docs/server.md](docs/server.md#agent-sessions)).
+
+## Plumbix validates itself
+
+Every change to this repository goes through Plumbix: four steps build, test and lint the Go code and the web interface in parallel, the reference validator judges the change, and an external review step waits for Claude Code on the maintainer's machine. Nothing lands on `main` without a verdict, and a commit that gets there any other way raises an alert. How that is set up, and how a change to Plumbix is submitted, is in [docs/server.md](docs/server.md#plumbix-validates-itself).
+
+## Documentation
+
+- [docs/server.md](docs/server.md): build, the API token, agent sessions, how Plumbix validates itself.
+- [docs/repositories.md](docs/repositories.md): registering, importing and publishing repositories, images, the pipeline editor, caches, pause and remove.
+- [docs/criteria.md](docs/criteria.md): acceptance criteria and criteria sets.
+- [docs/reviews.md](docs/reviews.md): reviewer profiles, the external review loop, what happens when a review cannot be answered.
+- [docs/github.md](docs/github.md): gating GitHub pull requests.
+- [ARCHITECTURE.md](ARCHITECTURE.md): components, the pipeline file, the validator contract, every design decision. [PROJECT.md](PROJECT.md): purpose, features, roadmap. [CONSTRAINTS.md](CONSTRAINTS.md): what implementation taught.
+- [contracts/](contracts/): the OpenAPI description, the event and verdict schemas, the check-run and launcher contracts.
 
 ## License
 
