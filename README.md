@@ -4,7 +4,7 @@ Self-hosted, open-source pipelines and change review for the age of coding agent
 
 Plumbix runs pipelines in containers on your own machine with free parallelism. It validates each change against its intent and acceptance criteria instead of line-by-line review. It works with plain git repositories on your machine or over SSH, and with GitHub and Azure DevOps.
 
-**Status**: early development. Nothing is usable yet. See [PROJECT.md](PROJECT.md) for the plan and [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
+**Status** (2026-11-06): Milestone 1 complete: Plumbix validates and merges its own changes ([evidence](PROJECT.md#milestone-1-success-criteria)). Milestones 2 and 3 landed the governed path beside GitHub pull requests and its surfaces for an observer; Milestone 4, findings from a second repository, is under way, as is the front page and first run for an outside user. APIs may still change before the first tagged release. See [PROJECT.md](PROJECT.md) for the roadmap and [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
 ## Build
 

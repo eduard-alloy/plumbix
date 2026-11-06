@@ -1,6 +1,8 @@
 # Plumbix
 
-**Version**: 0.1.0 (pre-code) · **Created**: 2026-10-15 · **License**: Apache 2.0
+**Version**: 0.1.0, unreleased · **Created**: 2026-10-15 · **License**: Apache 2.0
+
+**Status** (2026-11-06): Milestone 1 complete: Plumbix validates and merges its own changes ([evidence](#milestone-1-success-criteria)). Milestones 2 and 3 landed the governed path beside GitHub pull requests and its surfaces for an observer; Milestone 4, findings from a second repository, is under way, as is the front page and first run for an outside user. APIs may still change before the first tagged release.
 
 ## Purpose
 
@@ -143,7 +145,7 @@ Work unit IDs are stable identifiers, and the table lists execution order. Order
 | WU-051 | Pipeline guard: built-in check of every change to `.plumbix/`, approved pipeline fingerprints gate secrets on protected branches (A38) | F-014 | ✅ |
 | WU-050 | Pipelines page: every pipeline of a repository, its triggers and blockers, edit any, run one by hand, import and re-check from the browser | F-004, F-014 | ⚪ |
 
-## Roadmap: Milestone 2, the governed path for Chart-AI (A40)
+## Roadmap: Milestone 2, the governed path for Chart-AI (A40) ✅
 
 Order of precedence, decided 2026-10-28: what Chart-AI consumes comes first; the pipeline import workstream above is built in full, but after and around it, as the evidence engine of the governed path. A unit on the CI line never jumps a ready unit on this one.
 
@@ -160,15 +162,56 @@ Landed so far: WU-053 (validator usage on the run), WU-054 and WU-055 (the gate 
 | WU-064 | Merge strategy settable after registration: `merge_strategy` on the settings endpoint, `plumbix repo set --merge-strategy`, a picker on the card (Chart-AI ask 3) | F-001, F-010 | ✅ |
 | WU-065 | A repository can be paused or removed: `paused` in the settings, `DELETE /repos/{id}` refused while a change is open or running, `repo.removed` naming who asked (Chart-AI ask 4) | F-001 | ✅ |
 | WU-056 | Pull requests with `merger: plumbix`: Plumbix comments and closes the pull request after its merge; a pull request it merged never becomes a second change | F-010 | ✅ |
+
+Closed 2026-11-04 (A45). Behind it: Kai as the first external client; authentication, then service hooks; the pipeline import workstream (I1, I2).
+
+## Roadmap: Milestone 3, Chart-AI's project model on Plumbix's surfaces (A45, A46) ✅
+
+Chart-AI's second-day asks and its project model draft (P10), each built as one unit. Kai milestone `AE14T5`. Closed 2026-11-04.
+
+| WU | Title | Features | Status |
+|----|-------|----------|--------|
 | WU-067 | A removed repository answers as a tombstone: `GET /repos/{id}` returns the registration or `410` `{id, host, url, removed, removed_at, removed_by}`; `GET /repos?removed=true`; `plumbix repo show` (Chart-AI ask 5, A45) | F-001, F-010 | ✅ |
 | WU-068 | A review the platform closes says so: `review.expired` with a reason (`timed_out`, `run_cancelled`, `server_stopped`, `server_restart`), `review.released` with `reviewer_gone`, the reason on the review (Chart-AI ask 6, A45) | F-010 | ✅ |
 | WU-069 | Launcher marker: a session the review loop starts carries `PLUMBIX_LAUNCHER`, `PLUMBIX_REPOSITORY`, `PLUMBIX_REPO_ID`, `PLUMBIX_CHANGE`, `PLUMBIX_RUN`, `PLUMBIX_REVIEW` under `contracts/launcher.md` (Chart-AI P10) | F-010, F-011 | ✅ |
 | WU-070 | Hardening from the last reviews: merge-order assertion, holding-ref cleanup when the record fails, migration 0022 on a populated database, the App's permissions in the GitHub report, the flaky ChangePage test | F-001, F-010 | ✅ |
+
+## Roadmap: Milestone 4, findings from the second repository on the server (A47)
+
+cabinet.med, a private GitHub repository registered on the same server and driven by another session, is the first repository Plumbix governs that is not its own. What it finds becomes a unit here. Kai milestone `P41048`.
+
+| WU | Title | Features | Status |
+|----|-------|----------|--------|
 | WU-071 | The review loop clones with the server's credential (`POST /reviews/{id}/credential`) and gives a review back with a reason (`POST /reviews/{id}/fail`: `checkout_failed`, `reviewer_error`); closing a change cancels its run (cabinet.med findings, M4) | F-001, F-010 | ✅ |
 | next | Chart-AI's requirement list, one unit per surface it needs (added as each requirement arrives) | F-010 | ⚪ |
 | later | Azure DevOps pull-request statuses and branch policies, the same gate on the second host | F-010 | ⚪ |
 
-Behind it: Kai as the first external client; authentication, then service hooks; the pipeline import workstream (I1, I2).
+## Roadmap: First outside user (Kai workstream XVACVT, A48)
+
+A careful first-time reader of this repository (2026-11-06) concluded from the README that no code existed yet. Their nine points were checked against the tree at `55c7725`; what stood became three milestones beside Plumbix v1. A40 is untouched: Chart-AI still orders the product work. The security model, criteria before code and frozen criteria sets stay as they are.
+
+**O1: The front page tells the truth** (Kai `HGFMS1`)
+
+| WU | Title | Features | Status |
+|----|-------|----------|--------|
+| WU-072 | One honest status, everywhere it is stated: README, this file's version and status, M3 and M4 roadmap sections | docs | 🔄 |
+| WU-073 | A front page: README restructured around what, why, quickstart, concepts and a comparison; the manual moved verbatim under `docs/` | docs | ⚪ |
+| WU-074 | CONTRIBUTING.md and a bug-report path; the README's contribution line points at it | docs | ⚪ |
+| WU-077 | Screenshots in the README: the needs-you queue, a verdict with per-criterion evidence, the merge action, both themes | docs | ⚪ |
+
+**O2: Install and first run** (Kai `00A866`)
+
+| WU | Title | Features | Status |
+|----|-------|----------|--------|
+| WU-075 | Tagged releases: darwin and linux binaries for arm64 and amd64, checksums, built on tag; the shipped image version keyed to the tag | F-004 | ⚪ |
+| WU-076 | `examples/`: a sample repository, `pipeline.yaml`, `change.json`, a criteria set, and a script from nothing to an approved verdict | docs | ⚪ |
+| WU-078 | Terms-of-use answer for the subscription review path, documented beside the feature | docs, F-003 | ⚪ |
+
+**O3: Measured validators** (Kai `56ZGP3`)
+
+| WU | Title | Features | Status |
+|----|-------|----------|--------|
+| WU-079 | Validator evaluation suite: a seeded corpus, `make eval`, false-approve and false-reject rates per reviewer profile and effort level | F-003 | ⚪ |
 
 ## Open ideas
 
