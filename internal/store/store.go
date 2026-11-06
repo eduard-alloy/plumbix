@@ -327,6 +327,14 @@ func (db *DB) LastChangeByPullRequest(ctx context.Context, repoID string, number
 	return scanChange(db.sql.QueryRowContext(ctx, `SELECT `+changeColumns+changeFrom+` WHERE c.repo_id = ? AND c.pr_number = ? ORDER BY c.created_at DESC, c.id DESC LIMIT 1`, repoID, number))
 }
 
+// LastChangeOnBranch returns the newest change from a branch to a target,
+// whatever its state and whether or not it mirrors a pull request, so a
+// pull request whose head Plumbix merged through an API-submitted change
+// is recognised (WU-083); change.ErrNotFound when there never was one.
+func (db *DB) LastChangeOnBranch(ctx context.Context, repoID, source, target string) (change.Change, error) {
+	return scanChange(db.sql.QueryRowContext(ctx, `SELECT `+changeColumns+changeFrom+` WHERE c.repo_id = ? AND c.source_branch = ? AND c.target_branch = ? ORDER BY c.created_at DESC, c.id DESC LIMIT 1`, repoID, source, target))
+}
+
 // ListChanges returns matching changes, oldest first.
 func (db *DB) ListChanges(ctx context.Context, f change.Filter) ([]change.Change, error) {
 	query := `SELECT ` + changeColumns + changeFrom + ` WHERE 1 = 1`

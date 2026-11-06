@@ -49,6 +49,7 @@ type Store interface {
 	ListChanges(ctx context.Context, f change.Filter) ([]change.Change, error)
 	ChangeByPullRequest(ctx context.Context, repoID string, number int) (change.Change, error)
 	LastChangeByPullRequest(ctx context.Context, repoID string, number int) (change.Change, error)
+	LastChangeOnBranch(ctx context.Context, repoID, source, target string) (change.Change, error)
 	ListRuns(ctx context.Context, changeID string) ([]run.Run, error)
 	alert.Store
 }
@@ -201,40 +202,63 @@ func (s *Syncer) Apply(ctx context.Context, repo change.Repo, pr host.PullReques
 // may have failed. Such a pull request never gets a second change. A
 // merge GitHub made (strategy github, a login) is not Plumbix's; GitHub
 // never reopens those anyway.
+//
+// A change submitted through the API on the pull request's branch carries
+// no pull request number (WU-083): when the newest change from the
+// branch to the target is one Plumbix merged, and the head that merge
+// validated is the pull request's head, the pull request has landed too.
+// A head pushed since is a tree nobody validated, a pull request of its
+// own.
 func (s *Syncer) landedByPlumbix(ctx context.Context, repo change.Repo, pr host.PullRequest) (change.Change, bool, error) {
 	last, err := s.Store.LastChangeByPullRequest(ctx, repo.ID, pr.Number)
-	if errors.Is(err, change.ErrNotFound) {
-		return change.Change{}, false, nil
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, change.ErrNotFound) {
 		return change.Change{}, false, err
 	}
-	if last.State != change.Merged || last.Merge == nil || last.Merge.Strategy == change.StrategyGitHub || last.Merge.MergedBy != "" {
-		return change.Change{}, false, nil
+	if err == nil && mergedByPlumbix(last) {
+		return last, true, nil
 	}
-	return last, true, nil
+	onBranch, err := s.Store.LastChangeOnBranch(ctx, repo.ID, pr.Head.Branch, pr.Base.Branch)
+	if err != nil && !errors.Is(err, change.ErrNotFound) {
+		return change.Change{}, false, err
+	}
+	if err == nil && mergedByPlumbix(onBranch) && s.mergedHead(ctx, onBranch) == pr.Head.SHA {
+		return onBranch, true, nil
+	}
+	return change.Change{}, false, nil
+}
+
+// mergedByPlumbix reports whether Plumbix merged the change itself: a
+// merge record with its own strategy and no login as the merger.
+func mergedByPlumbix(c change.Change) bool {
+	return c.State == change.Merged && c.Merge != nil && c.Merge.Strategy != change.StrategyGitHub && c.Merge.MergedBy == ""
 }
 
 // closeLanded closes a pull request whose change Plumbix merged, again:
-// silently when its head is the one that was validated, with a comment
-// when commits arrived since the merge, since those are not on the target
-// and need a pull request of their own. A failure is logged; the next
-// sync tries again.
+// silently when its head is the one that was validated and the merge-time
+// comment already names the merge, with a comment when commits arrived
+// since the merge, since those are not on the target and need a pull
+// request of their own, and with a comment naming the merge when the
+// change is not the pull request's own (submitted through the API on its
+// branch, WU-083), since nothing on the pull request says so yet. A
+// failure is logged; the next sync tries again.
 func (s *Syncer) closeLanded(ctx context.Context, repo change.Repo, c change.Change, pr host.PullRequest) {
 	api, err := apiFor(s.Hosts, repo)
 	if err != nil {
 		s.Log.Warn("pull request merged by Plumbix is open and cannot be closed", "repo", repo.ID, "pr", pr.Number, "change", c.ID, "err", err)
 		return
 	}
-	comment := ""
-	if head := s.mergedHead(ctx, c); head != "" && head != pr.Head.SHA {
-		comment = fmt.Sprintf("Plumbix merged this pull request as `%s` on `%s` (change `%s`). The commits pushed since are not part of that merge and need a new pull request.", short(c.Merge.Commit), c.TargetBranch, c.ID)
+	comment, moved := "", false
+	switch head := s.mergedHead(ctx, c); {
+	case head != "" && head != pr.Head.SHA:
+		comment, moved = fmt.Sprintf("Plumbix merged this pull request as `%s` on `%s` (change `%s`). The commits pushed since are not part of that merge and need a new pull request.", short(c.Merge.Commit), c.TargetBranch, c.ID), true
+	case c.PullRequest == nil || c.PullRequest.Number != pr.Number:
+		comment = fmt.Sprintf("Plumbix merged this pull request's head `%s` as `%s` on `%s` (change `%s`, submitted through the API).", short(pr.Head.SHA), short(c.Merge.Commit), c.TargetBranch, c.ID)
 	}
 	if err := closePullRequest(ctx, s.Log, api, repo, c, pr.Number, comment); err != nil {
 		s.Log.Warn("pull request merged by Plumbix stays open; the next sync tries again", "repo", repo.ID, "pr", pr.Number, "change", c.ID, "err", err)
 		return
 	}
-	s.Log.Info("pull request merged by Plumbix closed", "repo", repo.ID, "pr", pr.Number, "change", c.ID, "head_moved", comment != "")
+	s.Log.Info("pull request merged by Plumbix closed", "repo", repo.ID, "pr", pr.Number, "change", c.ID, "head_moved", moved)
 }
 
 // mergedHead is the head the merged run validated; empty when unknown.

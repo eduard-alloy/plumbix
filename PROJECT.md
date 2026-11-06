@@ -186,6 +186,7 @@ cabinet.med, a private GitHub repository registered on the same server and drive
 | WU | Title | Features | Status |
 |----|-------|----------|--------|
 | WU-071 | The review loop clones with the server's credential (`POST /reviews/{id}/credential`) and gives a review back with a reason (`POST /reviews/{id}/fail`: `checkout_failed`, `reviewer_error`); closing a change cancels its run (cabinet.med findings, M4) | F-001, F-010 | ✅ |
+| WU-083 | A pull request whose head Plumbix merged through an API-submitted change is not reopened from its body: the sync recognises the merge by branch and head (`Store.LastChangeOnBranch`), closes the pull request with a comment naming the merge; a moved head is a new pull request (Chart-AI's third-day ask, A53) | F-010 | ✅ |
 | next | Chart-AI's requirement list, one unit per surface it needs (added as each requirement arrives) | F-010 | ⚪ |
 | later | Azure DevOps pull-request statuses and branch policies, the same gate on the second host | F-010 | ⚪ |
 

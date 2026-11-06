@@ -411,3 +411,13 @@ Initial discovery is complete. Results are consolidated in `PROJECT.md` and `CON
 **Answer**: the server's own credential. Asked whether the repository's PAT could serve: yes, and the rule is to mirror the server's own choice, the repository's token first, the host's token as the fallback, no new policy. The App token stays a possible upgrade (it expires in an hour where a PAT does not).
 
 **Decision**: A47. WU-071: `POST /reviews/{id}/credential` and `POST /reviews/{id}/fail`; closing a change cancels its run, which the README had promised. Rejected: serving the tree from the server (a new git-serving surface for a problem the askpass path already solves), the preflight (moot once the credential travels with the claim), the per-machine `gh auth setup-git`.
+
+## Q25: Chart-AI's third-day ask, a resubmitted change recreated from the pull request body (2026-11-06)
+
+**Context**: on chart-ai PR #19 the session closed the pull request's change to amend a frozen criterion (A43), resubmitted the same head through `submit_change` with the amended one, and Plumbix merged it; nine seconds later the sync opened a third change from the still-open pull request with the old criterion, which failed on that point and paid an ai-review iteration for a contradicting verdict on identical code. Root cause in the intake: the WU-056 suppression is keyed by pull request number, and an API-submitted change has none.
+
+**Options given**: a merged-head suppression keyed by branch and validated head (recommended); amendable criteria on an open change, a new iteration carrying updated criteria with the history kept per iteration (chart-ai's recommendation, supersedes A43); a `superseded_by` link from the resubmission honoured by the sync, with the client's criteria written back to the body.
+
+**Answer**: the suppression, and A43 stays as it is.
+
+**Decision**: A53. WU-083. The window between the close and the resubmission is accepted. Rejected: amendable criteria; the link and the write-back (a second source of truth the head suppression makes unnecessary); attaching the pull request number to an API submission (the sync would overwrite the client's criteria with the body's).

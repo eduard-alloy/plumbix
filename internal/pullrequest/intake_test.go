@@ -528,3 +528,60 @@ func TestMergedPullRequestIsNotReopened(t *testing.T) {
 		t.Errorf("after a failed close: state %s comments %q", h.gh.prs[1].State, h.gh.comments[1])
 	}
 }
+
+// TestPullRequestMergedThroughAnAPIChangeIsNotReopened (WU-083): a pull
+// request's change was closed to amend a frozen criterion and its tree
+// resubmitted through the API, with no pull request number. Once Plumbix
+// merges that change at the pull request's head, the sync opens no change
+// from the stale body and closes the pull request with a comment naming
+// the merge; commits pushed since are a tree nobody validated and get a
+// change as before.
+func TestPullRequestMergedThroughAnAPIChangeIsNotReopened(t *testing.T) {
+	h := newHarness(t)
+	h.gh.prs[1] = pr(1, "Add retries", "- the old criterion")
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	first := h.byPR(t, 1)
+	if _, err := h.svc.Close(ctx, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	again, err := h.svc.Submit(ctx, change.ChangeInput{RepoID: h.repo.ID, SourceBranch: first.SourceBranch, TargetBranch: first.TargetBranch,
+		Title: "Add retries", Intent: "Retry transient failures, with the amended criterion.", AcceptanceCriteria: []change.Criterion{{ID: "AC-1", Text: "the amended criterion"}}, SubmittedBy: "mcp:agent:1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.eng.outcome = change.Approved
+	r, err := h.eng.Validate(ctx, again.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.db.RecordMerge(ctx, change.MergeRecord{ChangeID: again.ID, RepoID: again.RepoID, Branch: again.TargetBranch, Merge: change.Merge{Commit: "landed2", Previous: "m1", Strategy: "squash", RunID: r.ID, MergedAt: t0}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.db.SetChangeState(ctx, again.ID, change.Approved, change.Merged, t0); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if all, _ := h.db.ListChanges(ctx, change.Filter{RepoID: h.repo.ID}); len(all) != 2 {
+		t.Fatalf("after the merge: %d changes, want the closed one and the merged one", len(all))
+	}
+	if h.gh.prs[1].State != "closed" || len(h.gh.comments[1]) != 1 || !strings.Contains(h.gh.comments[1][0], "landed2") || !strings.Contains(h.gh.comments[1][0], again.ID) {
+		t.Errorf("same head: state %s comments %q", h.gh.prs[1].State, h.gh.comments[1])
+	}
+
+	// Reopened with commits pushed since the merge: nobody validated that
+	// tree, so it is a pull request of its own and gets a change.
+	moved := h.gh.prs[1]
+	moved.State, moved.Head.SHA = "open", "h2"
+	h.gh.prs[1] = moved
+	if err := h.s.Sync(ctx, h.repo); err != nil {
+		t.Fatal(err)
+	}
+	if all, _ := h.db.ListChanges(ctx, change.Filter{RepoID: h.repo.ID}); len(all) != 3 {
+		t.Errorf("after the head moved: %d changes, want a third", len(all))
+	}
+}

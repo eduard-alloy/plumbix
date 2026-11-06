@@ -125,3 +125,40 @@ func TestLastChangeByPullRequest(t *testing.T) {
 		t.Fatalf("last = %+v, %v", last, err)
 	}
 }
+
+// TestLastChangeOnBranch: the newest change on a branch and target,
+// whatever its state, so the sync recognises a merge Plumbix made through
+// an API-submitted change on a pull request's branch (WU-083);
+// ErrNotFound on a branch or target no change ever had.
+func TestLastChangeOnBranch(t *testing.T) {
+	db, _ := openTemp(t)
+	if err := db.CreateRepo(ctx, sampleRepo("r_1", "https://github.com/a/b")); err != nil {
+		t.Fatal(err)
+	}
+	older := sampleChange("c_1", "r_1", "feat")
+	older.CreatedAt = t0
+	if err := db.CreateChange(ctx, older); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetChangeState(ctx, "c_1", change.Open, change.Closed, t0); err != nil {
+		t.Fatal(err)
+	}
+	newer := sampleChange("c_2", "r_1", "feat")
+	newer.CreatedAt = t0.Add(time.Minute)
+	if err := db.CreateChange(ctx, newer); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetChangeState(ctx, "c_2", change.Open, change.Closed, t0.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.LastChangeOnBranch(ctx, "r_1", newer.SourceBranch, newer.TargetBranch)
+	if err != nil || got.ID != "c_2" || got.State != change.Closed {
+		t.Fatalf("last on branch: %+v, %v", got, err)
+	}
+	if _, err := db.LastChangeOnBranch(ctx, "r_1", "other", newer.TargetBranch); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("unknown branch: err = %v", err)
+	}
+	if _, err := db.LastChangeOnBranch(ctx, "r_1", newer.SourceBranch, "release"); !errors.Is(err, change.ErrNotFound) {
+		t.Errorf("other target: err = %v", err)
+	}
+}
