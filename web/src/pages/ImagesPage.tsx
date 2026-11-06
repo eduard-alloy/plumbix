@@ -59,12 +59,22 @@ RUN apk add --no-cache git
 const withFinalNewline = (s: string) => (s === '' || s.endsWith('\n') ? s : s + '\n')
 
 function OwnEditor({ im, onChanged }: { im: ImageInfo; onChanged: () => Promise<void> }) {
-  const [text, setText] = useState(im.dockerfile ?? '')
+  const stored = im.dockerfile ?? ''
+  const [text, setText] = useState(stored)
+  const [seen, setSeen] = useState(stored)
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null)
   const [confirm, setConfirm] = useState(false)
   const name = im.ref.replace(/:latest$/, '')
-  // The stored file is what the editor shows after a save or a reload.
-  useEffect(() => setText(im.dockerfile ?? ''), [im.dockerfile])
+  // The stored file replaces the draft when it changes (a save, a reload that
+  // brought a different file), decided during render rather than in an effect:
+  // an effect that copied the prop would still be pending when the card has
+  // just appeared from a refetch, and React runs pending effects before it
+  // renders a keystroke, so the copy would land after the edit and erase it
+  // (seen once in Plumbix's own pipeline, J7T5Q8).
+  if (seen !== stored) {
+    setSeen(stored)
+    setText(stored)
+  }
   const dirty = withFinalNewline(text) !== (im.dockerfile ?? '')
   async function save() {
     setStatus(null)
