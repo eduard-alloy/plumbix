@@ -13,12 +13,15 @@ export const repos: Repo[] = [
   { id: 'r_ledgerapi001', host: 'azuredevops', url: 'https://dev.azure.com/northwind/ledger/_git/ledger-api', protected_branches: ['main'], merge_strategy: 'merge', merger: 'plumbix', created_at: at(99999) },
 ]
 
-function step(name: string, status: Step['status'], ms: number, exit = 0, validator = false): Step {
-  return { name, validator: validator || name === 'validate' || name === 'ai-review', status, exit_code: exit, duration_ms: ms }
+function step(name: string, status: Step['status'], ms: number, exit = 0, validator = false, stage?: string): Step {
+  const s: Step = { name, validator: validator || name === 'validate' || name === 'ai-review', status, exit_code: exit, duration_ms: ms }
+  if (stage) s.stage = stage
+  return s
 }
 
-const okSteps = (): Step[] => [step('build', 'succeeded', 42000), step('test', 'succeeded', 118000), step('lint', 'succeeded', 11000), step('validate', 'succeeded', 4000), step('ai-review', 'succeeded', 38000)]
-const fixSteps = (): Step[] => [step('build', 'succeeded', 41000), step('test', 'failed', 123000, 1), step('lint', 'succeeded', 10000), step('validate', 'succeeded', 3000), step('ai-review', 'succeeded', 35000)]
+// build, test and lint are the checks stage, as in Plumbix's own pipeline (WU-080); the validators are unstaged.
+const okSteps = (): Step[] => [step('build', 'succeeded', 42000, 0, false, 'checks'), step('test', 'succeeded', 118000, 0, false, 'checks'), step('lint', 'succeeded', 11000, 0, false, 'checks'), step('validate', 'succeeded', 4000), step('ai-review', 'succeeded', 38000)]
+const fixSteps = (): Step[] => [step('build', 'succeeded', 41000, 0, false, 'checks'), step('test', 'failed', 123000, 1, false, 'checks'), step('lint', 'succeeded', 10000, 0, false, 'checks'), step('validate', 'succeeded', 3000), step('ai-review', 'succeeded', 35000)]
 
 export const approved: Change = {
   id: 'c_k7m2q9x4w1zp',
@@ -200,7 +203,7 @@ export const runningRuns: Run[] = [
     head: '77aa11beeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
     base: 'a81d7c0bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     status: 'running',
-    steps: [step('build', 'succeeded', 25000), step('test', 'running', 0)],
+    steps: [step('build', 'succeeded', 25000, 0, false, 'checks'), step('test', 'running', 0, 0, false, 'checks')],
     started_at: new Date(NOW.getTime() - 72000).toISOString(),
   },
 ]

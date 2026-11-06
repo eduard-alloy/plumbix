@@ -38,10 +38,55 @@ export interface StepVM {
   exit: string
   dur: string
   hasLog: boolean
+  /** The step's duration in milliseconds, for the stage row's longest step (WU-080); 0 while it runs. */
+  ms: number
   stage?: string
   /** What a validator decided: approve, fix, reject, or 'none' when it produced no verdict. Absent for normal steps. */
   outcome?: ValidatorDecision | 'none'
   summary?: string
+}
+
+/** StageVM is the row above the steps of one stage (WU-080): the longest step's duration, since the steps of a stage run in parallel, and the worst status among them. */
+export interface StageVM {
+  name: string
+  count: number
+  dur: string
+  status: StepVM['status']
+}
+
+/** StageGroupVM is a run of step rows: the steps of one stage under their stage row, or one unstaged step with no row above it. */
+export interface StageGroupVM {
+  stage?: StageVM
+  steps: StepVM[]
+}
+
+/** Worst first: a stage with a failed step is failed, one still running is running, and only a stage of nothing but skipped steps is skipped. */
+const STATUS_RANK: StepVM['status'][] = ['failed', 'timed_out', 'errored', 'cancelled', 'running', 'queued', 'succeeded', 'skipped']
+
+/** stageGroups walks the steps in run order and gathers each staged step under the stage of its first appearance; an unstaged step is a group of its own (WU-080). */
+export function stageGroups(steps: StepVM[]): StageGroupVM[] {
+  const groups: StageGroupVM[] = []
+  const byStage = new Map<string, StageGroupVM>()
+  for (const s of steps) {
+    if (!s.stage) {
+      groups.push({ steps: [s] })
+      continue
+    }
+    let g = byStage.get(s.stage)
+    if (!g) {
+      g = { stage: { name: s.stage, count: 0, dur: '', status: 'skipped' }, steps: [] }
+      byStage.set(s.stage, g)
+      groups.push(g)
+    }
+    g.steps.push(s)
+  }
+  for (const g of groups) {
+    if (!g.stage) continue
+    const rank = (st: StepVM['status']) => { const i = STATUS_RANK.indexOf(st); return i < 0 ? STATUS_RANK.length : i }
+    const worst = g.steps.reduce((w, s) => (rank(s.status) < rank(w) ? s.status : w), g.steps[0].status)
+    g.stage = { name: g.stage.name, count: g.steps.length, dur: duration(Math.max(...g.steps.map((s) => s.ms)) / 1000), status: worst }
+  }
+  return groups
 }
 
 export interface FindingVM {
@@ -110,13 +155,15 @@ export interface ChangeView {
     reasons: string[]
     stepsLabel: string
     steps: StepVM[]
+    /** The same steps under their stage rows (WU-080). */
+    groups: StageGroupVM[]
     mergeNote: string
     record: { commit: string; previous: string; strategy: string; mergedBy: string; mergedAt: string } | undefined
   }
   findings: FindingGroupVM[]
   risks: RiskVM[]
   iterations: IterationVM[]
-  evidence: { label: string; runId: string; error: string; steps: StepVM[] }
+  evidence: { label: string; runId: string; error: string; steps: StepVM[]; groups: StageGroupVM[] }
   actions: { primary: 'merge' | 'validate' | null; close: boolean; approve: boolean; refresh: boolean }
   /** A person's standing approval, for the verdict panel. */
   /** who is the lead-in sentence: "Approved by Eduard", "Approved on GitHub by lead", or "Approved by a person" for older records. */
@@ -146,7 +193,7 @@ function exitNote(s: Step): string {
 /** stepVM is one step row; a running step (WU-027) has no exit or duration yet. */
 export function stepVM(s: Step, outcomes?: ValidatorOutcome[]): StepVM {
   const live = s.status === 'running'
-  const vm: StepVM = { name: s.name, validator: s.validator, advisory: !!s.advisory, status: s.status, exit: live ? '' : exitNote(s), dur: live ? '' : duration(s.duration_ms / 1000), hasLog: s.status !== 'skipped' }
+  const vm: StepVM = { name: s.name, validator: s.validator, advisory: !!s.advisory, status: s.status, exit: live ? '' : exitNote(s), dur: live ? '' : duration(s.duration_ms / 1000), hasLog: s.status !== 'skipped', ms: live ? 0 : s.duration_ms }
   if (s.stage) vm.stage = s.stage
   if (s.validator && outcomes) {
     const o = outcomes.find((x) => x.name === s.name)
@@ -244,7 +291,8 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
     closed: 'Closed without merging.',
   }
   const showPipeline = c.state === 'running'
-  const verdictSteps = cur ? (showPipeline ? cur.steps : cur.steps.filter((s) => s.validator)) : []
+  const verdictSteps = (cur ? (showPipeline ? cur.steps : cur.steps.filter((s) => s.validator)) : []).map((s) => stepVM(s, cur?.result?.validators))
+  const evidenceSteps = run ? run.steps.map((s) => stepVM(s, run.result?.validators)) : []
   const strategy = repo?.merge_strategy ?? 'squash'
   const mergeVerb = { squash: 'Merge squashes ', merge: 'Merge creates a merge commit for ', rebase: 'Merge rebases ' }[strategy]
   const reasons = result?.reasons.length ? result.reasons : cur?.error ? [cur.error] : []
@@ -287,7 +335,8 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       counts: judged && result && c.state !== 'needs_human' ? `${met}/${tot} met · ${plural(blockers, 'blocker')} · ${plural(counting.length, 'finding')} · ${plural(countingRisks.length, 'risk')}` : '',
       reasons: ['rejected', 'needs_human', 'escalated'].includes(c.state) ? reasons : [],
       stepsLabel: showPipeline ? 'Pipeline' : 'Validators',
-      steps: verdictSteps.map((s) => stepVM(s, cur?.result?.validators)),
+      steps: verdictSteps,
+      groups: stageGroups(verdictSteps),
       mergeNote: c.state === 'approved' && cur ? `${mergeVerb}${shortSha(cur.head)} onto ${c.target_branch} (${strategy}, set per repository).` : '',
       record: c.state === 'merged' && c.merge ? { commit: c.merge.commit.slice(0, 12), previous: c.merge.previous.slice(0, 12), strategy: c.merge.strategy, mergedBy: mergedBy(c.merge), mergedAt: dateTime(c.merge.merged_at) } : undefined,
     },
@@ -310,7 +359,8 @@ export function changeView(c: Change, runs: Run[], repo: Repo | undefined, selec
       label: run ? `iteration ${run.iteration ?? sel + 1} · ${run.id} · ${shortSha(run.head) || '—'}` : 'none yet',
       runId: run?.id ?? '',
       error: run?.error ?? '',
-      steps: run ? run.steps.map((s) => stepVM(s, run.result?.validators)) : [],
+      steps: evidenceSteps,
+      groups: stageGroups(evidenceSteps),
     },
     actions: {
       primary: c.state === 'approved' ? 'merge' : c.state === 'needs_human' || c.state === 'escalated' ? 'validate' : null,

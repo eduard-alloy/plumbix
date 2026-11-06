@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { changeView, refreshNotice, refusalNotice } from './change'
+import { changeView, refreshNotice, refusalNotice, stageGroups, type StepVM } from './change'
 import { approved, approvedRuns, closed, fixRequested, fixRequestedRuns, merged, needsHuman, needsHumanRuns, NOW, open, repos, running, runningRuns } from '../test/fixtures'
 
 const plumbix = repos[0]
@@ -281,5 +281,36 @@ describe('criteria sets (WU-066)', () => {
     expect(fromSet.criteriaSet).toEqual({ id: 'cs_abc123def456', text: 'from set cs_abc123def456 · kai:plumbix/X6Q5JY · eduard@mac', problem: '' })
     const missing = changeView({ ...needsHuman, criteria_set: { id: 'cs_nosuchset00', problem: 'no criteria set cs_nosuchset00 on this server; the pull request\'s own list was used' } }, needsHumanRuns, repos[1], undefined, NOW)
     expect(missing.criteriaSet?.problem).toContain('no criteria set cs_nosuchset00')
+  })
+})
+
+describe('stageGroups (WU-080)', () => {
+  const step = (name: string, status: StepVM['status'], seconds: number, stage?: string): StepVM => ({ name, validator: false, advisory: false, status, exit: 'exit 0', dur: `${seconds}s`, hasLog: true, ms: seconds * 1000, ...(stage ? { stage } : {}) })
+
+  it('groups staged steps under the stage of their first appearance and leaves unstaged steps alone', () => {
+    const g = stageGroups([step('build', 'succeeded', 42, 'checks'), step('test', 'failed', 118, 'checks'), step('lint', 'succeeded', 11, 'checks'), step('validate', 'succeeded', 4)])
+    expect(g.map((x) => x.steps.map((s) => s.name))).toEqual([['build', 'test', 'lint'], ['validate']])
+    expect(g[0].stage).toEqual({ name: 'checks', count: 3, dur: '1m 58s', status: 'failed' })
+    expect(g[1].stage).toBeUndefined()
+  })
+
+  it('ranks the worst status: failed over errored over running over succeeded, and a stage of skipped steps is skipped', () => {
+    expect(stageGroups([step('a', 'succeeded', 1, 's'), step('b', 'running', 0, 's')])[0].stage?.status).toBe('running')
+    expect(stageGroups([step('a', 'errored', 1, 's'), step('b', 'running', 0, 's')])[0].stage?.status).toBe('errored')
+    expect(stageGroups([step('a', 'skipped', 0, 's'), step('b', 'skipped', 0, 's')])[0].stage?.status).toBe('skipped')
+    expect(stageGroups([step('a', 'skipped', 0, 's'), step('b', 'succeeded', 3, 's')])[0].stage?.status).toBe('succeeded')
+  })
+
+  it('keeps a stage together when an unstaged step sits between its members', () => {
+    const g = stageGroups([step('a', 'succeeded', 1, 's'), step('x', 'succeeded', 1), step('b', 'succeeded', 2, 's')])
+    expect(g.map((x) => x.steps.map((s) => s.name))).toEqual([['a', 'b'], ['x']])
+  })
+
+  it('exposes the groups on the evidence section and the verdict panel', () => {
+    const v = changeView(approved, approvedRuns, plumbix, undefined, NOW)
+    expect(v.evidence.groups.map((g) => g.stage?.name ?? g.steps[0].name)).toEqual(['checks', 'validate', 'ai-review', 'ai-grok'])
+    expect(v.verdict.groups.every((g) => !g.stage)).toBe(true)
+    const r = changeView(running, runningRuns, plumbix, undefined, NOW)
+    expect(r.verdict.groups[0].stage).toMatchObject({ name: 'checks', count: 2, status: 'running' })
   })
 })

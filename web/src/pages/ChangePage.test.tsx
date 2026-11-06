@@ -328,3 +328,40 @@ describe('Validator outcomes', () => {
     expect(row.textContent).toContain('No verdict')
   })
 })
+
+describe('Stages (WU-080)', () => {
+  it('shows a stage row above the steps of a stage in the evidence list, and none in a verdict panel whose validators are unstaged', async () => {
+    const verdict = await open(approved.id)
+    const row = screen.getByLabelText('Stage checks')
+    expect(row.classList.contains('stage-row')).toBe(true)
+    expect(row.textContent).toContain('checks')
+    expect(row.textContent).toContain('3 steps')
+    expect(row.textContent).toContain('1m 58s')
+    expect(row.textContent).toContain('Succeeded')
+    const build = screen.getByText('build', { selector: '.step .name' }).closest('.step')!
+    expect(row.compareDocumentPosition(build) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(build.classList.contains('staged')).toBe(true)
+    expect(screen.getByText('validate', { selector: '.step .name' }).closest('.step')!.classList.contains('staged')).toBe(false)
+    expect(verdict.querySelector('.vstage')).toBeNull()
+    // Stage rows are not step rows: one button per step of the shown run, as before.
+    expect(document.querySelectorAll('button.step')).toHaveLength(db.runs[approved.id][1].steps.length)
+  })
+
+  it('groups the verdict panel’s pipeline list the same way while the change runs, with the worst status', async () => {
+    const verdict = await open(running.id)
+    const row = within(verdict).getByLabelText('Stage checks')
+    expect(row.classList.contains('vstage')).toBe(true)
+    expect(row.textContent).toContain('2 steps')
+    expect(row.textContent).toContain('Running')
+    const test = within(verdict).getByText('test', { selector: '.vstep .name' }).closest('.vstep')!
+    expect(row.compareDocumentPosition(test) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(test.classList.contains('staged')).toBe(true)
+  })
+
+  it('renders a run without stages as before', async () => {
+    await open(needsHuman.id)
+    expect(screen.queryByLabelText(/^Stage /)).toBeNull()
+    expect(document.querySelectorAll('.stage-row, .vstage')).toHaveLength(0)
+    expect(document.querySelectorAll('.staged')).toHaveLength(0)
+  })
+})

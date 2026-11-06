@@ -1,6 +1,6 @@
 // The core screen: intent and verdict first, evidence linked everywhere,
 // the diff on demand. Layout and copy follow web/design/README.md.
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from '../api'
 import type { Diff } from '../model'
 import { useRoute } from '../router'
@@ -10,7 +10,7 @@ import { OriginTag } from '../ui/OriginTag'
 import { LogPanel, type LogTarget } from '../ui/LogPanel'
 import { Prose } from '../ui/Prose'
 import { DiffView, type Highlight } from '../ui/DiffView'
-import { stepVM, changeView, refusalNotice, type NoticeVM, type StepVM, refreshNotice } from '../vm/change'
+import { stepVM, changeView, refusalNotice, type NoticeVM, type StageVM, type StepVM, refreshNotice } from '../vm/change'
 
 type Busy = 'merge' | 'close' | 'validate' | 'approve' | 'refresh' | null
 
@@ -244,7 +244,7 @@ export function ChangePage({ id }: { id: string }) {
     const stepName = path.split('/')[1] ?? ''
     const run = latestRun
     const step = run?.steps.find((s) => s.name === stepName)
-    if (run && step) openLog(run, { name: step.name, validator: step.validator, advisory: !!step.advisory, status: step.status, exit: `exit ${step.exit_code}`, dur: '', hasLog: true })
+    if (run && step) openLog(run, { name: step.name, validator: step.validator, advisory: !!step.advisory, status: step.status, exit: `exit ${step.exit_code}`, dur: '', hasLog: true, ms: step.duration_ms })
   }
 
   const stepRow = (s: StepVM, key: string, className: string) => {
@@ -270,6 +270,21 @@ export function ChangePage({ id }: { id: string }) {
       </button>
     )
   }
+  // A stage's steps sit under one row naming the stage, its step count, its
+  // worst status and its longest step (WU-080); an unstaged step has no row.
+  const stageRow = (st: StageVM) => (
+    <div className="stage-row" aria-label={`Stage ${st.name}`}>
+      <StatePill status={st.status as PillStatus} mode="icon" />
+      <span className="name">{st.name}</span>
+      <span className="dim">{st.count === 1 ? '1 step' : `${st.count} steps`}</span>
+      <span className="status-cell">
+        <StatePill status={st.status as PillStatus} mode="text" />
+      </span>
+      <span />
+      <span className="mono dim2 right">{st.dur}</span>
+      <span />
+    </div>
+  )
   const diffSummary = diffStat ? `${diffStat.files.length} files · +${diffStat.additions} −${diffStat.deletions} · ${v.diffRange}` : v.diffRange
 
   return (
@@ -549,14 +564,26 @@ export function ChangePage({ id }: { id: string }) {
               <div className="block">
                 <div className="label">{v.verdict.stepsLabel}</div>
                 <div className="steps">
-                  {v.verdict.steps.map((s) => (
-                    <button key={s.name} className="vstep" disabled={!s.hasLog} onClick={() => openLog(latestRun, s)} title={s.summary}>
-                      <StatePill status={s.status as PillStatus} mode="icon" />
-                      <span className="name">{s.name}</span>
-                      {s.advisory && <span className="tag advisory">advisory</span>}
-                      <Decision step={s} />
-                      <span className="dur">{s.dur}</span>
-                    </button>
+                  {v.verdict.groups.map((g, i) => (
+                    <Fragment key={g.stage ? `stage-${g.stage.name}-${i}` : g.steps[0].name}>
+                      {g.stage && (
+                        <div className="vstage" aria-label={`Stage ${g.stage.name}`}>
+                          <StatePill status={g.stage.status as PillStatus} mode="icon" />
+                          <span className="name">{g.stage.name}</span>
+                          <span className="count">{g.stage.count === 1 ? '1 step' : `${g.stage.count} steps`}</span>
+                          <span className="dur">{g.stage.dur}</span>
+                        </div>
+                      )}
+                      {g.steps.map((s) => (
+                        <button key={s.name} className={g.stage ? 'vstep staged' : 'vstep'} disabled={!s.hasLog} onClick={() => openLog(latestRun, s)} title={s.summary}>
+                          <StatePill status={s.status as PillStatus} mode="icon" />
+                          <span className="name">{s.name}</span>
+                          {s.advisory && <span className="tag advisory">advisory</span>}
+                          <Decision step={s} />
+                          <span className="dur">{s.dur}</span>
+                        </button>
+                      ))}
+                    </Fragment>
                   ))}
                 </div>
               </div>
@@ -677,7 +704,16 @@ export function ChangePage({ id }: { id: string }) {
             <span className="count">{v.evidence.label}</span>
           </div>
           {v.evidence.error && <div className="run-error">error: {v.evidence.error}</div>}
-          {v.evidence.steps.map((s) => stepRow(s, s.name, 'step'))}
+          {v.evidence.groups.map((g, i) =>
+            g.stage ? (
+              <Fragment key={`stage-${g.stage.name}-${i}`}>
+                {stageRow(g.stage)}
+                {g.steps.map((s) => stepRow(s, s.name, 'step staged'))}
+              </Fragment>
+            ) : (
+              g.steps.map((s) => stepRow(s, s.name, 'step'))
+            ),
+          )}
         </section>
 
         <section className="section" ref={diffRef}>

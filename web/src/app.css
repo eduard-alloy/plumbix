@@ -172,6 +172,10 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 .vstep:hover:not(:disabled) { color: var(--accent); }
 .vstep .name { font: 12px var(--mono); }
 .vstep .dur { font: 11px var(--mono); color: var(--text-3); }
+.vstage { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; margin-top: 2px; }
+.vstage .name { font: 12px var(--mono); font-weight: 600; }
+.vstage .count, .vstage .dur { font: 11px var(--mono); color: var(--text-3); }
+.vstep.staged { padding-left: 14px; }
 .verdict .mergenote { font-size: 12px; color: var(--text-2); }
 .record { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 14px; font-size: 12px; }
 .record .k { color: var(--text-3); }
@@ -209,6 +213,10 @@ code.cmd { display: block; margin-top: 4px; padding: 6px 8px; border: 1px solid 
 
 .step { display: grid; grid-template-columns: 14px minmax(90px, 150px) 70px minmax(0, 1fr) 64px 72px 32px; gap: 12px; align-items: center; width: 100%; height: 34px; padding: 0 8px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); font-size: 13px; text-align: left; }
 .step:hover:not(:disabled) { background: var(--hover); }
+/* A stage row above its steps (WU-080): the same grid as a step row, quieter, no log. */
+.stage-row { display: grid; grid-template-columns: 14px minmax(90px, 150px) 70px minmax(0, 1fr) 64px 72px 32px; gap: 12px; align-items: center; width: 100%; height: 30px; padding: 0 8px; border-bottom: 1px solid var(--border); background: var(--surface-2, transparent); font-size: 12px; }
+.stage-row .name { font: 12px var(--mono); font-weight: 600; }
+.step.staged { padding-left: 22px; }
 .step .name { font: 13px var(--mono); }
 .step .tags { white-space: nowrap; }
 .tag { padding: 1px 5px; border: 1px solid var(--border); border-radius: var(--r-xs); font-size: 11px; color: var(--text-3); width: fit-content; }
